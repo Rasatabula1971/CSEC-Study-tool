@@ -85,11 +85,11 @@ def _semantic_lookup(db: sqlite3.Connection, request: dict,
         JOIN   chunks c    ON c.id = v.rowid
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  v.embedding MATCH ?
+          AND  k = ?
           AND  v.rowid IN (SELECT id FROM chunks WHERE subject_id = ?)
         ORDER  BY v.distance
-        LIMIT  ?
         """,
-        (query_vec, subject_id, k),
+        (query_vec, k, subject_id),
     ).fetchone()
     if row is None:
         return None
