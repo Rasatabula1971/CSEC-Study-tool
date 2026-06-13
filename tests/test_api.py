@@ -150,3 +150,20 @@ def test_questions_empty_is_ok(client):
     res = client.get("/api/questions/Principles_of_Business")
     assert res.status_code == 200
     assert res.json() == []
+
+
+# ---------------------------------------------------------------------------
+# GET /quiz  and  GET /api/questions?subject_id=...  (quiz page additions)
+# ---------------------------------------------------------------------------
+def test_quiz_page_returns_200(client):
+    res = client.get("/quiz")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+
+
+def test_questions_query_param_returns_list(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/questions", params={"subject_id": "Principles_of_Business"})
+    assert res.status_code == 200
+    assert res.json() == []
+    assert isinstance(res.json(), list)

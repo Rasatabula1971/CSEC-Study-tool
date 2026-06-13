@@ -670,6 +670,14 @@
       margin-bottom: var(--space-2);
     }
 
+    /* --- Mode auto-switch divider label --- */
+    .mode-divider {
+      text-align: center;
+      font-size: var(--text-xs);
+      color: var(--color-text-faint);
+      padding: var(--space-3) 0;
+    }
+
     /* --- Thinking indicator --- */
     .thinking {
       display: none;
@@ -1055,8 +1063,11 @@
 
     <div class="topbar">
       <div class="topbar-title">CSEC Study Partner</div>
-      <div class="topbar-subject" id="topbarSubject">
-        Select a subject to begin
+      <div style="display: flex; align-items: center; gap: var(--space-5);">
+        <div class="topbar-subject" id="topbarSubject">
+          Select a subject to begin
+        </div>
+        <a href="/quiz" style="color: var(--color-accent); font-size: var(--text-sm);">Open Quiz →</a>
       </div>
     </div>
 
@@ -1152,6 +1163,12 @@
     teach: 'Generating lesson...',
     grade: 'Grading your answer...',
     plan:  'Building your revision plan...',
+  };
+
+  const ROUTE_PLACEHOLDERS = {
+    teach: 'Ask a question or request a lesson on any syllabus topic...',
+    grade: 'Pick a question, then type your answer here...',
+    plan:  'Ask for your revision plan or type "show me what to review"...',
   };
 
   const state = {
@@ -1267,6 +1284,18 @@
     });
   }
 
+  // Single source of truth for switching mode (manual pill click OR auto-switch).
+  // Updates state, active pill, the sliding indicator, placeholder, and question picker.
+  function setRoute(route) {
+    const activeBtn = pills.find(p => p.dataset.route === route);
+    if (!activeBtn) return;
+    state.route = route;
+    pills.forEach(p => p.classList.toggle('active', p === activeBtn));
+    moveRouteIndicator(activeBtn);
+    messageInput.placeholder = ROUTE_PLACEHOLDERS[route] || messageInput.placeholder;
+    updateQuestionVisibility();
+  }
+
   /* ============================================================
      5. THINKING INDICATOR
      ============================================================ */
@@ -1326,6 +1355,28 @@
     chatInner.insertBefore(msg, thinkingIndicator);
     scrollToBottom();
     return msg;
+  }
+
+  // Centred, muted divider label shown when the mode auto-switches (not a bubble).
+  function appendModeDivider(text) {
+    hideEmptyState();
+    const divider = document.createElement('div');
+    divider.className = 'mode-divider';
+    divider.textContent = text;
+    chatInner.insertBefore(divider, thinkingIndicator);
+    scrollToBottom();
+  }
+
+  // After a lesson, ready the student to be quizzed.
+  function autoSwitchToGrade() {
+    setRoute('grade');
+    appendModeDivider('Quiz mode — type your answer below');
+  }
+
+  // After a grade result, return to lesson mode for the next topic.
+  function autoSwitchToTeach() {
+    setRoute('teach');
+    appendModeDivider('Lesson mode — ask your next topic');
   }
 
   function appendGradeCard(gradeResult) {
@@ -1576,12 +1627,18 @@
         return;
       }
 
-      if (state.route === 'grade' && data.points) {
+      // Remember which route produced this response — auto-switch reads it
+      // after rendering, so the branch logic above is unaffected.
+      const respondedRoute = state.route;
+
+      if (respondedRoute === 'grade' && data.points) {
         appendGradeCard(data);
         if (data.lesson || data.feedback) {
           appendMessage('ai', data.lesson || data.feedback, { objectiveId: data.objective_id });
         }
-      } else if (state.route === 'plan') {
+        // Grade rendered → return to lesson mode for the next topic.
+        autoSwitchToTeach();
+      } else if (respondedRoute === 'plan') {
         appendPlanCard(data);
         if (data.summary) {
           appendMessage('ai', data.summary);
@@ -1590,6 +1647,8 @@
         // teach route
         const text = data.lesson || data.text || data.response || JSON.stringify(data);
         appendMessage('ai', text, { objectiveId: data.objective_id });
+        // Lesson rendered → ready the student to be quizzed.
+        if (respondedRoute === 'teach') autoSwitchToGrade();
       }
 
     } catch (err) {
@@ -1631,19 +1690,7 @@
   // Route pills
   pills.forEach(pill => {
     pill.addEventListener('click', () => {
-      pills.forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      state.route = pill.dataset.route;
-      moveRouteIndicator(pill);
-      updateQuestionVisibility();
-
-      // Update placeholder
-      const placeholders = {
-        teach: 'Ask a question or request a lesson on any syllabus topic...',
-        grade: 'Pick a question, then type your answer here...',
-        plan:  'Ask for your revision plan or type "show me what to review"...',
-      };
-      messageInput.placeholder = placeholders[state.route] || messageInput.placeholder;
+      setRoute(pill.dataset.route);
     });
   });
 

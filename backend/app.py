@@ -41,6 +41,7 @@ logger = logging.getLogger("csec.app")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 CHAT_HTML = STATIC_DIR / "chat.html"
+QUIZ_HTML = STATIC_DIR / "quiz.html"
 
 
 def open_db(db_path: str) -> sqlite3.Connection:
@@ -131,6 +132,12 @@ def _shape_for_ui(result: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+@app.get("/quiz")
+def quiz_page() -> FileResponse:
+    """Serve the dedicated full-page quiz experience (backend/static/quiz.html)."""
+    return FileResponse(QUIZ_HTML)
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(CHAT_HTML)
@@ -189,6 +196,47 @@ def questions(subject_id: str, request: Request) -> list[dict]:
         d["label"] = f"{d['year']} · {d['paper']} · Q{d['question_num'] or ''}".strip()
         out.append(d)
     return out
+
+
+@app.get("/api/questions")
+def questions_by_filter(
+    request: Request,
+    subject_id: str,
+    paper: str | None = None,
+    year: int | None = None,
+) -> list[dict]:
+    """Past-paper questions for the dedicated quiz page (/quiz).
+
+    Filters chunks by subject, content_type='past_paper' and a present
+    question_num, joined to documents for paper/year. `paper` and `year` are
+    optional query params that narrow the list further. Each row carries the
+    question stem (first 400 chars) and a marks_total = number of mark points
+    keyed on that question. Returns [] when nothing matches -- never 404.
+    """
+    sql = [
+        "SELECT c.chunk_id      AS question_id,",
+        "       c.question_num  AS question_num,",
+        "       d.paper         AS paper,",
+        "       d.year          AS year,",
+        "       SUBSTR(c.chunk_text, 1, 400) AS stem,",
+        "       (SELECT COUNT(*) FROM mark_points mp",
+        "          WHERE mp.question_id = c.chunk_id) AS marks_total",
+        "FROM   chunks c",
+        "JOIN   documents d ON d.doc_id = c.doc_id",
+        "WHERE  c.subject_id = ?",
+        "  AND  d.content_type = 'past_paper'",
+        "  AND  c.question_num IS NOT NULL",
+    ]
+    params: list = [subject_id]
+    if paper:
+        sql.append("  AND  d.paper LIKE ?")
+        params.append(paper + "%")
+    if year is not None:
+        sql.append("  AND  d.year = ?")
+        params.append(year)
+    sql.append("ORDER BY d.year DESC, c.question_num ASC")
+    rows = request.app.state.db.execute("\n".join(sql), params).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.post("/api/chat")

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSEC Study Partner · Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-bg:#0F0F11;--color-surface:#18181B;--color-surface-2:#232329;
+      --color-surface-3:#2A2A32;--color-border:#2E2E36;--color-border-soft:#232329;
+      --color-accent:#6C63FF;--color-accent-dim:#3D3A8C;
+      --color-accent-glow:rgba(108,99,255,0.15);--color-text:#F0EFF6;
+      --color-text-muted:#8A8899;--color-text-faint:#55546A;
+      --color-pass:#34D399;--color-pass-bg:rgba(52,211,153,0.08);
+      --color-fail:#F87171;--color-fail-bg:rgba(248,113,113,0.08);
+      --color-warn:#FBBF24;--color-warn-bg:rgba(251,191,36,0.08);
+      --font-display:'DM Sans',system-ui,sans-serif;
+      --font-body:'Inter',system-ui,sans-serif;
+      --text-xs:.75rem;--text-sm:.875rem;--text-base:1rem;
+      --text-lg:1.125rem;--text-xl:1.375rem;
+      --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
+      --space-5:24px;--space-6:32px;--space-7:48px;--space-8:64px;
+      --radius-sm:4px;--radius-md:8px;--radius-lg:12px;
+      --border:1px solid var(--color-border);
+      --ease-spring:cubic-bezier(0.16,1,0.3,1);
+      --ease-out:cubic-bezier(0.3,0,0.8,0.15);
+      --topbar-height:56px;--content-max:800px;
+    }
+    html,body{height:100%;background:var(--color-bg);color:var(--color-text);
+      font-family:var(--font-body);font-size:var(--text-base);line-height:1.6;
+      -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+    ::selection{background:rgba(108,99,255,0.3);color:var(--color-text);}
+    button{font-family:var(--font-body);cursor:pointer;border:none;background:none;}
+    button:disabled{cursor:not-allowed;}
+    select,input,textarea{font-family:var(--font-body);}
+    .page{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+    .topbar{height:var(--topbar-height);display:flex;align-items:center;
+      justify-content:space-between;padding:0 var(--space-6);
+      border-bottom:var(--border);background:var(--color-bg);
+      flex-shrink:0;z-index:10;position:relative;}
+    .topbar-back{display:flex;align-items:center;gap:var(--space-2);
+      color:var(--color-text-muted);font-size:var(--text-sm);font-weight:500;
+      text-decoration:none;transition:color 120ms ease;
+      padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);
+      margin-left:calc(-1 * var(--space-3));}
+    .topbar-back:hover{color:var(--color-text);background:var(--color-surface-2);}
+    .topbar-back:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
+    .topbar-back:active{background:var(--color-surface-3);}
+    .topbar-title{position:absolute;left:50%;transform:translateX(-50%);
+      font-family:var(--font-display);font-size:var(--text-base);font-weight:600;
+      letter-spacing:-0.01em;color:var(--color-text);pointer-events:none;}
+    .topbar-subject{font-size:var(--text-sm);color:var(--color-text-muted);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
+    .topbar-subject span{color:var(--color-accent);font-weight:500;}
+    .selector-bar{flex-shrink:0;border-bottom:var(--border);background:var(--color-surface);}
+    .selector-row{display:grid;gap:var(--space-4);padding:var(--space-4) var(--space-6);
+      max-width:var(--content-max);margin:0 auto;width:100%;}
+    .selector-row-top{grid-template-columns:2fr 1fr 1fr;}
+    .selector-row-bottom{grid-template-columns:1fr auto;padding-top:0;}
+    .selector-field{display:flex;flex-direction:column;gap:var(--space-1);}
+    .selector-label{font-size:var(--text-xs);font-weight:500;
+      color:var(--color-text-faint);text-transform:uppercase;letter-spacing:0.08em;}
+    .selector-select,.selector-input{width:100%;padding:var(--space-2) var(--space-3);
+      background:var(--color-surface-2);border:var(--border);border-radius:var(--radius-md);
+      color:var(--color-text);font-size:var(--text-sm);line-height:1.6;outline:none;
+      transition:border-color 120ms ease;}
+    .selector-select{appearance:none;-webkit-appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238A8899' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right var(--space-3) center;
+      padding-right:var(--space-7);cursor:pointer;}
+    .selector-select option{background:var(--color-surface-2);color:var(--color-text);}
+    .selector-select:hover,.selector-input:hover{border-color:var(--color-accent-dim);}
+    .selector-select:focus-visible,.selector-input:focus-visible{
+      border-color:var(--color-accent);outline:2px solid var(--color-accent-glow);outline-offset:0;}
+    .selector-select:disabled,.selector-input:disabled{opacity:.5;cursor:not-allowed;}
+    .question-select-wrap{display:flex;flex-direction:column;gap:var(--space-1);flex:1;}
+    .load-btn{align-self:flex-end;padding:var(--space-2) var(--space-5);
+      background:var(--color-accent);color:#fff;font-size:var(--text-sm);font-weight:500;
+      border-radius:var(--radius-md);white-space:nowrap;
+      transition:background-color 120ms ease,transform 80ms var(--ease-spring);outline:none;}
+    .load-btn:hover:not(:disabled){background:#7B73FF;}
+    .load-btn:active:not(:disabled){transform:scale(0.96);}
+    .load-btn:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
+    .load-btn:disabled{background:var(--color-accent-dim);opacity:.5;}
+    .content-area{flex:1;overflow-y:auto;padding:var(--space-6);}
+    .content-area::-webkit-scrollbar{width:4px;}
+    .content-area::-webkit-scrollbar-track{background:transparent;}
+    .content-area::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:2px;}
+    .content-inner{max-width:var(--content-max);margin:0 auto;
+      display:flex;flex-direction:column;gap:var(--space-5);}
+    .section-label{font-size:var(--text-xs);font-weight:500;color:var(--color-text-faint);
+      text-transform:uppercase;letter-spacing:0.08em;margin-bottom:var(--space-2);}
+    .question-card{background:var(--color-surface);border:var(--border);
+      border-radius:var(--radius-lg);overflow:hidden;
+      animation:card-arrive 220ms var(--ease-spring) both;}
+    .question-card-header{display:flex;align-items:center;justify-content:space-between;
+      padding:var(--space-3) var(--space-4);border-bottom:var(--border);}
+    .question-card-meta{display:flex;align-items:center;gap:var(--space-3);}
+    .question-meta-tag{display:inline-flex;align-items:center;
+      padding:2px var(--space-2);border-radius:var(--radius-sm);
+      font-size:var(--text-xs);font-weight:500;}
+    .question-meta-tag.year,.question-meta-tag.paper{
+      background:var(--color-surface-2);color:var(--color-text-muted);}
+    .question-meta-tag.qnum{background:var(--color-accent-glow);color:var(--color-accent);
+      border:1px solid rgba(108,99,255,0.2);}
+    .marks-badge{display:inline-flex;align-items:center;padding:2px var(--space-2);
+      background:var(--color-accent-glow);border:1px solid rgba(108,99,255,0.2);
+      border-radius:var(--radius-sm);font-size:var(--text-xs);font-weight:600;
+      color:var(--color-accent);}
+    .question-stem{padding:var(--space-5);font-size:var(--text-base);line-height:1.8;
+      color:var(--color-text);white-space:pre-wrap;word-break:break-word;}
+    .question-empty{padding:var(--space-7) var(--space-5);text-align:center;}
+    .question-empty-icon{width:48px;height:48px;background:var(--color-surface-2);
+      border:var(--border);border-radius:var(--radius-lg);display:flex;
+      align-items:center;justify-content:center;margin:0 auto var(--space-4);
+      color:var(--color-text-faint);}
+    .question-empty-title{font-family:var(--font-display);font-size:var(--text-lg);
+      font-weight:600;letter-spacing:-0.02em;color:var(--color-text);
+      margin-bottom:var(--space-2);}
+    .question-empty-body{font-size:var(--text-sm);color:var(--color-text-muted);
+      max-width:320px;margin:0 auto;line-height:1.6;}
+    .answer-section{display:flex;flex-direction:column;gap:var(--space-2);}
+    .answer-textarea{width:100%;min-height:200px;padding:var(--space-4);
+      background:var(--color-surface-2);border:var(--border);
+      border-radius:var(--radius-lg);color:var(--color-text);
+      font-size:var(--text-base);line-height:1.6;resize:vertical;outline:none;
+      transition:border-color 120ms ease;}
+    .answer-textarea::placeholder{color:var(--color-text-faint);}
+    .answer-textarea:hover{border-color:var(--color-accent-dim);}
+    .answer-textarea:focus-visible{border-color:var(--color-accent);
+      outline:2px solid var(--color-accent-glow);outline-offset:0;}
+    .answer-textarea:disabled{opacity:.5;cursor:not-allowed;}
+    .submit-row{display:flex;align-items:center;justify-content:space-between;}
+    .word-count{font-size:var(--text-xs);color:var(--color-text-faint);
+      font-variant-numeric:tabular-nums;transition:color 120ms ease;}
+    .word-count.has-words{color:var(--color-text-muted);}
+    .submit-btn{display:flex;align-items:center;gap:var(--space-2);
+      padding:var(--space-3) var(--space-5);background:var(--color-accent);color:#fff;
+      font-size:var(--text-sm);font-weight:500;border-radius:var(--radius-md);
+      transition:background-color 120ms ease,transform 80ms var(--ease-spring),opacity 120ms ease;
+      outline:none;}
+    .submit-btn:hover:not(:disabled){background:#7B73FF;}
+    .submit-btn:active:not(:disabled){transform:scale(0.96);}
+    .submit-btn:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
+    .submit-btn:disabled{background:var(--color-accent-dim);opacity:.5;}
+    .submit-btn.grading{pointer-events:none;}
+    .submit-btn-dots{display:none;gap:var(--space-1);align-items:center;}
+    .submit-btn.grading .submit-btn-label{display:none;}
+    .submit-btn.grading .submit-btn-dots{display:flex;}
+    .submit-btn-dot{width:4px;height:4px;border-radius:50%;
+      background:rgba(255,255,255,0.8);animation:dot-pulse 1.2s ease infinite;}
+    .submit-btn-dot:nth-child(2){animation-delay:.2s;}
+    .submit-btn-dot:nth-child(3){animation-delay:.4s;}
+    .grade-card{background:var(--color-surface);border:var(--border);
+      border-radius:var(--radius-lg);overflow:hidden;display:none;
+      animation:card-arrive 220ms var(--ease-spring) both;}
+    .grade-card.visible{display:block;}
+    .grade-card-header{display:flex;align-items:center;justify-content:space-between;
+      padding:var(--space-4);border-bottom:var(--border);}
+    .grade-card-label{font-family:var(--font-display);font-size:var(--text-sm);
+      font-weight:600;color:var(--color-text);}
+    .grade-score{display:flex;align-items:baseline;gap:var(--space-2);}
+    .grade-fraction{font-family:var(--font-display);font-size:var(--text-xl);
+      font-weight:600;letter-spacing:-0.02em;}
+    .grade-pct{font-size:var(--text-sm);font-weight:500;}
+    .grade-score.pass .grade-fraction,.grade-score.pass .grade-pct{color:var(--color-pass);}
+    .grade-score.fail .grade-fraction,.grade-score.fail .grade-pct{color:var(--color-fail);}
+    .grade-score.warn .grade-fraction,.grade-score.warn .grade-pct{color:var(--color-warn);}
+    .grade-points{padding:var(--space-3) var(--space-4);}
+    .mark-point{display:flex;align-items:flex-start;gap:var(--space-3);
+      padding:var(--space-3) 0;opacity:0;transform:translateX(-6px);
+      animation:mark-reveal 200ms var(--ease-spring) forwards;}
+    .mark-point+.mark-point{border-top:1px solid var(--color-border-soft);}
+    .mark-point-icon{flex-shrink:0;width:20px;height:20px;border-radius:var(--radius-sm);
+      display:flex;align-items:center;justify-content:center;margin-top:2px;}
+    .mark-point.awarded .mark-point-icon{background:var(--color-pass-bg);color:var(--color-pass);}
+    .mark-point.missed .mark-point-icon{background:var(--color-fail-bg);color:var(--color-fail);}
+    .mark-point-body{flex:1;min-width:0;}
+    .mark-point-stmt{font-size:var(--text-sm);color:var(--color-text);line-height:1.5;}
+    .mark-point-evidence{font-size:var(--text-xs);color:var(--color-text-muted);
+      margin-top:var(--space-1);line-height:1.4;}
+    .grade-footer{padding:var(--space-3) var(--space-4);border-top:var(--border);
+      background:var(--color-surface-2);display:flex;align-items:center;
+      justify-content:space-between;}
+    .grade-leitner{font-size:var(--text-xs);color:var(--color-text-muted);}
+    .grade-leitner strong{color:var(--color-text);}
+    .try-another-btn{padding:var(--space-2) var(--space-4);background:var(--color-surface-2);
+      border:var(--border);border-radius:var(--radius-md);color:var(--color-text);
+      font-size:var(--text-sm);font-weight:500;
+      transition:background-color 120ms ease,border-color 120ms ease,transform 80ms var(--ease-spring);
+      outline:none;}
+    .try-another-btn:hover{background:var(--color-surface-3);border-color:var(--color-accent-dim);}
+    .try-another-btn:active{transform:scale(0.97);}
+    .try-another-btn:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
+    .error-notice{display:none;padding:var(--space-3) var(--space-4);
+      background:var(--color-fail-bg);border:1px solid rgba(248,113,113,0.2);
+      border-radius:var(--radius-md);font-size:var(--text-sm);color:var(--color-fail);
+      animation:card-arrive 220ms var(--ease-spring) both;}
+    .error-notice.visible{display:block;}
+    .questions-loading{display:none;align-items:center;gap:var(--space-2);
+      padding:var(--space-2) var(--space-3);font-size:var(--text-xs);
+      color:var(--color-text-muted);}
+    .questions-loading.visible{display:flex;}
+    .questions-loading-dot{width:4px;height:4px;border-radius:50%;
+      background:var(--color-text-faint);animation:dot-pulse 1.2s ease infinite;}
+    .questions-loading-dot:nth-child(2){animation-delay:.2s;}
+    .questions-loading-dot:nth-child(3){animation-delay:.4s;}
+    @keyframes card-arrive{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    @keyframes mark-reveal{to{opacity:1;transform:translateX(0);}}
+    @keyframes dot-pulse{0%,60%,100%{opacity:.2;transform:scale(.8);}30%{opacity:1;transform:scale(1);}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{
+      animation-duration:.01ms!important;animation-iteration-count:1!important;
+      transition-duration:.01ms!important;}}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+      overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0;}
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <a href="/" class="topbar-back" aria-label="Back to study chat">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      Back
+    </a>
+    <div class="topbar-title">CSEC Study Partner · Quiz</div>
+    <div class="topbar-subject" id="topbarSubject">Select a subject</div>
+  </header>
+
+  <div class="selector-bar">
+    <div class="selector-row selector-row-top">
+      <div class="selector-field">
+        <label class="selector-label" for="subjectSelect">Subject</label>
+        <select class="selector-select" id="subjectSelect" aria-label="Select subject">
+          <option value="">— choose —</option>
+          <option value="Principles_of_Business">Principles of Business</option>
+          <option value="Economics">Economics</option>
+          <option value="Mathematics">Mathematics</option>
+          <option value="English">English</option>
+          <option value="Principles_of_Accounts">Principles of Accounts</option>
+          <option value="Integrated_Science">Integrated Science</option>
+          <option value="Information_Technology">Information Technology</option>
+        </select>
+      </div>
+      <div class="selector-field">
+        <label class="selector-label" for="paperSelect">Paper</label>
+        <select class="selector-select" id="paperSelect" aria-label="Select paper" disabled>
+          <option value="">— paper —</option>
+          <option value="Paper 2">Paper 2</option>
+          <option value="Paper 3">Paper 3</option>
+        </select>
+      </div>
+      <div class="selector-field">
+        <label class="selector-label" for="yearSelect">Year</label>
+        <select class="selector-select" id="yearSelect" aria-label="Select year" disabled>
+          <option value="">— year —</option>
+        </select>
+      </div>
+    </div>
+    <div class="selector-row selector-row-bottom">
+      <div class="question-select-wrap">
+        <label class="selector-label" for="questionSelect">Question</label>
+        <div style="position:relative;">
+          <select class="selector-select" id="questionSelect" aria-label="Select question" disabled>
+            <option value="">— select subject, paper and year first —</option>
+          </select>
+          <div class="questions-loading" id="questionsLoading" aria-live="polite">
+            <div class="questions-loading-dot"></div>
+            <div class="questions-loading-dot"></div>
+            <div class="questions-loading-dot"></div>
+            Loading questions...
+          </div>
+        </div>
+      </div>
+      <div style="padding-top:var(--space-5);align-self:flex-end;">
+        <button type="button" class="load-btn" id="loadBtn" disabled>Load Question</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="content-area">
+    <div class="content-inner">
+      <div>
+        <div class="section-label">Question</div>
+        <div class="question-card" id="questionCard">
+          <div class="question-empty">
+            <div class="question-empty-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="question-empty-title">No question loaded</div>
+            <div class="question-empty-body">Select a subject, paper, year and question above, then click Load Question.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="answer-section" id="answerSection">
+        <div class="section-label">Your Answer</div>
+        <textarea class="answer-textarea" id="answerTextarea" rows="8"
+          placeholder="Load a question first, then write your answer here using full sentences."
+          disabled aria-label="Your answer"></textarea>
+        <div class="submit-row">
+          <span class="word-count" id="wordCount" aria-live="polite">0 words</span>
+          <button type="button" class="submit-btn" id="submitBtn" disabled aria-label="Submit answer for grading">
+            <span class="submit-btn-label">Submit Answer</span>
+            <span class="submit-btn-dots" aria-hidden="true">
+              <span class="submit-btn-dot"></span>
+              <span class="submit-btn-dot"></span>
+              <span class="submit-btn-dot"></span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="error-notice" id="errorNotice" role="alert"></div>
+
+      <div>
+        <div class="section-label" id="gradeLabel" style="display:none;">Result</div>
+        <div class="grade-card" id="gradeCard">
+          <div class="grade-card-header">
+            <span class="grade-card-label">Mark Scheme</span>
+            <div class="grade-score" id="gradeScore">
+              <span class="grade-fraction" id="gradeFraction"></span>
+              <span class="grade-pct" id="gradePct"></span>
+            </div>
+          </div>
+          <div class="grade-points" id="gradePoints"></div>
+          <div class="grade-footer">
+            <div class="grade-leitner" id="gradeLeitner"></div>
+            <button type="button" class="try-another-btn" id="tryAnotherBtn">Try Another Question</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE='http://127.0.0.1:8000';
+  const state={subjectId:'',subjectDisplay:'',paper:'',year:'',
+    questionId:null,questionStem:'',marksTotal:0,
+    isLoading:false,isGrading:false,allQuestions:[]};
+
+  const subjectSelect=document.getElementById('subjectSelect');
+  const paperSelect=document.getElementById('paperSelect');
+  const yearSelect=document.getElementById('yearSelect');
+  const questionSelect=document.getElementById('questionSelect');
+  const questionsLoading=document.getElementById('questionsLoading');
+  const loadBtn=document.getElementById('loadBtn');
+  const topbarSubject=document.getElementById('topbarSubject');
+  const questionCard=document.getElementById('questionCard');
+  const answerTextarea=document.getElementById('answerTextarea');
+  const wordCount=document.getElementById('wordCount');
+  const submitBtn=document.getElementById('submitBtn');
+  const errorNotice=document.getElementById('errorNotice');
+  const gradeCard=document.getElementById('gradeCard');
+  const gradeLabel=document.getElementById('gradeLabel');
+  const gradeScore=document.getElementById('gradeScore');
+  const gradeFraction=document.getElementById('gradeFraction');
+  const gradePct=document.getElementById('gradePct');
+  const gradePoints=document.getElementById('gradePoints');
+  const gradeLeitner=document.getElementById('gradeLeitner');
+  const tryAnotherBtn=document.getElementById('tryAnotherBtn');
+
+  function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
+  function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
+  function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
+  function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
+  function hideError(){errorNotice.classList.remove('visible');}
+  function updateLoadBtn(){loadBtn.disabled=!(state.subjectId&&state.paper&&state.year&&questionSelect.value&&!state.isLoading);}
+  function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
+  function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
+
+  function populateYears(){const y=new Date().getFullYear();while(yearSelect.options.length>1)yearSelect.remove(1);for(let i=y;i>=2010;i--){const o=document.createElement('option');o.value=i;o.textContent=i;yearSelect.appendChild(o);}}
+
+  async function fetchQuestions(subjectId){
+    if(!subjectId)return;
+    questionsLoading.classList.add('visible');
+    questionSelect.disabled=true;
+    state.allQuestions=[];
+    try{
+      const url=new URL(`${API_BASE}/api/questions`);
+      url.searchParams.set('subject_id',subjectId);
+      const res=await fetch(url.toString());
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      state.allQuestions=Array.isArray(data)?data:[];
+    }catch(e){state.allQuestions=[];}
+    finally{questionsLoading.classList.remove('visible');}
+    filterQuestions();
+  }
+
+  function filterQuestions(){
+    while(questionSelect.options.length>1)questionSelect.remove(1);
+    questionSelect.options[0].textContent='— loading... —';
+    questionSelect.disabled=true;
+    const paper=state.paper;
+    const year=state.year?parseInt(state.year,10):null;
+    let filtered=state.allQuestions;
+    if(paper)filtered=filtered.filter(q=>q.paper&&q.paper.startsWith(paper));
+    if(year)filtered=filtered.filter(q=>q.year===year);
+    if(filtered.length===0){
+      questionSelect.options[0].textContent=state.subjectId?'— no questions found for this filter —':'— select subject, paper and year first —';
+      updateLoadBtn();return;
+    }
+    questionSelect.options[0].textContent=`— ${filtered.length} question${filtered.length!==1?'s':''} —`;
+    filtered.forEach(q=>{
+      const o=document.createElement('option');
+      o.value=q.question_id;
+      o.dataset.stem=q.stem??'';
+      o.dataset.marks=q.marks_total??0;
+      o.dataset.year=q.year??'';
+      o.dataset.paper=q.paper??'';
+      o.dataset.qnum=q.question_num??'';
+      o.textContent=`${q.year} · ${q.paper} · Q${q.question_num}${q.marks_total?` (${q.marks_total} marks)`:''}`;
+      questionSelect.appendChild(o);
+    });
+    questionSelect.disabled=false;
+    updateLoadBtn();
+  }
+
+  function renderQuestionCard(opt){
+    state.questionId=opt.value;
+    state.questionStem=opt.dataset.stem||'';
+    state.marksTotal=parseInt(opt.dataset.marks,10)||0;
+    const year=opt.dataset.year,paper=opt.dataset.paper,qnum=opt.dataset.qnum;
+    questionCard.innerHTML=`
+      <div class="question-card-header">
+        <div class="question-card-meta">
+          <span class="question-meta-tag year">${escapeHtml(year)}</span>
+          <span class="question-meta-tag paper">${escapeHtml(paper)}</span>
+          <span class="question-meta-tag qnum">Q${escapeHtml(qnum)}</span>
+        </div>
+        ${state.marksTotal?`<span class="marks-badge">${state.marksTotal} mark${state.marksTotal!==1?'s':''}</span>`:''}
+      </div>
+      <div class="question-stem">${escapeHtml(state.questionStem)}</div>`;
+    questionCard.style.animation='none';
+    requestAnimationFrame(()=>{questionCard.style.animation='';});
+    answerTextarea.disabled=false;
+    answerTextarea.placeholder='Write your answer here. Use full sentences and address every part of the question.';
+    answerTextarea.focus();
+    hideGrade();hideError();updateSubmitBtn();
+  }
+
+  function resetQuestionCard(){
+    state.questionId=null;state.questionStem='';state.marksTotal=0;
+    questionCard.innerHTML=`
+      <div class="question-empty">
+        <div class="question-empty-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="question-empty-title">No question loaded</div>
+        <div class="question-empty-body">Select a subject, paper, year and question above, then click Load Question.</div>
+      </div>`;
+    answerTextarea.disabled=true;answerTextarea.value='';
+    answerTextarea.placeholder='Load a question first, then write your answer here using full sentences.';
+    updateWordCount();updateSubmitBtn();
+  }
+
+  function renderGrade(data){
+    const awarded=data.awarded??0,total=data.total??0,pct=data.score_pct??0;
+    const points=data.points??[],box=data.leitner_box??1,next=data.next_review??'tomorrow';
+    const sc=pct>=70?'pass':pct>=50?'warn':'fail';
+    gradeScore.className=`grade-score ${sc}`;
+    gradeFraction.textContent=`${awarded} / ${total}`;
+    gradePct.textContent=`${pct}%`;
+    gradePoints.innerHTML=points.map((pt,i)=>`
+      <div class="mark-point ${pt.awarded?'awarded':'missed'}" style="animation-delay:${i*60}ms">
+        <div class="mark-point-icon">
+          ${pt.awarded
+            ?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
+            :`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`}
+        </div>
+        <div class="mark-point-body">
+          <div class="mark-point-stmt">${escapeHtml(pt.point_text??pt.mark_point_id??'')}</div>
+          ${pt.evidence?`<div class="mark-point-evidence">${escapeHtml(pt.evidence)}</div>`:''}
+        </div>
+      </div>`).join('');
+    gradeLeitner.innerHTML=`Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(next)}</strong>`;
+    gradeLabel.style.display='block';
+    gradeCard.classList.add('visible');
+    gradeCard.scrollIntoView({behavior:'auto',block:'start'});
+  }
+
+  function hideGrade(){gradeCard.classList.remove('visible');gradeLabel.style.display='none';gradePoints.innerHTML='';}
+
+  async function submitAnswer(){
+    if(!state.questionId)return;
+    const text=answerTextarea.value.trim();
+    if(countWords(text)<10)return;
+    state.isGrading=true;submitBtn.classList.add('grading');submitBtn.disabled=true;hideError();
+    try{
+      const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:text,subject_id:state.subjectId,route:'grade',question_id:state.questionId})});
+      if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||'Check that the FastAPI server is running.'}`);return;}
+      const data=await res.json();
+      if(data.error==='no_mark_scheme'){showError('No mark scheme found for this question. Try a different question.');return;}
+      if(data.error==='out_of_scope'){showError('This question could not be matched to a syllabus objective. Try a different question.');return;}
+      if(data.error){showError(`Error: ${data.error}`);return;}
+      renderGrade(data);
+    }catch(err){
+      if(err instanceof TypeError&&err.message.includes('fetch')){
+        showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");
+      }else{showError(`Something went wrong: ${err.message}`);}
+    }finally{state.isGrading=false;submitBtn.classList.remove('grading');updateSubmitBtn();}
+  }
+
+  function tryAnother(){answerTextarea.value='';updateWordCount();hideGrade();hideError();updateSubmitBtn();answerTextarea.focus();document.querySelector('.content-area').scrollTop=0;}
+
+  async function fetchSubjects(){
+    try{
+      const res=await fetch(`${API_BASE}/api/subjects`);
+      if(!res.ok)return;
+      const data=await res.json();
+      if(!Array.isArray(data)||data.length===0)return;
+      while(subjectSelect.options.length>1)subjectSelect.remove(1);
+      data.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
+    }catch{}
+  }
+
+  subjectSelect.addEventListener('change',()=>{
+    const opt=subjectSelect.options[subjectSelect.selectedIndex];
+    state.subjectId=opt.value;
+    setSubjectDisplay(opt.value?opt.textContent.trim():'');
+    paperSelect.disabled=!state.subjectId;yearSelect.disabled=!state.subjectId;
+    paperSelect.value='';yearSelect.value='';state.paper='';state.year='';
+    resetQuestionCard();hideError();
+    while(questionSelect.options.length>1)questionSelect.remove(1);
+    questionSelect.options[0].textContent='— select paper and year —';
+    questionSelect.disabled=true;updateLoadBtn();
+    if(state.subjectId)fetchQuestions(state.subjectId);
+  });
+  paperSelect.addEventListener('change',()=>{state.paper=paperSelect.value;filterQuestions();updateLoadBtn();});
+  yearSelect.addEventListener('change',()=>{state.year=yearSelect.value;filterQuestions();updateLoadBtn();});
+  questionSelect.addEventListener('change',()=>{updateLoadBtn();});
+  loadBtn.addEventListener('click',()=>{const opt=questionSelect.options[questionSelect.selectedIndex];if(!opt||!opt.value)return;renderQuestionCard(opt);});
+  answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
+  submitBtn.addEventListener('click',submitAnswer);
+  tryAnotherBtn.addEventListener('click',tryAnother);
+  answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitAnswer();}});
+
+  function init(){populateYears();fetchSubjects();updateLoadBtn();updateSubmitBtn();updateWordCount();}
+  init();
+</script>
+</body>
+</html>
