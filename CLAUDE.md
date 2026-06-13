@@ -524,8 +524,8 @@ The current stage is the first unchecked box.
 
 - [x] **Stage 1** — Storage & Schema: folder structure, schema.sql, init_db.py, backup.bat ✓ 2026-06-12 (SSD root D:\CSEC_AI_STUDY_PARTNER; init_db OK, backup OK, 8/8 tests pass)
 - [x] **Stage 2** — Syllabus Lock: syllabus_parser.py, export_for_review.py, lock_subject.py ✓ 2026-06-12 (POB SYLL 17 extracted → 10 sections/116 objectives loaded into E: DB, all verified=1, review xlsx exported, syllabus_locked=1; 32/32 tests pass; other 6 subjects still gated)
-- [ ] **Stage 3** — Minimal Engine: ollama_client.py, ram_check.py, model pull verification
-- [ ] **Stage 4** — Ingestion: ingest.py (PDF chunk → embed → FK-validate → sqlite-vec index)
+- [x] **Stage 3** — Minimal Engine: ollama_client.py, ram_check.py, model pull verification ✓ 2026-06-12 (httpx Ollama client + verify_models; ram_check.py now advisory-only — tiered WARN, never FAILs/blocks; real RAM test is a session that runs without freezing)
+- [x] **Stage 4** — Ingestion: ingest.py (PDF chunk → embed → FK-validate → sqlite-vec index) ✓ 2026-06-13 (chunk→keyword-match→FK-validate→route to vec_notes/vec_past_papers/vec_mark_schemes; unmatched→ingest_review_queue, never indexed unmapped; mark-point parser; --review-queue interactive assign; embed_fn injectable; 8 ingest tests + 51/51 suite pass. NOTE: live end-to-end run on real PDFs still pending Ollama install + nomic-embed-text pull)
 - [ ] **Stage 5** — Deterministic Core: scope.py, retrieval.py, grade.py, schedule.py, weakness.py, controller.py + four prompt files + full test suite
 - [ ] **Stage 6** — FastAPI + UI + Launcher: app.py, routes, chat.html, start.bat
 - [ ] **Stage 7** — Pilot: end-to-end POB integration tests + manual validation session
