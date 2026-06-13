@@ -229,14 +229,57 @@ def questions_by_filter(
     ]
     params: list = [subject_id]
     if paper:
-        sql.append("  AND  d.paper LIKE ?")
-        params.append(paper + "%")
+        sql.append("  AND  d.paper = ?")
+        params.append(paper)
     if year is not None:
         sql.append("  AND  d.year = ?")
         params.append(year)
     sql.append("ORDER BY d.year DESC, c.question_num ASC")
     rows = request.app.state.db.execute("\n".join(sql), params).fetchall()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/filters")
+def filters(request: Request, subject_id: str) -> dict:
+    """Distinct paper/year values that actually have questions for a subject.
+
+    Powers the quiz-page Paper and Year dropdowns: only values that the
+    /api/questions query can return (past-paper chunks with a question_num)
+    appear, so a selected paper/year always yields questions. `papers` is
+    sorted alphabetically, `years` descending. Returns empty lists when the
+    subject has no questions -- never 404.
+    """
+    db = request.app.state.db
+    papers = db.execute(
+        """
+        SELECT DISTINCT d.paper AS paper
+        FROM   chunks c
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.subject_id = ?
+          AND  d.content_type = 'past_paper'
+          AND  c.question_num IS NOT NULL
+          AND  d.paper IS NOT NULL
+        ORDER  BY d.paper ASC
+        """,
+        (subject_id,),
+    ).fetchall()
+    years = db.execute(
+        """
+        SELECT DISTINCT d.year AS year
+        FROM   chunks c
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.subject_id = ?
+          AND  d.content_type = 'past_paper'
+          AND  c.question_num IS NOT NULL
+          AND  d.year IS NOT NULL
+        ORDER  BY d.year DESC
+        """,
+        (subject_id,),
+    ).fetchall()
+    return {
+        "papers": [r["paper"] for r in papers],
+        "years": [r["year"] for r in years],
+    }
 
 
 @app.post("/api/chat")

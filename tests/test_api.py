@@ -167,3 +167,16 @@ def test_questions_query_param_returns_list(client):
     assert res.status_code == 200
     assert res.json() == []
     assert isinstance(res.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/filters?subject_id=...
+# ---------------------------------------------------------------------------
+def test_filters_returns_papers_and_years(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/filters", params={"subject_id": "Principles_of_Business"})
+    assert res.status_code == 200
+    body = res.json()
+    assert "papers" in body and "years" in body
+    assert isinstance(body["papers"], list)
+    assert isinstance(body["years"], list)

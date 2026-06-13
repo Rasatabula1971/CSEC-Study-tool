@@ -249,8 +249,6 @@
         <label class="selector-label" for="paperSelect">Paper</label>
         <select class="selector-select" id="paperSelect" aria-label="Select paper" disabled>
           <option value="">— paper —</option>
-          <option value="Paper 2">Paper 2</option>
-          <option value="Paper 3">Paper 3</option>
         </select>
       </div>
       <div class="selector-field">
@@ -375,7 +373,41 @@
   function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
   function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
 
-  function populateYears(){const y=new Date().getFullYear();while(yearSelect.options.length>1)yearSelect.remove(1);for(let i=y;i>=2010;i--){const o=document.createElement('option');o.value=i;o.textContent=i;yearSelect.appendChild(o);}}
+  function resetFilters(){
+    while(paperSelect.options.length>0)paperSelect.remove(0);
+    while(yearSelect.options.length>0)yearSelect.remove(0);
+    const po=document.createElement('option');po.value='';po.textContent='— paper —';paperSelect.appendChild(po);
+    const yo=document.createElement('option');yo.value='';yo.textContent='— year —';yearSelect.appendChild(yo);
+    paperSelect.disabled=true;yearSelect.disabled=true;
+  }
+
+  function populateFilters(papers,years){
+    while(paperSelect.options.length>0)paperSelect.remove(0);
+    while(yearSelect.options.length>0)yearSelect.remove(0);
+    if(papers.length===0){
+      const po=document.createElement('option');po.value='';po.textContent='— no papers available —';paperSelect.appendChild(po);
+      const yo=document.createElement('option');yo.value='';yo.textContent='— no papers available —';yearSelect.appendChild(yo);
+      paperSelect.disabled=true;yearSelect.disabled=true;
+      return;
+    }
+    const pPlaceholder=document.createElement('option');pPlaceholder.value='';pPlaceholder.textContent='— paper —';paperSelect.appendChild(pPlaceholder);
+    papers.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;paperSelect.appendChild(o);});
+    const yPlaceholder=document.createElement('option');yPlaceholder.value='';yPlaceholder.textContent='— year —';yearSelect.appendChild(yPlaceholder);
+    years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;yearSelect.appendChild(o);});
+    paperSelect.disabled=false;yearSelect.disabled=false;
+  }
+
+  async function fetchFilters(subjectId){
+    if(!subjectId){resetFilters();return;}
+    try{
+      const url=new URL(`${API_BASE}/api/filters`);
+      url.searchParams.set('subject_id',subjectId);
+      const res=await fetch(url.toString());
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      populateFilters(Array.isArray(data.papers)?data.papers:[],Array.isArray(data.years)?data.years:[]);
+    }catch(e){populateFilters([],[]);}
+  }
 
   async function fetchQuestions(subjectId){
     if(!subjectId)return;
@@ -401,7 +433,7 @@
     const paper=state.paper;
     const year=state.year?parseInt(state.year,10):null;
     let filtered=state.allQuestions;
-    if(paper)filtered=filtered.filter(q=>q.paper&&q.paper.startsWith(paper));
+    if(paper)filtered=filtered.filter(q=>q.paper===paper);
     if(year)filtered=filtered.filter(q=>q.year===year);
     if(filtered.length===0){
       questionSelect.options[0].textContent=state.subjectId?'— no questions found for this filter —':'— select subject, paper and year first —';
@@ -529,13 +561,13 @@
     const opt=subjectSelect.options[subjectSelect.selectedIndex];
     state.subjectId=opt.value;
     setSubjectDisplay(opt.value?opt.textContent.trim():'');
-    paperSelect.disabled=!state.subjectId;yearSelect.disabled=!state.subjectId;
-    paperSelect.value='';yearSelect.value='';state.paper='';state.year='';
+    state.paper='';state.year='';
     resetQuestionCard();hideError();
     while(questionSelect.options.length>1)questionSelect.remove(1);
     questionSelect.options[0].textContent='— select paper and year —';
     questionSelect.disabled=true;updateLoadBtn();
-    if(state.subjectId)fetchQuestions(state.subjectId);
+    if(state.subjectId){fetchFilters(state.subjectId);fetchQuestions(state.subjectId);}
+    else{resetFilters();}
   });
   paperSelect.addEventListener('change',()=>{state.paper=paperSelect.value;filterQuestions();updateLoadBtn();});
   yearSelect.addEventListener('change',()=>{state.year=yearSelect.value;filterQuestions();updateLoadBtn();});
@@ -546,7 +578,7 @@
   tryAnotherBtn.addEventListener('click',tryAnother);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitAnswer();}});
 
-  function init(){populateYears();fetchSubjects();updateLoadBtn();updateSubmitBtn();updateWordCount();}
+  function init(){resetFilters();fetchSubjects();updateLoadBtn();updateSubmitBtn();updateWordCount();}
   init();
 </script>
 </body>
