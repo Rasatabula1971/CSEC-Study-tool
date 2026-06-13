@@ -562,6 +562,13 @@ Stage 6 goal: build the FastAPI app, a minimal browser-based chat UI, and the la
    start http://127.0.0.1:8000
    Add a comment at the top: "Run this from the repo root. Set SSD_ROOT in .env first."
 
+   Gating policy (do not change):
+   - Ollama reachability is a HARD gate. The curl on /api/tags (== ollama_client.ollama_health())
+     must keep its `exit /b 1`. Ollama down is a real blocker and must stop startup.
+   - ram_check.py is ADVISORY ONLY. It always exits 0 and must NOT gate startup. If you run it
+     in start.bat, run it for its printed WARN/PASS output and ignore its exit code — the real
+     RAM test is whether a session runs without freezing, not a snapshot at launch.
+
 4. Create tests/test_api.py using FastAPI's TestClient:
    - Mock the DB and controller.
    - Test GET /health returns 200.
