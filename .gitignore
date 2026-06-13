@@ -1,0 +1,11 @@
+.env
+.mcp.json
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite
+*.sqlite-journal
+
+# Bootstrap/scratch artifacts (kept locally, not in VCS)
+*.zip
+_pdf_sample.txt
