@@ -140,7 +140,10 @@ def parse_session(text: str) -> dict | None:
     mon = m.group("mon").lower()
     tag = MONTH_TAG.get(mon, mon[:3].title())
     label = "January" if tag == "Jan" else "June"
-    return {"month_tag": tag, "year": int(m.group("year")), "paper_label": f"Paper 2 - {label}"}
+    year = int(m.group("year"))
+    # Include the year so the label matches the past-paper format
+    # ("Paper 2 - January 2026"); the quiz Paper dropdown merges both sources.
+    return {"month_tag": tag, "year": year, "paper_label": f"Paper 2 - {label} {year}"}
 
 
 def split_points(body_lines: list[str]) -> list[str]:

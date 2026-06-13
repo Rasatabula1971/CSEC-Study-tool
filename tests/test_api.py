@@ -130,7 +130,7 @@ def test_questions_returns_labelled_list(client):
         "objective_id": "POB-1.14",
         "question_text": "List THREE careers ... (3 marks)",
         "question_num": "1(a)",
-        "paper": "Paper 2 - January",
+        "paper": "Paper 2 - January 2026",
         "year": 2026,
         "marks": 3,
     }
@@ -142,7 +142,7 @@ def test_questions_returns_labelled_list(client):
     q = body[0]
     assert q["question_id"] == "POB-2026Jan-P2-q1a"   # the key grade.py needs
     assert q["marks"] == 3
-    assert q["label"] == "2026 · Paper 2 - January · Q1(a)"  # built for display
+    assert q["label"] == "Paper 2 - January 2026 · Q1(a)"  # built for display
 
 
 def test_questions_empty_is_ok(client):

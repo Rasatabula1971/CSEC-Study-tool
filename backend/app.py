@@ -193,7 +193,9 @@ def questions(subject_id: str, request: Request) -> list[dict]:
     out = []
     for r in rows:
         d = dict(r)
-        d["label"] = f"{d['year']} · {d['paper']} · Q{d['question_num'] or ''}".strip()
+        # paper already carries the year ("Paper 2 - January 2026"), so don't
+        # prefix it again -- keep the label free of a duplicated year.
+        d["label"] = f"{d['paper']} · Q{d['question_num'] or ''}".strip()
         out.append(d)
     return out
 
@@ -207,8 +209,9 @@ def questions_by_filter(
 ) -> list[dict]:
     """Past-paper questions for the dedicated quiz page (/quiz).
 
-    Filters chunks by subject, content_type='past_paper' and a present
-    question_num, joined to documents for paper/year. `paper` and `year` are
+    Filters chunks by subject, content_type in (past_paper, mark_scheme) and a
+    present question_num, joined to documents for paper/year -- so both raw
+    question papers and solution-derived questions appear. `paper` and `year` are
     optional query params that narrow the list further. Each row carries the
     question stem (first 400 chars) and a marks_total = number of mark points
     keyed on that question. Returns [] when nothing matches -- never 404.
@@ -224,7 +227,7 @@ def questions_by_filter(
         "FROM   chunks c",
         "JOIN   documents d ON d.doc_id = c.doc_id",
         "WHERE  c.subject_id = ?",
-        "  AND  d.content_type = 'past_paper'",
+        "  AND  d.content_type IN ('past_paper', 'mark_scheme')",
         "  AND  c.question_num IS NOT NULL",
     ]
     params: list = [subject_id]
@@ -244,8 +247,9 @@ def filters(request: Request, subject_id: str) -> dict:
     """Distinct paper/year values that actually have questions for a subject.
 
     Powers the quiz-page Paper and Year dropdowns: only values that the
-    /api/questions query can return (past-paper chunks with a question_num)
-    appear, so a selected paper/year always yields questions. `papers` is
+    /api/questions query can return (past_paper OR mark_scheme chunks with a
+    question_num) appear, so a selected paper/year always yields questions.
+    `papers` is
     sorted alphabetically, `years` descending. Returns empty lists when the
     subject has no questions -- never 404.
     """
@@ -256,7 +260,7 @@ def filters(request: Request, subject_id: str) -> dict:
         FROM   chunks c
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  c.subject_id = ?
-          AND  d.content_type = 'past_paper'
+          AND  d.content_type IN ('past_paper', 'mark_scheme')
           AND  c.question_num IS NOT NULL
           AND  d.paper IS NOT NULL
         ORDER  BY d.paper ASC
@@ -269,7 +273,7 @@ def filters(request: Request, subject_id: str) -> dict:
         FROM   chunks c
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  c.subject_id = ?
-          AND  d.content_type = 'past_paper'
+          AND  d.content_type IN ('past_paper', 'mark_scheme')
           AND  c.question_num IS NOT NULL
           AND  d.year IS NOT NULL
         ORDER  BY d.year DESC

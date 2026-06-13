@@ -115,14 +115,14 @@ def objectives(db):
 # ---------------------------------------------------------------------------
 def test_parse_session_january():
     meta = isol.parse_session("January 2026 Paper 02")
-    assert meta == {"month_tag": "Jan", "year": 2026, "paper_label": "Paper 2 - January"}
+    assert meta == {"month_tag": "Jan", "year": 2026, "paper_label": "Paper 2 - January 2026"}
 
 
 def test_parse_session_mayjune():
     meta = isol.parse_session("May/June 2010 Paper 02")
     assert meta["month_tag"] == "Jun"
     assert meta["year"] == 2010
-    assert meta["paper_label"] == "Paper 2 - June"
+    assert meta["paper_label"] == "Paper 2 - June 2010"
 
 
 def test_parse_session_none_when_absent():
@@ -181,7 +181,7 @@ def test_ingest_populates_mark_points_keyed_by_question_id(db):
     # one document, content_type mark_scheme, session disambiguated in `paper`
     doc = db.execute("SELECT content_type, paper, year FROM documents").fetchone()
     assert doc["content_type"] == "mark_scheme"
-    assert doc["paper"] == "Paper 2 - January"
+    assert doc["paper"] == "Paper 2 - January 2026"
     assert doc["year"] == 2026
 
     # Q1(a) is keyed and gradeable -- exactly what grade.fetch_mark_points needs
