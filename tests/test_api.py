@@ -1,8 +1,8 @@
 """
 tests/test_api.py
 =================
-Stage 6 tests for the FastAPI layer. The DB and controller are mocked, so these
-tests need no SSD, no real database, and no Ollama.
+Stage 6 tests for the FastAPI layer. app.state.db and controller.handle_request
+are mocked throughout, so these tests need no SSD, no real database, and no Ollama.
 
 The app's lifespan (SSD check + DB open) is NOT triggered: a plain TestClient
 (used without the `with` context manager) does not run lifespan events, so we
@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -31,16 +31,20 @@ def client():
     return TestClient(app_module.app)
 
 
+# ---------------------------------------------------------------------------
+# /health
+# ---------------------------------------------------------------------------
 def test_health_returns_200(client, monkeypatch):
     monkeypatch.setattr(app_module, "ollama_health", lambda: False)  # no network wait
     res = client.get("/health")
     assert res.status_code == 200
     body = res.json()
-    assert body["status"] == "ok"
-    assert body["db"] is True
-    assert body["ollama"] is False
+    assert body == {"status": "ok", "ollama": False, "db": True}
 
 
+# ---------------------------------------------------------------------------
+# POST /api/chat
+# ---------------------------------------------------------------------------
 def test_chat_valid_payload_returns_json(client, monkeypatch):
     captured = {}
 
@@ -51,15 +55,16 @@ def test_chat_valid_payload_returns_json(client, monkeypatch):
     monkeypatch.setattr(app_module, "handle_request", fake_handle)
 
     res = client.post("/api/chat", json={
-        "message": "nature of business",
+        "message": "explain business",
         "subject_id": "Principles_of_Business",
         "route": "teach",
     })
     assert res.status_code == 200
-    assert res.json()["objective_id"] == "POB-1.1"
+    body = res.json()
+    assert body["objective_id"] == "POB-1.1"
     # the message is mapped onto the controller's request shape
-    assert captured["req"]["query"] == "nature of business"
-    assert captured["req"]["student_answer"] == "nature of business"
+    assert captured["req"]["query"] == "explain business"
+    assert captured["req"]["student_answer"] == "explain business"
     assert captured["req"]["route"] == "teach"
 
 
@@ -68,10 +73,49 @@ def test_chat_missing_subject_id_returns_422(client):
     assert res.status_code == 422
 
 
-def test_subjects_lists_locked_only(client):
-    # configure the mocked DB to return one locked subject row
+def test_chat_empty_message_returns_422(client):
+    res = client.post("/api/chat", json={
+        "message": "",
+        "subject_id": "Principles_of_Business",
+        "route": "teach",
+    })
+    assert res.status_code == 422
+
+
+def test_chat_plan_result_is_aliased_for_ui(client, monkeypatch):
+    """The UI reads `objectives`; the controller returns `tasks`. app.py bridges."""
+    monkeypatch.setattr(app_module, "handle_request", lambda db, req, *a, **k: {
+        "route": "plan", "subject_id": "Principles_of_Business", "due_count": 1,
+        "tasks": [{"objective_id": "POB-1.1", "leitner_box": 1, "next_review": "2026-06-14"}],
+    })
+    res = client.post("/api/chat", json={
+        "message": "(plan)", "subject_id": "Principles_of_Business", "route": "plan",
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["objectives"] == body["tasks"]  # alias present, original kept
+
+
+# ---------------------------------------------------------------------------
+# GET /api/subjects and /api/due/{subject_id}
+# ---------------------------------------------------------------------------
+def test_subjects_returns_list(client):
     row = {"subject_id": "Principles_of_Business", "display_name": "Principles of Business"}
     app_module.app.state.db.execute.return_value.fetchall.return_value = [row]
     res = client.get("/api/subjects")
     assert res.status_code == 200
     assert res.json() == [row]
+
+
+def test_subjects_empty_is_ok(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/subjects")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_due_returns_list(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/due/Principles_of_Business")
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
