@@ -523,7 +523,7 @@ Update this section when a stage is complete.
 The current stage is the first unchecked box.
 
 - [x] **Stage 1** — Storage & Schema: folder structure, schema.sql, init_db.py, backup.bat ✓ 2026-06-12 (SSD root D:\CSEC_AI_STUDY_PARTNER; init_db OK, backup OK, 8/8 tests pass)
-- [ ] **Stage 2** — Syllabus Lock: syllabus_parser.py, export_for_review.py, lock_subject.py
+- [x] **Stage 2** — Syllabus Lock: syllabus_parser.py, export_for_review.py, lock_subject.py ✓ 2026-06-12 (POB SYLL 17 extracted → 10 sections/116 objectives loaded into E: DB, all verified=1, review xlsx exported, syllabus_locked=1; 32/32 tests pass; other 6 subjects still gated)
 - [ ] **Stage 3** — Minimal Engine: ollama_client.py, ram_check.py, model pull verification
 - [ ] **Stage 4** — Ingestion: ingest.py (PDF chunk → embed → FK-validate → sqlite-vec index)
 - [ ] **Stage 5** — Deterministic Core: scope.py, retrieval.py, grade.py, schedule.py, weakness.py, controller.py + four prompt files + full test suite

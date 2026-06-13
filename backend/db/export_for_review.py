@@ -50,7 +50,7 @@ def open_db(db_path: str) -> sqlite3.Connection:
 
 
 def fetch_objectives(db: sqlite3.Connection, subject_id: str) -> list[sqlite3.Row]:
-    select = ", ".join(col for col, _, _ in COLUMNS)
+    select = ", ".join(f"{col} AS {hdr}" for col, hdr, _ in COLUMNS)
     return db.execute(
         f"""
         SELECT {select}

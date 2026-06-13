@@ -241,3 +241,107 @@ def test_subject_starts_unlocked(db):
         "SELECT syllabus_locked FROM subjects WHERE subject_id = 'Principles_of_Business'"
     ).fetchone()[0]
     assert locked == 0
+
+
+# ---------------------------------------------------------------------------
+# syllabus_parser: JSON normalisation (Drive-sourced syllabi)
+# ---------------------------------------------------------------------------
+
+NESTED_JSON = {
+    "subject_id": "Principles_of_Business",
+    "sections": [
+        {
+            "section_id": "POB-SEC-1",
+            "section_num": "1",
+            "title": "The Nature of Business",
+            "objectives": [
+                {
+                    "objective_id": "POB-1.1",
+                    "objective_num": "1.1",
+                    "content_stmt": "define the concept of a business",
+                    "skill_type": "Knowledge",
+                    "command_words": ["Define", "State"],
+                    "exam_weight": "P1",
+                },
+                {
+                    "objective_id": "POB-1.2",
+                    "objective_num": "1.2",
+                    "content_stmt": "explain the functions of a business",
+                    "command_words": "Explain",
+                },
+            ],
+        }
+    ],
+}
+
+FLAT_JSON = [
+    {
+        "section_id": "POB-SEC-2",
+        "section_title": "Forms of Business Organisation",
+        "objective_id": "POB-2.1",
+        "objective_num": "2.1",
+        "content_stmt": "identify the types of business organisation",
+        "command_words": "Identify",
+    },
+]
+
+
+def test_rows_from_json_nested_shape():
+    rows = parser.rows_from_json_obj(NESTED_JSON)
+    assert len(rows) == 2
+    first = rows[0]
+    assert first["objective_id"] == "POB-1.1"
+    assert first["section_id"] == "POB-SEC-1"
+    assert first["section_title"] == "The Nature of Business"  # 'title' alias resolved
+    assert first["objective_num"] == "1.1"
+
+
+def test_rows_from_json_flat_list_shape():
+    rows = parser.rows_from_json_obj(FLAT_JSON)
+    assert len(rows) == 1
+    assert rows[0]["objective_id"] == "POB-2.1"
+    assert rows[0]["section_id"] == "POB-SEC-2"
+    assert rows[0]["section_title"] == "Forms of Business Organisation"
+
+
+def test_rows_from_json_flat_object_shape():
+    rows = parser.rows_from_json_obj({"objectives": FLAT_JSON})
+    assert len(rows) == 1
+    assert rows[0]["objective_id"] == "POB-2.1"
+
+
+def test_rows_from_json_command_words_list_joined():
+    rows = parser.rows_from_json_obj(NESTED_JSON)
+    # A JSON array becomes a pipe string here; command_words_to_json finishes the job.
+    assert rows[0]["command_words"] == "Define|State"
+    assert parser.command_words_to_json(rows[0]["command_words"]) == '["Define", "State"]'
+
+
+def test_rows_from_json_skips_rows_without_objective_id():
+    data = [{"section_id": "X", "content_stmt": "no id here"}]
+    assert parser.rows_from_json_obj(data) == []
+
+
+def test_rows_from_json_unknown_shape_raises():
+    with pytest.raises(ValueError):
+        parser.rows_from_json_obj(42)
+
+
+def test_insert_from_json_rows_end_to_end(db):
+    rows = parser.rows_from_json_obj(NESTED_JSON)
+    subj_n, sec_n, obj_n = parser.insert_syllabus(db, "Principles_of_Business", rows)
+    assert (subj_n, sec_n, obj_n) == (1, 1, 2)
+    # command_words from the JSON array round-trips to a JSON array in the DB.
+    cw = db.execute(
+        "SELECT command_words FROM objectives WHERE objective_id = 'POB-1.1'"
+    ).fetchone()[0]
+    assert json.loads(cw) == ["Define", "State"]
+    # FK integrity: the objective resolves to the section we built from 'sections'.
+    orphans = db.execute(
+        """
+        SELECT COUNT(*) FROM objectives o
+        LEFT JOIN syllabus_sections s ON s.section_id = o.section_id
+        WHERE s.section_id IS NULL
+        """
+    ).fetchone()[0]
+    assert orphans == 0

@@ -53,6 +53,8 @@ SKILL_BY_VERB = {
     "apply": "Application", "construct": "Application", "prepare": "Application",
     "evaluate": "Application", "assess": "Application",
     "analyse": "Application", "analyze": "Application", "compare": "Application",
+    "establish": "Application", "develop": "Application", "design": "Application",
+    "calculate": "Application", "demonstrate": "Application", "justify": "Application",
 }
 
 # exam_weight rules driven by the command verb:
@@ -72,6 +74,7 @@ TRIGGER_RE = re.compile(r"(students should be able to|specific objective)", re.I
 STOP_HEADINGS = (
     "CONTENT", "RESOURCE", "SUGGESTED", "GUIDELINES", "GENERAL OBJECTIVE",
     "FORMAT", "SKILLS", "ASSESSMENT", "REGULATIONS", "RECOMMENDED",
+    "SPECIFIC OBJECTIVE", "WEBSITE",
 )
 
 
@@ -107,15 +110,80 @@ def is_stop_heading(line: str) -> bool:
     return any(up.startswith(h) for h in STOP_HEADINGS)
 
 
+def is_title_continuation(line: str) -> bool:
+    """True for an ALL-CAPS line that wraps a section title onto a second line.
+
+    CXC prints long section titles over two lines, e.g.
+    'SECTION 2: INTERNAL ORGANISATIONAL' / 'ENVIRONMENT'. The wrap line is pure
+    upper-case and is neither the 'Students should be able to' trigger, a column
+    heading (SPECIFIC OBJECTIVES / CONTENT), nor a numbered objective.
+    """
+    s = line.strip()
+    if not s or s[0].isdigit():
+        return False
+    if TRIGGER_RE.search(s) or is_stop_heading(s):
+        return False
+    return any(ch.isalpha() for ch in s) and not any(ch.islower() for ch in s)
+
+
+# Page furniture to drop from the reconstructed column (headers/footers/watermark).
+WATERMARK_WORDS = {"do", "not", "write", "on", "this", "page"}
+
+
+def is_noise(line: str) -> bool:
+    """True for running headers/footers and the 'DO NOT WRITE ON THIS PAGE' watermark."""
+    s = line.strip()
+    if not s:
+        return False
+    if re.match(r"^CXC\s+\d+\s*/\s*G\s*/\s*SYLL", s, re.IGNORECASE):
+        return True
+    if re.match(r"^www\.cxc\.org", s, re.IGNORECASE):
+        return True
+    if re.fullmatch(r"\d{1,3}", s):                       # bare page number
+        return True
+    toks = [t for t in re.split(r"\s+", s.lower()) if t]  # watermark fragments
+    return bool(toks) and all(t in WATERMARK_WORDS for t in toks)
+
+
 def extract_text(pdf_path: Path) -> str:
+    """Column-aware extraction of a two-column CXC syllabus.
+
+    CXC syllabus pages are SPECIFIC OBJECTIVES (left) | CONTENT (right). Plain
+    text extraction interleaves the two columns and splits each objective's number
+    onto its own line. Here we keep only words left of the column gutter, cluster
+    them back into print lines by y-coordinate, and drop page furniture — so the
+    downstream state machine sees a clean 'SECTION / Students should be able to /
+    1. ...' stream. The CONTENT column is deliberately discarded.
+    """
     try:
         import fitz  # PyMuPDF
     except ImportError:
         sys.exit("ERROR: PyMuPDF not installed. Run: pip install pymupdf")
+
     doc = fitz.open(pdf_path)
-    pages = [page.get_text("text") for page in doc]
+    out: list[str] = []
+    for page in doc:
+        gutter = page.rect.width * 0.49  # column split ≈ x=291 on a 595pt page
+        words = [w for w in page.get_text("words") if w[0] < gutter]
+        words.sort(key=lambda w: (w[1], w[0]))           # by y, then x
+
+        clusters: list[dict] = []                         # group words into print lines
+        for w in words:
+            for c in clusters:
+                if abs(c["y"] - w[1]) <= 3:               # same line (±3pt)
+                    c["ws"].append(w)
+                    break
+            else:
+                clusters.append({"y": w[1], "ws": [w]})
+
+        clusters.sort(key=lambda c: c["y"])
+        for c in clusters:
+            line = " ".join(w[4] for w in sorted(c["ws"], key=lambda w: w[0])).strip()
+            if line and not is_noise(line):
+                out.append(line)
+        out.append("")                                    # page boundary → commit()
     doc.close()
-    return "\n".join(pages)
+    return "\n".join(out)
 
 
 def parse(text: str, prefix_up: str) -> list[dict]:
@@ -124,6 +192,7 @@ def parse(text: str, prefix_up: str) -> list[dict]:
     sec_num = None
     sec_title = ""
     awaiting_title = False
+    awaiting_title_cont = False  # absorb an ALL-CAPS wrap line into the title
     in_objectives = False
     cur = None  # current objective being accumulated
 
@@ -150,8 +219,12 @@ def parse(text: str, prefix_up: str) -> list[dict]:
         if m:
             commit()
             sec_num = m.group(1)
-            sec_title = clean(m.group(2))
+            # Continuation pages repeat the header as "... (cont'd)" — strip that
+            # so every row for the section shares one clean title.
+            title = re.sub(r"\s*\(cont[’']?d\.?\)\s*$", "", m.group(2), flags=re.IGNORECASE)
+            sec_title = clean(title)
             awaiting_title = not sec_title
+            awaiting_title_cont = bool(sec_title)  # may have a wrapped 2nd line
             in_objectives = False
             continue
 
@@ -159,7 +232,15 @@ def parse(text: str, prefix_up: str) -> list[dict]:
         if awaiting_title:
             sec_title = clean(line)
             awaiting_title = False
+            awaiting_title_cont = bool(sec_title)
             continue
+
+        # Wrapped section-title continuation (ALL-CAPS line right after the header).
+        if awaiting_title_cont:
+            if is_title_continuation(line):
+                sec_title = clean(sec_title + " " + line)
+                continue
+            awaiting_title_cont = False  # fall through to normal handling
 
         if TRIGGER_RE.search(line):
             commit()
@@ -193,6 +274,17 @@ def parse(text: str, prefix_up: str) -> list[dict]:
             cur["content_stmt"] += " " + line
 
     commit()
+
+    # A section's title is captured on several pages and can wrap differently each
+    # time; adopt the longest seen so every row in the section is consistent.
+    longest: dict[str, str] = {}
+    for r in rows:
+        s = r["section_num"]
+        if len(r["section_title"]) > len(longest.get(s, "")):
+            longest[s] = r["section_title"]
+    for r in rows:
+        r["section_title"] = longest[r["section_num"]]
+
     return rows
 
 
