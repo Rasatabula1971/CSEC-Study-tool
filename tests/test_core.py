@@ -170,6 +170,8 @@ def test_grade_two_of_three_points(db):
     assert result["total"] == 3
     assert result["score_pct"] == 67
     assert result["missed_points"] == ["mp3"]
+    # point_text is joined in from the mark_points rows for display
+    assert [p["point_text"] for p in result["points"]] == ["point 1", "point 2", "point 3"]
 
 
 def test_grade_no_mark_scheme(db):

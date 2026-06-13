@@ -87,11 +87,13 @@ CREATE TABLE IF NOT EXISTS revision_schedule (
 );
 
 CREATE TABLE IF NOT EXISTS ingest_review_queue (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_file TEXT NOT NULL,
-    chunk_text  TEXT NOT NULL,
-    reason      TEXT,
-    created_at  TEXT DEFAULT (datetime('now'))
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_file  TEXT NOT NULL,
+    chunk_text   TEXT NOT NULL,
+    reason       TEXT,
+    objective_id TEXT,                          -- known at queue time (prose rows)
+    doc_id       TEXT REFERENCES documents(doc_id),
+    created_at   TEXT DEFAULT (datetime('now'))
 );
 
 -- sqlite-vec virtual tables (EMBED_DIM = 768 for nomic-embed-text)

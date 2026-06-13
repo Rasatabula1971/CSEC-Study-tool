@@ -135,6 +135,25 @@ def test_parse_mark_points():
     assert len(points) == 4
 
 
+def test_parse_past_paper_filename():
+    # (filename, expected_paper_str, expected_year)
+    cases = [
+        ("June 2019 p2.pdf", "Paper 2 - June 2019", 2019),
+        ("Jan 2012 p2.pdf", "Paper 2 - January 2012", 2012),
+        ("POB_p2_2022.pdf", "Paper 2 - 2022", 2022),          # no sitting in name
+        ("2023_Jan_CSEC_POB_P2.pdf", "Paper 2 - January 2023", 2023),
+        ("Jan 26 POB.PDF", "Paper 2 - January 2026", 2026),    # 2-digit year -> 2026
+        ("Jan 2012 p3.pdf", "Paper 3 - January 2012", 2012),   # Paper 3 detected
+    ]
+    for fname, exp_paper, exp_year in cases:
+        paper, year = ingest.parse_past_paper_filename(fname)
+        assert paper == exp_paper, f"{fname}: got paper {paper!r}"
+        assert year == exp_year, f"{fname}: got year {year!r}"
+
+    # Completely unparseable (no year anywhere) -> (None, None)
+    assert ingest.parse_past_paper_filename("POB_notes_summary.pdf") == (None, None)
+
+
 # ---------------------------------------------------------------------------
 # ingest_page: indexed chunk lands in chunks + correct vec table
 # ---------------------------------------------------------------------------

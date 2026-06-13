@@ -176,6 +176,75 @@ def parse_mark_points(text: str) -> list[str]:
     return points
 
 
+# --- past-paper filename / question-number parsing -------------------------
+# Feeds documents.paper / documents.year / chunks.question_num so the quiz
+# picker's filter dropdowns (GET /api/filters, GET /api/questions) have real
+# values to show. All three are NULL for non-past_paper content.
+
+# "P2", "p2", "Paper2", "Paper 2", "p_2" -> capture the paper digit. The
+# (?!\d) lookahead stops "p2" in "p2_2022" from also swallowing a year digit.
+_PAPER_RE = re.compile(r"p(?:aper)?[\s_]*([23])(?!\d)", re.I)
+# Exam sitting word -> normalised label (May is folded into June per spec).
+# Letter-aware boundaries so "_Jan_" is found (underscore is a word char, so
+# \b would miss it) while a run-on like "MayJune" is correctly rejected.
+_SITTING_RE = re.compile(r"(?<![a-z])(jan(?:uary)?|jun(?:e)?|may)(?![a-z])", re.I)
+_SITTING_MAP = {
+    "jan": "January", "january": "January",
+    "jun": "June", "june": "June", "may": "June",
+}
+# Top-level question number at the start of a line: "1.", "2)", "3(", "1 (a)".
+_QNUM_RE = re.compile(r"(?:^|\n)\s*(\d+)\s*[.()]")
+
+
+def parse_past_paper_filename(filename: str) -> tuple[str | None, int | None]:
+    """Best-effort (paper_str, year_int) from a loose past-paper filename.
+
+    e.g. "June 2019 p2.pdf" -> ("Paper 2 - June 2019", 2019)
+         "POB_p2_2022.pdf"  -> ("Paper 2 - 2022", 2022)
+         "Jan 26 POB.PDF"   -> ("Paper 2 - January 2026", 2026)
+    Returns (None, None) when no year can be found. Paper defaults to "Paper 2"
+    when no paper marker is present.
+    """
+    stem = Path(filename).stem
+
+    # Paper number (default Paper 2 if ambiguous).
+    pm = _PAPER_RE.search(stem)
+    paper = f"Paper {pm.group(1) if pm else '2'}"
+
+    # Year: prefer a 4-digit year in 2002-2030.
+    year = None
+    for cand in re.findall(r"\d{4}", stem):
+        n = int(cand)
+        if 2002 <= n <= 2030:
+            year = n
+            break
+    if year is None:
+        # Fall back to a standalone 2-digit year, ignoring the paper digit.
+        stem_no_paper = _PAPER_RE.sub(" ", stem)
+        m2 = re.search(r"\b(\d{2})\b", stem_no_paper)
+        if m2:
+            n = int(m2.group(1))
+            year = 2000 + n if n <= 30 else 1900 + n
+    if year is None:
+        return None, None
+
+    # Sitting (optional).
+    sm = _SITTING_RE.search(stem)
+    sitting = _SITTING_MAP[sm.group(1).lower()] if sm else ""
+
+    tail = f"{sitting} {year}".strip()
+    return f"{paper} - {tail}", year
+
+
+def detect_question_num(chunk_text: str) -> str | None:
+    """Return the leading top-level question number in a chunk, or None.
+
+    Intentionally simple: top-level numbers only (sub-parts a/b/c deferred).
+    """
+    m = _QNUM_RE.search((chunk_text or "")[:200])
+    return m.group(1) if m else None
+
+
 # ---------------------------------------------------------------------------
 # Counts / summary
 # ---------------------------------------------------------------------------
@@ -187,6 +256,7 @@ def new_counts() -> dict:
         "mark_points": 0,
         "queued": 0,
         "skipped_duplicate": 0,
+        "pp_with_qnum": 0,
     }
 
 
@@ -219,15 +289,21 @@ def ingest_page(db: sqlite3.Connection, *, doc_id: str, subject_id: str,
             counts["queued"] += 1
             continue
 
+        # Past-paper chunks carry a top-level question number so the quiz
+        # picker can filter by question; other content types leave it NULL.
+        question_num = detect_question_num(ctext) if content_type == "past_paper" else None
+
         chunk_id = f"{doc_id}-p{page}-c{idx}"
         cur = db.execute(
             "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, "
-            "page, chunk_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (doc_id, obj_id, subject_id, ctext, page, chunk_id),
+            "page, question_num, chunk_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (doc_id, obj_id, subject_id, ctext, page, question_num, chunk_id),
         )
         rowid = cur.lastrowid
         index_chunk(db, rowid, embed_fn(ctext), table)
         counts["chunks_indexed"] += 1
+        if question_num is not None:
+            counts["pp_with_qnum"] += 1
 
         if content_type == "mark_scheme":
             points = parse_mark_points(ctext)
@@ -338,10 +414,13 @@ def ingest_subject(db: sqlite3.Connection, subject_id: str, kb_root: str,
                 counts["skipped_duplicate"] += 1
                 continue
             doc_id = f"{ctype}-{chash[:12]}"
+            paper_str, year_int = (None, None)
+            if ctype == "past_paper":
+                paper_str, year_int = parse_past_paper_filename(pdf.name)
             db.execute(
                 "INSERT INTO documents (doc_id, subject_id, content_type, "
-                "source_file, content_hash) VALUES (?, ?, ?, ?, ?)",
-                (doc_id, subject_id, ctype, str(pdf), chash),
+                "paper, year, source_file, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (doc_id, subject_id, ctype, paper_str, year_int, str(pdf), chash),
             )
             counts["files"] += 1
             for page, text in extract_pdf_pages(pdf):
@@ -431,6 +510,7 @@ def print_summary(counts: dict) -> None:
     print(f"  mark points extracted  : {counts['mark_points']}")
     print(f"  chunks queued (review) : {counts['queued']}")
     print(f"  files skipped (dup)    : {counts['skipped_duplicate']}")
+    print(f"  past_paper chunks with question_num : {counts['pp_with_qnum']}")
 
 
 def main() -> None:

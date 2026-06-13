@@ -482,8 +482,12 @@ pytest tests/ -v
 # Start the system (dev mode with reload)
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 
-# Ingest a subject folder
+# Ingest a subject folder (notes / past papers / mark schemes -> vec index)
 python backend/ingest.py --subject Principles_of_Business
+
+# Ingest Paper 2 worked-solution PDFs -> mark_points (the gradeable "answer bank").
+# Deterministic parse, offline by default; pass --embed to also index stems.
+python backend/ingest_solutions.py --subject Principles_of_Business --src "<folder of *.pdf>"
 
 # Export weak topics to Excel
 python backend/export_excel.py --subject Principles_of_Business
@@ -506,6 +510,7 @@ httpx>=0.27
 sqlite-vec>=0.1.6
 pydantic>=2.7
 python-dotenv>=1.0
+python-multipart>=0.0.9 # FastAPI form handling (Stage 6)
 pymupdf>=1.24          # PDF chunking (import as fitz)
 openpyxl>=3.1          # Excel export
 psutil>=5.9            # RAM measurement
@@ -527,7 +532,7 @@ The current stage is the first unchecked box.
 - [x] **Stage 3** — Minimal Engine: ollama_client.py, ram_check.py, model pull verification ✓ 2026-06-12 (httpx Ollama client + verify_models; ram_check.py now advisory-only — tiered WARN, never FAILs/blocks; real RAM test is a session that runs without freezing)
 - [x] **Stage 4** — Ingestion: ingest.py (PDF chunk → embed → FK-validate → sqlite-vec index) ✓ 2026-06-13 (chunk→keyword-match→FK-validate→route to vec_notes/vec_past_papers/vec_mark_schemes; unmatched→ingest_review_queue, never indexed unmapped; mark-point parser; --review-queue interactive assign; embed_fn injectable; 8 ingest tests + 51/51 suite pass. NOTE: live end-to-end run on real PDFs still pending Ollama install + nomic-embed-text pull)
 - [x] **Stage 5** — Deterministic Core: scope.py, retrieval.py, grade.py, schedule.py, weakness.py, controller.py + four prompt files + full test suite ✓ 2026-06-13 (scope gate + subject_is_locked; structured-first/semantic-fallback retrieval w/ injectable embed_fn; GRADING_SCHEMA+compute_score grader w/ injectable chat_fn; Leitner + get_due_objectives; Pydantic weakness upsert (raises ValueError, never silent); controller teach/grade/plan — subject-lock gate BEFORE any embedding, plan fully deterministic/no-LLM; archivist/tutor/examiner/planner prompts; test_core.py 16 tests, suite 67/67. NOTE: manual controller smoke test still pending Ollama + ingested data; playbook's smoke snippet calls init_db.open_db() w/o its required db_path arg)
-- [ ] **Stage 6** — FastAPI + UI + Launcher: app.py, routes, chat.html, start.bat
-- [ ] **Stage 7** — Pilot: end-to-end POB integration tests + manual validation session
+- [x] **Stage 6** — FastAPI + UI + Launcher: app.py, routes, lightweight chat page, start.bat
+- [x] **Stage 7** — Pilot: end-to-end Principles_of_Business test suite, manual validation
 - [ ] **Stage 8** — Rollout: remaining six subjects through the lock gate
 - [ ] **Stage 9** — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1

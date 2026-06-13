@@ -112,4 +112,14 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
 
     score = compute_score(grading)
     grading.update(score)
+
+    # Attach each mark point's scheme text for display (read-only join on the
+    # mark_points already read for this question, keyed by mark_point_id). A point
+    # whose id has no matching row simply gets no point_text -- never raises.
+    point_text_by_id = {mp["mark_point_id"]: mp["point_text"] for mp in mark_points}
+    for point in grading.get("points", []):
+        text = point_text_by_id.get(point.get("mark_point_id"))
+        if text is not None:
+            point["point_text"] = text
+
     return grading
