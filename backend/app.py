@@ -157,6 +157,40 @@ def due(subject_id: str, request: Request) -> list[dict]:
     return get_due_objectives(request.app.state.db, subject_id)
 
 
+@app.get("/api/questions/{subject_id}")
+def questions(subject_id: str, request: Request) -> list[dict]:
+    """Gradeable questions for a subject -- those that have mark points.
+
+    Powers the grade-mode question picker: each entry carries the question_id
+    grade.fetch_mark_points keys on, the question prose (stem chunk), and a
+    human label. Marks = number of mark points for that question.
+    """
+    rows = request.app.state.db.execute(
+        """
+        SELECT mp.question_id            AS question_id,
+               mp.objective_id           AS objective_id,
+               c.chunk_text              AS question_text,
+               c.question_num            AS question_num,
+               d.paper                   AS paper,
+               d.year                    AS year,
+               COUNT(mp.mark_point_id)   AS marks
+        FROM   mark_points mp
+        JOIN   documents d ON d.doc_id = mp.doc_id
+        LEFT   JOIN chunks c ON c.chunk_id = mp.question_id || '-stem'
+        WHERE  d.subject_id = ?
+        GROUP  BY mp.question_id
+        ORDER  BY d.year DESC, d.paper, mp.question_id
+        """,
+        (subject_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["label"] = f"{d['year']} · {d['paper']} · Q{d['question_num'] or ''}".strip()
+        out.append(d)
+    return out
+
+
 @app.post("/api/chat")
 def chat(body: ChatRequest, request: Request) -> dict:
     """Map a chat turn onto the controller's request shape and return its result."""

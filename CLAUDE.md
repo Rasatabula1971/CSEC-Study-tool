@@ -482,8 +482,12 @@ pytest tests/ -v
 # Start the system (dev mode with reload)
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 
-# Ingest a subject folder
+# Ingest a subject folder (notes / past papers / mark schemes -> vec index)
 python backend/ingest.py --subject Principles_of_Business
+
+# Ingest Paper 2 worked-solution PDFs -> mark_points (the gradeable "answer bank").
+# Deterministic parse, offline by default; pass --embed to also index stems.
+python backend/ingest_solutions.py --subject Principles_of_Business --src "<folder of *.pdf>"
 
 # Export weak topics to Excel
 python backend/export_excel.py --subject Principles_of_Business

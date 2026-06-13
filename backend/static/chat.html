@@ -234,6 +234,24 @@
       color: var(--color-text);
     }
 
+    /* Question picker (grade mode) */
+    .question-prompt {
+      margin-top: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border-soft);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      line-height: 1.5;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .question-prompt:empty {
+      display: none;
+    }
+
     /* Route pills */
     .route-pills {
       position: relative;
@@ -1004,6 +1022,14 @@
       </div>
     </div>
 
+    <div class="sidebar-section" id="questionSection" style="display: none;">
+      <div class="sidebar-label">Question</div>
+      <select class="subject-select" id="questionSelect" aria-label="Select a past-paper question">
+        <option value="">— choose a question —</option>
+      </select>
+      <div class="question-prompt" id="questionPrompt"></div>
+    </div>
+
     <div class="sidebar-stats" id="sidebarStats">
       <div class="sidebar-label" style="margin-bottom: var(--space-3);">Session</div>
       <div class="stat-row">
@@ -1136,6 +1162,9 @@
     sessionAnswered: 0,
     sessionScores:   [],
     thinkingTimer:   null,
+    questionId:        '',     // selected past-paper question (grade mode)
+    questionsSubject:  '',     // subject the question list was fetched for
+    questionsById:     {},     // question_id -> {label, question_text, ...}
   };
 
   /* ============================================================
@@ -1159,6 +1188,9 @@
   const statAnswered     = document.getElementById('statAnswered');
   const statAvg          = document.getElementById('statAvg');
   const statDue          = document.getElementById('statDue');
+  const questionSection  = document.getElementById('questionSection');
+  const questionSelect   = document.getElementById('questionSelect');
+  const questionPrompt   = document.getElementById('questionPrompt');
   const pills = [pillTeach, pillGrade, pillPlan];
 
   /* ============================================================
@@ -1446,10 +1478,49 @@
     }
   }
 
+  async function fetchQuestions(subjectId) {
+    // Cache per subject so switching modes doesn't refetch.
+    if (state.questionsSubject === subjectId && questionSelect.options.length > 1) return;
+    state.questionsSubject = subjectId;
+    state.questionsById = {};
+    while (questionSelect.options.length > 1) questionSelect.remove(1);
+    questionSelect.selectedIndex = 0;
+    state.questionId = '';
+    questionPrompt.textContent = '';
+    try {
+      const res = await fetch(`${API_BASE}/api/questions/${encodeURIComponent(subjectId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      data.forEach(q => {
+        state.questionsById[q.question_id] = q;
+        const opt = document.createElement('option');
+        opt.value = q.question_id;
+        opt.textContent = `${q.label} (${q.marks} mark${q.marks !== 1 ? 's' : ''})`;
+        questionSelect.appendChild(opt);
+      });
+      if (data.length === 0) {
+        questionPrompt.textContent = 'No graded questions are loaded for this subject yet.';
+      }
+    } catch {
+      // API not running — leave the picker empty.
+    }
+  }
+
+  function updateQuestionVisibility() {
+    const show = state.route === 'grade' && state.subjectId !== '';
+    questionSection.style.display = show ? '' : 'none';
+    if (show) fetchQuestions(state.subjectId);
+  }
+
   async function sendMessage(messageText) {
     if (state.isSending) return;
     if (!state.subjectId) {
       appendMessage('error', 'Please select a subject before sending a message.');
+      return;
+    }
+    if (state.route === 'grade' && !state.questionId) {
+      appendMessage('ai', 'Pick a past-paper question from the sidebar first, then type your answer so it can be graded against the mark scheme.');
       return;
     }
     if (!messageText.trim()) return;
@@ -1477,9 +1548,10 @@
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message:    messageText,
-          subject_id: state.subjectId,
-          route:      state.route,
+          message:     messageText,
+          subject_id:  state.subjectId,
+          route:       state.route,
+          question_id: state.route === 'grade' ? state.questionId : undefined,
         }),
       });
 
@@ -1543,7 +1615,12 @@
     state.subjectId      = opt.value;
     state.subjectDisplay = opt.textContent.trim();
     setSubjectDisplay(state.subjectId ? state.subjectDisplay : '');
+    // Subject changed: invalidate the question list so it refetches.
+    state.questionsSubject = '';
+    state.questionId = '';
+    questionPrompt.textContent = '';
     updateSendState();
+    updateQuestionVisibility();
     if (state.subjectId) {
       fetchDueCount(state.subjectId);
     } else {
@@ -1558,15 +1635,23 @@
       pill.classList.add('active');
       state.route = pill.dataset.route;
       moveRouteIndicator(pill);
+      updateQuestionVisibility();
 
       // Update placeholder
       const placeholders = {
         teach: 'Ask a question or request a lesson on any syllabus topic...',
-        grade: 'Type your answer to a past-paper question...',
+        grade: 'Pick a question, then type your answer here...',
         plan:  'Ask for your revision plan or type "show me what to review"...',
       };
       messageInput.placeholder = placeholders[state.route] || messageInput.placeholder;
     });
+  });
+
+  // Question picker (grade mode)
+  questionSelect.addEventListener('change', () => {
+    state.questionId = questionSelect.value;
+    const q = state.questionsById[state.questionId];
+    questionPrompt.textContent = q && q.question_text ? q.question_text : '';
   });
 
   // Send button

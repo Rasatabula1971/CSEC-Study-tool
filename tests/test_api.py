@@ -119,3 +119,34 @@ def test_due_returns_list(client):
     res = client.get("/api/due/Principles_of_Business")
     assert res.status_code == 200
     assert isinstance(res.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/questions/{subject_id}
+# ---------------------------------------------------------------------------
+def test_questions_returns_labelled_list(client):
+    row = {
+        "question_id": "POB-2026Jan-P2-q1a",
+        "objective_id": "POB-1.14",
+        "question_text": "List THREE careers ... (3 marks)",
+        "question_num": "1(a)",
+        "paper": "Paper 2 - January",
+        "year": 2026,
+        "marks": 3,
+    }
+    app_module.app.state.db.execute.return_value.fetchall.return_value = [row]
+    res = client.get("/api/questions/Principles_of_Business")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body) == 1
+    q = body[0]
+    assert q["question_id"] == "POB-2026Jan-P2-q1a"   # the key grade.py needs
+    assert q["marks"] == 3
+    assert q["label"] == "2026 · Paper 2 - January · Q1(a)"  # built for display
+
+
+def test_questions_empty_is_ok(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/questions/Principles_of_Business")
+    assert res.status_code == 200
+    assert res.json() == []
