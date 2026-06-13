@@ -89,10 +89,20 @@ def strip_fences(text: str) -> str:
 def parse_points(raw: str) -> list[str]:
     """Parse the model reply into a list of non-empty mark-point strings.
 
-    Raises ValueError / json.JSONDecodeError on anything that is not a JSON
-    array of strings -- the caller catches and logs.
+    1. Try json.loads on the whole (fence-stripped) reply.
+    2. If that fails, grab the FIRST JSON array in the text and parse that --
+       this recovers replies that append a stray sentence after the array.
+    3. If that also fails, raise -- the caller logs it and leaves the row in the
+       queue (the existing skip behaviour).
     """
-    data = json.loads(strip_fences(raw))
+    stripped = strip_fences(raw)
+    try:
+        data = json.loads(stripped)
+    except Exception:
+        m = re.search(r"\[.*?\]", stripped, re.DOTALL)
+        if m is None:
+            raise
+        data = json.loads(m.group(0))   # may still raise -> caller logs & skips
     if not isinstance(data, list):
         raise ValueError("expected a JSON array")
     points = [str(x).strip() for x in data if isinstance(x, str) and str(x).strip()]

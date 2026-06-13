@@ -243,3 +243,15 @@ def test_strip_fences_variants():
 def test_parse_points_rejects_non_array():
     with pytest.raises(Exception):
         ep.parse_points('{"not": "an array"}')
+
+
+def stray_text_chat(messages, system, schema=None):
+    """A model reply that is a valid JSON array followed by a stray sentence."""
+    return '["Point one.", "Point two.", "Point three."]\nExtra sentence after array.'
+
+
+def test_parse_points_recovers_array_followed_by_stray_text():
+    raw = stray_text_chat([], "")
+    points = ep.parse_points(raw)
+    assert points is not None
+    assert points == ["Point one.", "Point two.", "Point three."]
