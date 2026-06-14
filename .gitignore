@@ -9,3 +9,4 @@ __pycache__/
 # Bootstrap/scratch artifacts (kept locally, not in VCS)
 *.zip
 _pdf_sample.txt
+*.png
