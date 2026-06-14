@@ -44,6 +44,22 @@ CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 
 
+# Idempotent runtime migration: ensures tables added after a DB was first created
+# exist on the live SSD DB without a re-init. CREATE TABLE IF NOT EXISTS is a no-op
+# when the table is already present (the canonical schema lives in db/schema.sql).
+RUNTIME_MIGRATIONS = (
+    """
+    CREATE TABLE IF NOT EXISTS practice_questions (
+        question_id   TEXT PRIMARY KEY,
+        objective_id  TEXT NOT NULL REFERENCES objectives(objective_id),
+        subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+        stem          TEXT NOT NULL,
+        created_at    TEXT DEFAULT (datetime('now'))
+    )
+    """,
+)
+
+
 def open_db(db_path: str) -> sqlite3.Connection:
     """Open the SSD DB with sqlite-vec loaded and FKs on (same pattern as init_db)."""
     try:
@@ -57,6 +73,13 @@ def open_db(db_path: str) -> sqlite3.Connection:
     db.execute("PRAGMA foreign_keys = ON")
     db.row_factory = sqlite3.Row
     return db
+
+
+def apply_runtime_migrations(db: sqlite3.Connection) -> None:
+    """Run idempotent CREATE TABLE IF NOT EXISTS migrations against the live DB."""
+    for stmt in RUNTIME_MIGRATIONS:
+        db.execute(stmt)
+    db.commit()
 
 
 @asynccontextmanager
@@ -82,6 +105,7 @@ async def lifespan(app: FastAPI):
     if not db_path or not os.path.exists(db_path):
         sys.exit(f"ERROR: database not found at {db_path}. Run init_db.py first.")
     app.state.db = open_db(db_path)
+    apply_runtime_migrations(app.state.db)
     try:
         yield
     finally:
@@ -218,12 +242,15 @@ def questions_by_filter(
 ) -> list[dict]:
     """Past-paper questions for the dedicated quiz page (/quiz).
 
-    Filters chunks by subject, content_type in (past_paper, mark_scheme) and a
-    present question_num, joined to documents for paper/year -- so both raw
-    question papers and solution-derived questions appear. `paper` and `year` are
-    optional query params that narrow the list further. Each row carries the
-    question stem (first 400 chars) and a marks_total = number of mark points
-    keyed on that question. Returns [] when nothing matches -- never 404.
+    Filters chunks by subject, content_type in (past_paper, mark_scheme), a
+    present question_num, and a solution-derived chunk_id ('...-stem'), joined to
+    documents for paper/year. The '-stem' filter hides papers whose chunks came
+    from ingest.py's MCQ chunker (garbled for older Paper 2 PDFs) until that
+    chunker is rewritten -- only ingest_solutions.py questions appear. `paper`
+    and `year` are optional query params that narrow the list further. Each row
+    carries the question stem (first 400 chars) and a marks_total = number of
+    mark points keyed on that question. Returns [] when nothing matches -- never
+    404.
     """
     sql = [
         "SELECT c.chunk_id      AS question_id,",
@@ -238,6 +265,12 @@ def questions_by_filter(
         "WHERE  c.subject_id = ?",
         "  AND  d.content_type IN ('past_paper', 'mark_scheme')",
         "  AND  c.question_num IS NOT NULL",
+        # Only show solution-derived questions (chunk_id like 'POB-...-stem',
+        # the ingest_solutions.py convention). ingest.py's MCQ chunker still
+        # produces garbled chunks for older Paper 2 PDFs -- missing stems,
+        # options split across chunks, OCR artifacts ("U nski lied") -- so its
+        # auto-generated chunk_ids are excluded until the chunker is rewritten.
+        "  AND  c.chunk_id LIKE '%-stem'",
     ]
     params: list = [subject_id]
     if paper:
@@ -257,10 +290,10 @@ def filters(request: Request, subject_id: str) -> dict:
 
     Powers the quiz-page Paper and Year dropdowns: only values that the
     /api/questions query can return (past_paper OR mark_scheme chunks with a
-    question_num) appear, so a selected paper/year always yields questions.
-    `papers` is
-    sorted alphabetically, `years` descending. Returns empty lists when the
-    subject has no questions -- never 404.
+    question_num AND a solution-derived '-stem' chunk_id) appear, so a selected
+    paper/year always yields well-formed questions. `papers` is sorted
+    alphabetically, `years` descending. Returns empty lists when the subject has
+    no questions -- never 404.
     """
     db = request.app.state.db
     papers = db.execute(
@@ -271,6 +304,11 @@ def filters(request: Request, subject_id: str) -> dict:
         WHERE  c.subject_id = ?
           AND  d.content_type IN ('past_paper', 'mark_scheme')
           AND  c.question_num IS NOT NULL
+          -- Only papers with solution-derived ('-stem') chunks; ingest.py's
+          -- MCQ chunker yields garbled chunks for older Paper 2 PDFs, so its
+          -- papers are hidden until that chunker is rewritten. Mirrors the
+          -- /api/questions filter so a selected paper always yields questions.
+          AND  c.chunk_id LIKE '%-stem'
           AND  d.paper IS NOT NULL
         ORDER  BY d.paper ASC
         """,
@@ -284,6 +322,8 @@ def filters(request: Request, subject_id: str) -> dict:
         WHERE  c.subject_id = ?
           AND  d.content_type IN ('past_paper', 'mark_scheme')
           AND  c.question_num IS NOT NULL
+          -- Only years with solution-derived ('-stem') chunks; see papers query.
+          AND  c.chunk_id LIKE '%-stem'
           AND  d.year IS NOT NULL
         ORDER  BY d.year DESC
         """,
@@ -293,6 +333,33 @@ def filters(request: Request, subject_id: str) -> dict:
         "papers": [r["paper"] for r in papers],
         "years": [r["year"] for r in years],
     }
+
+
+@app.get("/api/sections")
+def sections(request: Request, subject_id: str) -> list[dict]:
+    """Syllabus sections (with their objectives) for the quiz-page Practice mode.
+
+    Powers the SECTION and OBJECTIVE dropdowns: each section carries its objectives
+    nested, so choosing a section populates the objective list with no extra round
+    trip. Returns [] for an unknown subject -- never 404.
+    """
+    db = request.app.state.db
+    secs = db.execute(
+        "SELECT section_id, title, section_num FROM syllabus_sections "
+        "WHERE subject_id = ? ORDER BY section_num",
+        (subject_id,),
+    ).fetchall()
+    out = []
+    for s in secs:
+        objs = db.execute(
+            "SELECT objective_id, objective_num, content_stmt FROM objectives "
+            "WHERE section_id = ? ORDER BY objective_num",
+            (s["section_id"],),
+        ).fetchall()
+        d = dict(s)
+        d["objectives"] = [dict(o) for o in objs]
+        out.append(d)
+    return out
 
 
 @app.post("/api/chat")

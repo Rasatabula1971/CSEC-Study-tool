@@ -180,3 +180,36 @@ def test_filters_returns_papers_and_years(client):
     assert "papers" in body and "years" in body
     assert isinstance(body["papers"], list)
     assert isinstance(body["years"], list)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sections?subject_id=...  (quiz-page Syllabus Practice mode)
+# ---------------------------------------------------------------------------
+def test_sections_returns_list(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/sections", params={"subject_id": "Principles_of_Business"})
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/chat  route="practice"
+# ---------------------------------------------------------------------------
+def test_chat_practice_returns_practice_question_id(client, monkeypatch):
+    """A practice turn returns a generated question whose id is prefixed 'practice-'."""
+    monkeypatch.setattr(app_module, "handle_request", lambda db, req, *a, **k: {
+        "route": "practice",
+        "question_id": "practice-POB-1.1-20260613090000000000",
+        "question_num": "Practice", "paper": "Syllabus Practice", "year": None,
+        "stem": "Explain the functions of a business.", "marks_total": None,
+        "objective_id": "POB-1.1",
+    })
+    res = client.post("/api/chat", json={
+        "message": "(practice)", "subject_id": "Principles_of_Business",
+        "route": "practice", "objective_id": "POB-1.1",
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["question_id"].startswith("practice-")
+    assert body["objective_id"] == "POB-1.1"
+    assert body["paper"] == "Syllabus Practice"

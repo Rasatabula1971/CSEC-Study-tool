@@ -183,6 +183,97 @@ def test_grade_no_mark_scheme(db):
 
 
 # ---------------------------------------------------------------------------
+# grade_against_syllabus (syllabus-fallback grader) + controller fallback
+# ---------------------------------------------------------------------------
+SYLLABUS_GRADING_JSON = (
+    '{"objective_id":"POB-1.1","question_id":"echoed-by-model","points":['
+    '{"mark_point_id":"POB-1.1-syn-1","awarded":true,"evidence":"named a function"},'
+    '{"mark_point_id":"POB-1.1-syn-2","awarded":true,"evidence":"gave an example"},'
+    '{"mark_point_id":"POB-1.1-syn-3","awarded":false,"evidence":"no definition"}]}'
+)
+
+
+def test_grade_against_syllabus_returns_valid_dict(db):
+    def fake_chat(messages, system, schema=None):
+        return SYLLABUS_GRADING_JSON
+
+    result = grade.grade_against_syllabus(
+        db, "POB-1.1", "Explain the functions of a business.", "my answer",
+        chat_fn=fake_chat,
+    )
+    # Same shape as grade_answer(): Python computes every number.
+    assert result["objective_id"] == "POB-1.1"
+    assert result["awarded"] == 2
+    assert result["total"] == 3
+    assert result["score_pct"] == 67
+    assert result["missed_points"] == ["POB-1.1-syn-3"]
+
+
+def test_grade_against_syllabus_synthetic_ids_match_pattern(db):
+    import re
+
+    def fake_chat(messages, system, schema=None):
+        return SYLLABUS_GRADING_JSON
+
+    result = grade.grade_against_syllabus(
+        db, "POB-1.1", "stem", "answer", chat_fn=fake_chat,
+    )
+    for i, p in enumerate(result["points"], 1):
+        assert p["mark_point_id"] == f"POB-1.1-syn-{i}"
+        assert re.fullmatch(r"POB-1\.1-syn-\d+", p["mark_point_id"])
+
+
+def test_grade_against_syllabus_unknown_objective(db):
+    def fake_chat(messages, system, schema=None):  # must never be reached
+        raise AssertionError("LLM called for an unknown objective")
+
+    result = grade.grade_against_syllabus(
+        db, "POB-9.9", "stem", "answer", chat_fn=fake_chat,
+    )
+    assert result == {"error": "unknown_objective"}
+
+
+def test_controller_grade_falls_back_to_syllabus_when_no_mark_points(db):
+    # A past-paper chunk carries the objective FK and stem but has NO mark_points,
+    # so the grade route must fall back to grade_against_syllabus.
+    db.execute(
+        "INSERT INTO documents (doc_id, subject_id, content_type, source_file, content_hash) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("doc_pp", "Principles_of_Business", "past_paper", "pp.pdf", "hpp"),
+    )
+    db.execute(
+        "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) "
+        "VALUES ('doc_pp', 'POB-1.1', 'Principles_of_Business', ?, '1a', ?)",
+        ("Explain two functions of a business.", "POB-pp-q1a-stem"),
+    )
+    db.commit()
+
+    def fake_chat(messages, system, schema=None):
+        return SYLLABUS_GRADING_JSON
+
+    def boom_embed(*a, **k):
+        raise AssertionError("embedding called during structured grade fallback")
+
+    out = controller.handle_request(
+        db,
+        {"route": "grade", "subject_id": "Principles_of_Business",
+         "question_id": "POB-pp-q1a-stem", "student_answer": "an answer"},
+        chat_fn=fake_chat, embed_fn=boom_embed,
+    )
+    assert out["objective_id"] == "POB-1.1"
+    assert out["question_id"] == "POB-pp-q1a-stem"  # real id kept on the result
+    assert out["score_pct"] == 67
+    assert [p["mark_point_id"] for p in out["points"]] == [
+        "POB-1.1-syn-1", "POB-1.1-syn-2", "POB-1.1-syn-3",
+    ]
+    # Weakness logged against the same objective_id (the FK is never lost).
+    row = db.execute(
+        "SELECT objective_id, score_pct FROM weakness_log WHERE objective_id = 'POB-1.1'"
+    ).fetchone()
+    assert row is not None and row["score_pct"] == 67
+
+
+# ---------------------------------------------------------------------------
 # weakness.py
 # ---------------------------------------------------------------------------
 def test_weakness_valid_insert_then_upsert(db):

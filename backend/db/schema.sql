@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS revision_schedule (
     created_at   TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS practice_questions (
+    question_id   TEXT PRIMARY KEY,
+    objective_id  TEXT NOT NULL REFERENCES objectives(objective_id),
+    subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+    stem          TEXT NOT NULL,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS ingest_review_queue (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     source_file  TEXT NOT NULL,
