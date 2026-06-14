@@ -1,0 +1,16 @@
+You are classifying study material for CSEC exam subjects.
+Given the following text excerpt and a list of available subjects,
+determine which subject this material belongs to.
+
+Available subjects: [SUBJECTS]
+
+Text excerpt:
+[TEXT]
+
+Return ONLY a JSON object with these fields:
+- subject_id: the matching subject ID from the list
+- confidence: "high" if clearly about one subject, "medium" if
+  it could be two subjects, "low" if unclear
+- reasoning: one sentence explaining why you chose this subject
+
+If the text doesn't match any subject, set subject_id to null.

@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -33,15 +33,20 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # backend/ on sys.path so the bare module imports below resolve whether the app
 # is launched as `backend.app:app` or imported directly in tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ollama_client import ollama_health, ollama_chat  # noqa: E402
+from ollama_client import ollama_health, ollama_chat, ollama_embed  # noqa: E402
 from controller import handle_request  # noqa: E402
 from schedule import get_due_objectives  # noqa: E402
+from study_plan import get_plan_progress  # noqa: E402
+from notes import classify_notes, save_notes  # noqa: E402
+from ingest import extract_pdf_pages  # noqa: E402
 
 logger = logging.getLogger("csec.app")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+WELCOME_HTML = STATIC_DIR / "welcome.html"
 CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
+PLAN_HTML = STATIC_DIR / "study_plan.html"
 
 
 # Idempotent runtime migration: ensures tables added after a DB was first created
@@ -55,6 +60,29 @@ RUNTIME_MIGRATIONS = (
         subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
         stem          TEXT NOT NULL,
         created_at    TEXT DEFAULT (datetime('now'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS study_plan (
+        plan_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+        objective_id  TEXT NOT NULL REFERENCES objectives(objective_id),
+        status        TEXT NOT NULL DEFAULT 'unmet',
+        met_count     INTEGER NOT NULL DEFAULT 0,
+        last_met_at   TEXT,
+        created_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(subject_id, objective_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS study_batches (
+        batch_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id      TEXT NOT NULL REFERENCES subjects(subject_id),
+        objective_ids   TEXT NOT NULL,
+        synthesis_qid   TEXT,
+        status          TEXT NOT NULL DEFAULT 'active',
+        created_at      TEXT DEFAULT (datetime('now')),
+        completed_at    TEXT
     )
     """,
 )
@@ -140,6 +168,44 @@ class ChatRequest(BaseModel):
     content_type: str | None = None
 
 
+class StartBatchRequest(BaseModel):
+    """Open a new study-plan batch for a subject."""
+    subject_id: str = Field(min_length=1)
+
+
+class BatchQuestionRequest(BaseModel):
+    """Ask for the question at one step of a batch. step = "1".."N" | "synthesis"."""
+    batch_id: int
+    step: str = Field(min_length=1)
+
+
+class GradeBatchRequest(BaseModel):
+    """Grade one batch answer (per-objective or synthesis)."""
+    batch_id: int
+    question_id: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class MissedPoint(BaseModel):
+    """One mark point the student missed, as returned in a grade result."""
+    mark_point_id: str | None = None
+    expected: str | None = None
+    evidence: str | None = None
+
+
+class ExplainMissedRequest(BaseModel):
+    """Ask for a plain-language explanation of the points missed on one objective."""
+    subject_id: str = Field(min_length=1)
+    objective_id: str = Field(min_length=1)
+    missed_points: list[MissedPoint] = []
+
+
+class ClassifyNotesRequest(BaseModel):
+    """Classify pasted/uploaded note text: which subject + objectives it belongs to."""
+    text: str = Field(min_length=1, max_length=50000)
+    available_subjects: list[str] = []
+
+
 # ---------------------------------------------------------------------------
 # UI compatibility shim
 # ---------------------------------------------------------------------------
@@ -171,8 +237,21 @@ def quiz_page() -> FileResponse:
     return FileResponse(QUIZ_HTML)
 
 
+@app.get("/plan")
+def plan_page() -> FileResponse:
+    """Serve the standalone Study Plan page (backend/static/study_plan.html)."""
+    return FileResponse(PLAN_HTML)
+
+
 @app.get("/")
 def index() -> FileResponse:
+    """The Welcome page is the app's front door (greeting, add-notes, navigation)."""
+    return FileResponse(WELCOME_HTML)
+
+
+@app.get("/chat")
+def chat_page() -> FileResponse:
+    """The tutor chat UI, moved here from / when the Welcome page took the root."""
     return FileResponse(CHAT_HTML)
 
 
@@ -362,6 +441,29 @@ def sections(request: Request, subject_id: str) -> list[dict]:
     return out
 
 
+@app.get("/api/objectives/{subject_id}")
+def objectives(subject_id: str, request: Request) -> list[dict]:
+    """All objectives for a subject, in syllabus order (section_num, objective_num).
+
+    Powers the Welcome-page manual-pick fallback (subject + objective dropdowns)
+    when note classification can't determine the subject. Returns [] for an unknown
+    subject -- never 404.
+    """
+    rows = request.app.state.db.execute(
+        """
+        SELECT o.objective_id, o.content_stmt, o.objective_num,
+               s.title       AS section_title,
+               s.section_num AS section_num
+        FROM   objectives o
+        JOIN   syllabus_sections s ON s.section_id = o.section_id
+        WHERE  o.subject_id = ?
+        ORDER  BY s.section_num, o.objective_num
+        """,
+        (subject_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 @app.post("/api/chat")
 def chat(body: ChatRequest, request: Request) -> dict:
     """Map a chat turn onto the controller's request shape and return its result."""
@@ -372,3 +474,142 @@ def chat(body: ChatRequest, request: Request) -> dict:
     req["student_answer"] = body.message
     result = handle_request(request.app.state.db, req)
     return _shape_for_ui(result)
+
+
+# ---------------------------------------------------------------------------
+# Study Plan endpoints
+# ---------------------------------------------------------------------------
+@app.post("/api/plan/start_batch")
+def plan_start_batch(body: StartBatchRequest, request: Request) -> dict:
+    """Seed the plan (idempotent) and open the next batch of objectives."""
+    req = {"route": "start_batch", "subject_id": body.subject_id}
+    return handle_request(request.app.state.db, req)
+
+
+@app.post("/api/plan/batch_question")
+def plan_batch_question(body: BatchQuestionRequest, request: Request) -> dict:
+    """Generate the question for one step of a batch (per-objective or synthesis)."""
+    req = {"route": "batch_question", "batch_id": body.batch_id, "step": body.step}
+    return handle_request(request.app.state.db, req)
+
+
+@app.post("/api/plan/grade_batch")
+def plan_grade_batch(body: GradeBatchRequest, request: Request) -> dict:
+    """Grade one batch answer and return the result plus updated plan progress."""
+    req = {
+        "route": "grade_batch_question",
+        "batch_id": body.batch_id,
+        "question_id": body.question_id,
+        "answer": body.answer,
+    }
+    result = handle_request(request.app.state.db, req)
+    return _shape_for_ui(result)
+
+
+@app.post("/api/plan/explain_missed")
+def plan_explain_missed(body: ExplainMissedRequest, request: Request) -> dict:
+    """Explain the concepts a student missed on one per-objective step.
+
+    Returns {"feedback": "..."}; an empty missed_points list returns
+    {"feedback": ""} without an LLM call (the controller short-circuits).
+    """
+    req = {
+        "route": "explain_missed",
+        "subject_id": body.subject_id,
+        "objective_id": body.objective_id,
+        "missed_points": [mp.model_dump() for mp in body.missed_points],
+    }
+    return handle_request(request.app.state.db, req)
+
+
+@app.get("/api/plan/progress/{subject_id}")
+def plan_progress(subject_id: str, request: Request) -> dict:
+    """Mastery counts for a subject's study plan (deterministic aggregation)."""
+    return get_plan_progress(request.app.state.db, subject_id)
+
+
+# ---------------------------------------------------------------------------
+# Add Study Notes (Welcome page)
+# ---------------------------------------------------------------------------
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_NOTE_CHARS = 50_000
+
+
+def _extract_pdf_text(data: bytes) -> str:
+    """Best-effort full-text extraction from in-memory PDF bytes via PyMuPDF.
+
+    Reuses ingest.extract_pdf_pages by spilling to a temp file so the upload path
+    and the batch ingest path share one extractor.
+    """
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = Path(tmp.name)
+    try:
+        return "\n".join(text for _page, text in extract_pdf_pages(tmp_path))
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.post("/api/notes/classify")
+def notes_classify(body: ClassifyNotesRequest, request: Request) -> dict:
+    """Decide which subject + objectives a note excerpt belongs to.
+
+    The LLM picks the subject (schema-constrained); a deterministic cosine pass
+    ranks the subject's objectives. Returns subject_id (may be null), confidence,
+    reasoning, and up to three suggested_objectives. If no subject is offered,
+    falls back to the locked-subject list from the DB.
+    """
+    available = body.available_subjects
+    if not available:
+        rows = request.app.state.db.execute(
+            "SELECT subject_id FROM subjects WHERE syllabus_locked = 1"
+        ).fetchall()
+        available = [r["subject_id"] for r in rows]
+    return classify_notes(
+        request.app.state.db, body.text, available,
+        chat_fn=ollama_chat, embed_fn=ollama_embed,
+    )
+
+
+@app.post("/api/notes/upload")
+async def notes_upload(
+    request: Request,
+    subject_id: str = Form(...),
+    objective_id: str = Form(...),
+    text: str | None = Form(None),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """Chunk, embed, and index confirmed notes under a subject + objective.
+
+    Accepts either raw `text` or an uploaded `.pdf`/`.txt` `file` (text wins if
+    both are present). Returns {doc_id, chunks_created, objective_id}.
+    """
+    note_text = (text or "").strip()
+    source_file = "pasted_notes"
+
+    if not note_text and file is not None:
+        data = await file.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds the 10 MB limit.")
+        name = (file.filename or "").lower()
+        if name.endswith(".pdf"):
+            note_text = _extract_pdf_text(data)
+        elif name.endswith(".txt"):
+            note_text = data.decode("utf-8", errors="replace")
+        else:
+            raise HTTPException(status_code=400, detail="Only .pdf or .txt files are accepted.")
+        source_file = file.filename or "uploaded_file"
+
+    note_text = note_text[:MAX_NOTE_CHARS].strip()
+    if not note_text:
+        raise HTTPException(status_code=400, detail="No note text was provided.")
+
+    try:
+        return save_notes(
+            request.app.state.db, subject_id, objective_id, note_text,
+            source_file=source_file, embed_fn=ollama_embed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

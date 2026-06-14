@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSEC Study Partner · Study Plan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Figtree:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/shared.css" />
+  <style>
+    /* ===== Study-plan-page-specific ===== */
+    html, body { height: 100%; overflow: hidden; }
+    .page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* Display toggles (shared sheet styles the look; pages own show/hide) */
+    .grade-card { display: none; }
+    .grade-card.visible { display: block; }
+    .error-notice { display: none; }
+    .error-notice.visible { display: block; }
+    .grade-status { display: none; }
+    .grade-status.visible { display: block; }
+
+    /* Progress bar + due line */
+    .plan-progress-wrap { display: flex; flex-direction: column; gap: var(--space-2); }
+    .plan-progress-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+    .plan-progress-label strong {
+      color: var(--paper); font-weight: 600; font-family: var(--font-mono);
+      /* signature: the mastered count is highlighted */
+      background-image: linear-gradient(100deg, transparent 0 4%, var(--highlighter-soft) 4% 96%, transparent 96% 100%);
+      background-repeat: no-repeat;
+      background-size: 100% 58%;
+      background-position: 0 82%;
+      padding: 0 0.2em;
+      border-radius: 0.1em;
+    }
+    .plan-due-label { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
+    .plan-due-label strong { color: var(--color-warn); font-weight: 600; }
+
+    .plan-stage-card {
+      background: var(--ink-2); border: var(--border);
+      border-top: 3px solid var(--booklet);
+      border-radius: var(--radius-lg); padding: var(--space-5);
+      box-shadow: var(--shadow-sm);
+      animation: card-arrive 220ms var(--ease-spring) both;
+    }
+    .plan-stage-title {
+      font-family: var(--font-display); font-size: var(--text-xl);
+      font-weight: 600; letter-spacing: -0.02em; color: var(--paper);
+      margin-bottom: var(--space-2);
+    }
+    .plan-stage-body { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.6; }
+
+    .plan-primary-btn {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-3) var(--space-5);
+      background: var(--booklet); color: var(--paper);
+      font-size: var(--text-sm); font-weight: 600;
+      border-radius: var(--radius-md);
+      transition: background-color 120ms ease, transform 80ms var(--ease-spring), opacity 120ms ease;
+      outline: none;
+    }
+    .plan-primary-btn:hover:not(:disabled) { background: var(--booklet-bright); }
+    .plan-primary-btn:active:not(:disabled) { transform: scale(0.97); }
+    .plan-primary-btn:focus-visible { outline: 2px solid var(--booklet-bright); outline-offset: 2px; }
+    .plan-primary-btn:disabled { background: var(--booklet-dim); opacity: 0.55; cursor: not-allowed; }
+    #planActions { display: flex; justify-content: flex-end; }
+
+    .plan-obj-list { display: flex; flex-direction: column; gap: var(--space-3); }
+    .plan-obj-card {
+      display: flex; gap: var(--space-3);
+      background: var(--ink-2); border: var(--border);
+      border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+      animation: card-arrive 220ms var(--ease-spring) both;
+    }
+    .plan-obj-num {
+      flex-shrink: 0; width: 26px; height: 26px;
+      border-radius: var(--radius-sm);
+      background: var(--color-accent-glow); color: var(--booklet-bright);
+      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .plan-obj-body { flex: 1; min-width: 0; }
+    .plan-obj-section {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px;
+    }
+    .plan-obj-stmt { font-size: var(--text-sm); color: var(--paper); line-height: 1.5; }
+
+    .plan-stepper-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); gap: var(--space-3); }
+    .plan-step-count {
+      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400;
+      color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .plan-syn-banner {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: 2px var(--space-2); border-radius: var(--radius-sm);
+      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700;
+      background: var(--color-warn-bg); color: var(--color-warn);
+      border: 1px solid rgba(232, 162, 61, 0.25); letter-spacing: 0.04em;
+    }
+
+    .plan-lesson {
+      background: var(--ink-2); border: var(--border);
+      border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5);
+      margin-bottom: var(--space-5); font-size: var(--text-sm); line-height: 1.7;
+      color: var(--paper); white-space: pre-wrap;
+      animation: card-arrive 220ms var(--ease-spring) both;
+    }
+    .plan-lesson-label {
+      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
+    }
+
+    .plan-summary-rows { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-4) 0; }
+    .plan-summary-row {
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-soft);
+    }
+    .plan-summary-row:last-child { border-bottom: none; }
+    .plan-summary-icon {
+      flex-shrink: 0; width: 20px; height: 20px; border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .plan-summary-row.awarded .plan-summary-icon { background: rgba(242, 213, 68, 0.18); color: var(--highlighter); }
+    .plan-summary-row.missed .plan-summary-icon { background: var(--color-fail-bg); color: var(--red-pen); }
+    .plan-summary-text { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--paper); }
+    .plan-summary-syn {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: var(--space-3) var(--space-4);
+      background: var(--ink-3); border: var(--border);
+      border-radius: var(--radius-md); margin-top: var(--space-3);
+    }
+    .plan-summary-syn-score { font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 700; }
+
+    /* "What you missed" feedback */
+    .missed-wrap { margin-top: var(--space-4); animation: card-arrive 220ms var(--ease-spring) both; }
+    .missed-label {
+      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
+    }
+    .missed-box {
+      background: var(--ink-3); padding: var(--space-4);
+      border-radius: var(--radius-lg); line-height: 1.6;
+      font-size: var(--text-sm); color: var(--paper); white-space: pre-wrap;
+    }
+    .missed-box.missed-placeholder { color: var(--color-text-faint); }
+    .missed-allcovered { font-size: var(--text-sm); color: var(--tick); font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <a href="/" class="topbar-back" aria-label="Back to welcome page">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      Back
+    </a>
+    <div class="topbar-title">Study Plan</div>
+    <div class="topbar-right">
+      <div class="topbar-subject" id="topbarSubject">Select a subject</div>
+      <a href="/quiz" class="topbar-link">Open Quiz →</a>
+    </div>
+  </header>
+
+  <div class="selector-bar">
+    <div class="selector-row">
+      <div class="selector-field">
+        <label class="selector-label" for="subjectSelect">Subject</label>
+        <select class="selector-select" id="subjectSelect" aria-label="Select subject">
+          <option value="">— choose —</option>
+          <option value="Principles_of_Business">Principles of Business</option>
+          <option value="Economics">Economics</option>
+          <option value="Mathematics">Mathematics</option>
+          <option value="English">English</option>
+          <option value="Principles_of_Accounts">Principles of Accounts</option>
+          <option value="Integrated_Science">Integrated Science</option>
+          <option value="Information_Technology">Information Technology</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="content-area">
+    <div class="content-inner">
+      <!-- Progress bar + due line -->
+      <div class="plan-progress-wrap">
+        <div class="plan-progress-label" id="planProgressLabel">Loading plan…</div>
+        <div class="plan-progress-track"><div class="plan-progress-fill" id="planProgressFill"></div></div>
+        <div class="plan-due-label" id="planDueLabel"></div>
+      </div>
+
+      <!-- Stage: start / preview / stepper / summary -->
+      <div id="planStage"></div>
+
+      <!-- Stepper Q&A (reused per step; hidden outside a step) -->
+      <div id="questionSection">
+        <div class="section-label">Question</div>
+        <div class="question-card" id="questionCard">
+          <div class="question-empty">
+            <div class="question-empty-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="question-empty-title">No question loaded</div>
+            <div class="question-empty-body">Start a batch to begin your study plan.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="answer-section" id="answerSection">
+        <div class="section-label">Your Answer</div>
+        <textarea class="answer-textarea" id="answerTextarea" rows="8"
+          placeholder="Write your answer here using full sentences."
+          disabled aria-label="Your answer"></textarea>
+        <div class="submit-row">
+          <span class="word-count" id="wordCount" aria-live="polite">0 words</span>
+          <button type="button" class="submit-btn" id="submitBtn" disabled aria-label="Submit answer for grading">
+            <span class="submit-btn-label">Submit Answer</span>
+            <span class="submit-btn-dots" aria-hidden="true">
+              <span class="submit-btn-dot"></span>
+              <span class="submit-btn-dot"></span>
+              <span class="submit-btn-dot"></span>
+            </span>
+          </button>
+        </div>
+        <div class="grade-status" id="gradeStatus" aria-live="polite">
+          <div class="grade-status-msg" id="gradeStatusMsg"></div>
+          <div class="grade-status-reassure" id="gradeStatusReassure" style="display:none;">Still working — long answers take a moment.</div>
+        </div>
+      </div>
+
+      <div class="error-notice" id="errorNotice" role="alert"></div>
+
+      <div id="gradeSection">
+        <div class="section-label" id="gradeLabel" style="display:none;">Result</div>
+        <div class="grade-card" id="gradeCard">
+          <div class="grade-card-header">
+            <span class="grade-card-label">Mark Scheme</span>
+            <div class="grade-score" id="gradeScore">
+              <span class="grade-fraction" id="gradeFraction"></span>
+              <span class="grade-pct" id="gradePct"></span>
+            </div>
+          </div>
+          <div class="grade-points" id="gradePoints"></div>
+          <div class="grade-footer">
+            <div class="grade-leitner" id="gradeLeitner"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- "What you missed" explanation (per-objective steps only) -->
+      <div id="missedSection" style="display:none;"></div>
+
+      <!-- Contextual action bar (Start / Begin / Next / Summary) -->
+      <div id="planActions" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE='http://127.0.0.1:8000';
+  const state={subjectId:'',subjectDisplay:'',
+    questionId:null,questionStem:'',marksTotal:0,isGrading:false,
+    plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
+      currentIsSynthesis:false,results:[],synthScore:null,progress:null}};
+
+  const planStage=document.getElementById('planStage');
+  const planProgressLabel=document.getElementById('planProgressLabel');
+  const planProgressFill=document.getElementById('planProgressFill');
+  const planDueLabel=document.getElementById('planDueLabel');
+  const planActions=document.getElementById('planActions');
+  const questionSection=document.getElementById('questionSection');
+  const answerSection=document.getElementById('answerSection');
+  const gradeSection=document.getElementById('gradeSection');
+  const subjectSelect=document.getElementById('subjectSelect');
+  const topbarSubject=document.getElementById('topbarSubject');
+  const questionCard=document.getElementById('questionCard');
+  const answerTextarea=document.getElementById('answerTextarea');
+  const wordCount=document.getElementById('wordCount');
+  const submitBtn=document.getElementById('submitBtn');
+  const submitBtnLabel=submitBtn.querySelector('.submit-btn-label');
+  const gradeStatus=document.getElementById('gradeStatus');
+  const gradeStatusMsg=document.getElementById('gradeStatusMsg');
+  const gradeStatusReassure=document.getElementById('gradeStatusReassure');
+  const errorNotice=document.getElementById('errorNotice');
+  const gradeCard=document.getElementById('gradeCard');
+  const gradeLabel=document.getElementById('gradeLabel');
+  const gradeScore=document.getElementById('gradeScore');
+  const gradeFraction=document.getElementById('gradeFraction');
+  const gradePct=document.getElementById('gradePct');
+  const gradePoints=document.getElementById('gradePoints');
+  const gradeLeitner=document.getElementById('gradeLeitner');
+
+  function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
+  function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
+  function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
+  function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
+  function hideError(){errorNotice.classList.remove('visible');}
+  function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
+  function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
+
+  function showQuestion({questionId,stem,paper,qnum,marks}){
+    state.questionId=questionId;
+    state.questionStem=stem||'';
+    state.marksTotal=marks||0;
+    const qLabel=/^\d/.test(String(qnum||''))?`Q${qnum}`:String(qnum||'');
+    questionCard.innerHTML=`
+      <div class="question-card-header">
+        <div class="question-card-meta">
+          <span class="question-meta-tag paper">${escapeHtml(paper)}</span>
+          ${qLabel?`<span class="question-meta-tag qnum">${escapeHtml(qLabel)}</span>`:''}
+        </div>
+        ${state.marksTotal?`<span class="marks-badge">${state.marksTotal} mark${state.marksTotal!==1?'s':''}</span>`:''}
+      </div>
+      <div class="question-stem">${escapeHtml(state.questionStem)}</div>`;
+    questionCard.style.animation='none';
+    requestAnimationFrame(()=>{questionCard.style.animation='';});
+    answerTextarea.disabled=false;
+    answerTextarea.value='';
+    answerTextarea.placeholder='Write your answer here. Use full sentences and address every part of the question.';
+    answerTextarea.focus();
+    hideGrade();hideError();updateWordCount();updateSubmitBtn();
+  }
+
+  function resetQuestionCard(){
+    state.questionId=null;state.questionStem='';state.marksTotal=0;
+    questionCard.innerHTML=`
+      <div class="question-empty">
+        <div class="question-empty-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="question-empty-title">No question loaded</div>
+        <div class="question-empty-body">Start a batch to begin your study plan.</div>
+      </div>`;
+    answerTextarea.disabled=true;answerTextarea.value='';
+    answerTextarea.placeholder='Write your answer here using full sentences.';
+    updateWordCount();updateSubmitBtn();
+  }
+
+  function renderGrade(data){
+    const awarded=data.awarded??0,total=data.total??0,pct=data.score_pct??0;
+    const points=data.points??[],box=data.leitner_box??1,next=data.next_review??'tomorrow';
+    const sc=pct>=70?'pass':pct>=50?'warn':'fail';
+    gradeScore.className=`grade-score ${sc}`;
+    gradeFraction.textContent=`${awarded} / ${total}`;
+    gradePct.textContent=`${pct}%`;
+    gradePoints.innerHTML=points.map((pt,i)=>`
+      <div class="mark-point ${pt.awarded?'awarded':'missed'}" style="animation-delay:${i*60}ms">
+        <div class="mark-point-icon">
+          ${pt.awarded
+            ?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
+            :`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`}
+        </div>
+        <div class="mark-point-body">
+          <div class="mark-point-stmt">${escapeHtml(pt.point_text??pt.mark_point_id??'')}</div>
+          ${pt.evidence?`<div class="mark-point-evidence">${escapeHtml(pt.evidence)}</div>`:''}
+        </div>
+      </div>`).join('');
+    gradeLeitner.innerHTML=`Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(next)}</strong>`;
+    gradeLabel.style.display='block';
+    gradeCard.classList.add('visible');
+    gradeCard.scrollIntoView({behavior:'auto',block:'start'});
+  }
+
+  function hideGrade(){gradeCard.classList.remove('visible');gradeLabel.style.display='none';gradePoints.innerHTML='';}
+
+  // Perceived-latency polish: while the backend grades, cycle a calm status
+  // line every 3s and, past 30s, append a reassurance. Plain text only.
+  const GRADE_STATUS_MESSAGES=[
+    'Reading your answer...',
+    'Checking against mark scheme...',
+    'Identifying which points you covered...',
+    'Computing score...'];
+  let gradeStatusInterval=null,gradeStatusTimeout=null;
+
+  function startGradeStatus(){
+    let i=0;
+    gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[0];
+    gradeStatusReassure.style.display='none';
+    gradeStatus.classList.add('visible');
+    gradeStatusInterval=setInterval(()=>{
+      i=(i+1)%GRADE_STATUS_MESSAGES.length;
+      gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[i];
+    },3000);
+    gradeStatusTimeout=setTimeout(()=>{gradeStatusReassure.style.display='block';},30000);
+  }
+
+  function stopGradeStatus(){
+    if(gradeStatusInterval){clearInterval(gradeStatusInterval);gradeStatusInterval=null;}
+    if(gradeStatusTimeout){clearTimeout(gradeStatusTimeout);gradeStatusTimeout=null;}
+    gradeStatus.classList.remove('visible');
+    gradeStatusMsg.textContent='';
+    gradeStatusReassure.style.display='none';
+  }
+
+  // ===== Study Plan flow ==================================================
+  function setPlanProgress(p){
+    if(!p)return;
+    state.plan.progress=p;
+    const pct=p.percent_mastered??0;
+    planProgressFill.style.width=pct+'%';
+    planProgressLabel.innerHTML=`${escapeHtml(state.subjectDisplay||'Subject')}: <strong>${p.mastered} of ${p.total}</strong> objectives mastered (${pct}%)`;
+  }
+  function showPlanQA(show){
+    questionSection.style.display=show?'':'none';
+    answerSection.style.display=show?'':'none';
+    gradeSection.style.display=show?'':'none';
+  }
+  function planActionBtn(label,action,disabled){
+    planActions.style.display='flex';
+    planActions.innerHTML=`<button type="button" class="plan-primary-btn" data-action="${action}"${disabled?' disabled':''}>${escapeHtml(label)}</button>`;
+  }
+  function hidePlanActions(){planActions.style.display='none';planActions.innerHTML='';}
+
+  async function enterPlanMode(){
+    state.plan.phase='idle';
+    showPlanQA(false);hideGrade();
+    if(!state.subjectId){
+      planProgressFill.style.width='0%';
+      planProgressLabel.textContent='No subject selected';
+      planDueLabel.textContent='';
+      planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Choose a subject</div><div class="plan-stage-body">Select a subject above to begin your study plan.</div></div>`;
+      hidePlanActions();return;
+    }
+    await fetchPlanProgress();
+    await fetchDueCount();
+    renderPlanIdle();
+  }
+  async function fetchPlanProgress(){
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/progress/${encodeURIComponent(state.subjectId)}`);
+      if(res.ok)setPlanProgress(await res.json());
+    }catch{}
+  }
+  async function fetchDueCount(){
+    try{
+      const res=await fetch(`${API_BASE}/api/due/${encodeURIComponent(state.subjectId)}`);
+      if(!res.ok){planDueLabel.textContent='';return;}
+      const data=await res.json();
+      const n=Array.isArray(data)?data.length:(data.count??0);
+      planDueLabel.innerHTML=n>0
+        ?`<strong>${n}</strong> topic${n!==1?'s':''} due for review`
+        :`No topics due for review`;
+    }catch{planDueLabel.textContent='';}
+  }
+  function renderPlanIdle(){
+    state.plan.phase='idle';
+    showPlanQA(false);hideGrade();clearMissed();
+    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Ready to study</div><div class="plan-stage-body">Each batch gives you 5 objectives — a short lesson and one question each — then a synthesis question that connects all five.</div></div>`;
+    planActionBtn('Start next 5-objective batch','start',false);
+  }
+
+  async function startBatch(){
+    hideError();planActionBtn('Starting…','start',true);
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/start_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});
+      if(!res.ok){showError(`Couldn't start a batch (${res.status}). Is the FastAPI server running?`);renderPlanIdle();return;}
+      const data=await res.json();
+      if(data.error){showError(data.error==='no_objectives'?'No objectives left to study — every objective is mastered!':`Error: ${data.error}`);renderPlanIdle();return;}
+      state.plan.batchId=data.batch_id;
+      state.plan.objectives=data.objectives||[];
+      state.plan.n=state.plan.objectives.length;
+      state.plan.step=0;state.plan.results=[];state.plan.synthScore=null;
+      setPlanProgress(data.progress);
+      renderPlanPreview();
+    }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");renderPlanIdle();}
+  }
+
+  function renderPlanPreview(){
+    state.plan.phase='preview';
+    showPlanQA(false);hideGrade();hideError();clearMissed();
+    const cards=state.plan.objectives.map((o,i)=>`
+      <div class="plan-obj-card" style="animation-delay:${i*50}ms">
+        <div class="plan-obj-num">${i+1}</div>
+        <div class="plan-obj-body">
+          <div class="plan-obj-section">${escapeHtml((o.section_num?o.section_num+'. ':'')+(o.section_title||''))}</div>
+          <div class="plan-obj-stmt">${escapeHtml(o.content_stmt||o.objective_id)}</div>
+        </div>
+      </div>`).join('');
+    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">This batch — ${state.plan.n} objective${state.plan.n!==1?'s':''}</div><div class="plan-obj-list" style="margin-top:var(--space-4)">${cards}</div></div>`;
+    planActionBtn('Begin batch','begin',false);
+  }
+
+  function beginBatch(){state.plan.step=1;loadBatchStep();}
+
+  async function loadBatchStep(){
+    const isSyn=state.plan.step>state.plan.n;
+    state.plan.phase='step';state.plan.currentIsSynthesis=isSyn;
+    hidePlanActions();hideGrade();hideError();clearMissed();showPlanQA(true);
+    const totalSteps=state.plan.n+1;
+    const synBanner=isSyn?`<span class="plan-syn-banner">SYNTHESIS — connects all ${state.plan.n} topics</span>`:'';
+    planStage.innerHTML=`<div class="plan-stepper-header"><span class="plan-step-count">Question ${state.plan.step} of ${totalSteps}</span>${synBanner}</div><div id="planLessonHost"></div>`;
+    resetQuestionCard();
+    questionCard.innerHTML=`<div class="question-stem" style="color:var(--color-text-muted)">Generating question…</div>`;
+    if(!isSyn)loadLesson(state.plan.objectives[state.plan.step-1]);
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)})});
+      if(!res.ok){showError(`Couldn't load the question (${res.status}).`);return;}
+      const data=await res.json();
+      if(data.error){showError(`Error: ${data.error}`);return;}
+      const label=isSyn?`Synthesis · ${state.plan.n} topics`:`Objective ${data.objective_num||state.plan.step}`;
+      showQuestion({questionId:data.question_id,stem:data.stem||'',paper:label,qnum:isSyn?'Synthesis':'',marks:0});
+    }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
+  }
+
+  async function loadLesson(objective){
+    if(!objective)return;
+    const host=document.getElementById('planLessonHost');if(!host)return;
+    host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div><span style="color:var(--color-text-muted)">Loading lesson…</span></div>`;
+    try{
+      const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Teach me this objective',subject_id:state.subjectId,route:'teach',objective_id:objective.objective_id})});
+      const data=res.ok?await res.json():{};
+      // Lesson is best-effort: if no notes are ingested (teach has no context),
+      // silently drop it and let the student answer the question directly.
+      if(data&&data.lesson){host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(data.lesson)}</div>`;}
+      else{host.innerHTML='';}
+    }catch{host.innerHTML='';}
+  }
+
+  async function submitBatchAnswer(){
+    if(!state.questionId)return;
+    const text=answerTextarea.value.trim();
+    if(countWords(text)<10)return;
+    state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';
+    hideError();startGradeStatus();
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/grade_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,question_id:state.questionId,answer:text})});
+      if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||'Check that the FastAPI server is running.'}`);return;}
+      const data=await res.json();
+      if(data.error){showError(`Error: ${data.error}`);return;}
+      renderGrade(data);
+      if(data.progress)setPlanProgress(data.progress);
+      if(state.plan.currentIsSynthesis){
+        state.plan.synthScore={awarded:data.awarded??0,total:data.total??0,score_pct:data.score_pct??0};
+        planActionBtn('See batch summary','summary',false);
+      }else{
+        const obj=state.plan.objectives[state.plan.step-1]||{};
+        state.plan.results.push({objective_id:obj.objective_id,section_title:obj.section_title,
+          content_stmt:obj.content_stmt,objective_num:obj.objective_num,score_pct:data.score_pct??0});
+        // Per-objective step only: teach what was missed (synthesis card has none).
+        showMissed(obj.objective_id||data.objective_id,data.points||[]);
+        planActionBtn(state.plan.step>=state.plan.n?'Begin synthesis question':'Next objective','next',false);
+      }
+    }catch(err){
+      if(err instanceof TypeError&&err.message.includes('fetch')){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
+      else{showError(`Something went wrong: ${err.message}`);}
+    }finally{state.isGrading=false;stopGradeStatus();submitBtnLabel.textContent='Submit Answer';updateSubmitBtn();}
+  }
+
+  function clearMissed(){const h=document.getElementById('missedSection');if(h){h.style.display='none';h.innerHTML='';}}
+
+  // After a per-objective grade: if points were missed, fetch a plain-language
+  // explanation; if all were awarded, say so without an LLM call. Never on synthesis.
+  async function showMissed(objectiveId,points){
+    const host=document.getElementById('missedSection');
+    if(!host)return;
+    const missed=(points||[]).filter(p=>!p.awarded);
+    host.style.display='';
+    if(missed.length===0){
+      host.innerHTML=`<div class="missed-wrap"><div class="missed-allcovered">You covered all the key points.</div></div>`;
+      return;
+    }
+    host.innerHTML=`<div class="missed-wrap"><div class="missed-label">What you missed</div><div class="missed-box missed-placeholder" id="missedBox">Generating explanation…</div></div>`;
+    const box=document.getElementById('missedBox');
+    const missed_points=missed.map(p=>({mark_point_id:p.mark_point_id,expected:p.point_text||'',evidence:p.evidence||''}));
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/explain_missed`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({subject_id:state.subjectId,objective_id:objectiveId,missed_points})});
+      const data=res.ok?await res.json():{};
+      if(!box)return;
+      box.classList.remove('missed-placeholder');
+      box.textContent=(data&&data.feedback)?data.feedback:'No explanation available.';
+    }catch{
+      if(box){box.classList.remove('missed-placeholder');box.textContent='Could not load the explanation. Check that Ollama and FastAPI are running.';}
+    }
+  }
+
+  function advancePlanStep(){state.plan.step+=1;loadBatchStep();}
+
+  function renderPlanSummary(){
+    state.plan.phase='summary';
+    showPlanQA(false);hideGrade();hideError();clearMissed();
+    const rows=state.plan.results.map(r=>{
+      const ok=(r.score_pct??0)>=70;
+      const icon=ok
+        ?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'
+        :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      return `<div class="plan-summary-row ${ok?'awarded':'missed'}">
+        <div class="plan-summary-icon">${icon}</div>
+        <div class="plan-summary-text">${escapeHtml((r.objective_num?r.objective_num+' — ':'')+(r.content_stmt||r.objective_id))}</div>
+        <div class="plan-summary-text" style="flex:0 0 auto;color:var(--color-text-muted)">${r.score_pct}%</div>
+      </div>`;
+    }).join('');
+    const s=state.plan.synthScore;
+    const synColor=s?(s.score_pct>=70?'var(--color-pass)':s.score_pct>=50?'var(--color-warn)':'var(--color-fail)'):'var(--color-text)';
+    const synBlock=s?`<div class="plan-summary-syn"><div><div class="plan-obj-section">Synthesis</div><div class="plan-summary-text">Connecting all ${state.plan.n} topics</div></div><div class="plan-summary-syn-score" style="color:${synColor}">${s.awarded}/${s.total} · ${s.score_pct}%</div></div>`:'';
+    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Batch complete</div><div class="plan-summary-rows">${rows}</div>${synBlock}</div>`;
+    fetchDueCount();
+    planActionBtn('Start next batch','start',false);
+  }
+
+  async function fetchSubjects(){
+    try{
+      const res=await fetch(`${API_BASE}/api/subjects`);
+      if(!res.ok)return;
+      const data=await res.json();
+      if(!Array.isArray(data)||data.length===0)return;
+      while(subjectSelect.options.length>1)subjectSelect.remove(1);
+      data.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
+    }catch{}
+  }
+
+  subjectSelect.addEventListener('change',()=>{
+    const opt=subjectSelect.options[subjectSelect.selectedIndex];
+    state.subjectId=opt.value;
+    setSubjectDisplay(opt.value?opt.textContent.trim():'');
+    hideError();
+    enterPlanMode();
+  });
+  planActions.addEventListener('click',(e)=>{
+    const btn=e.target.closest('button[data-action]');if(!btn||btn.disabled)return;
+    const a=btn.dataset.action;
+    if(a==='start')startBatch();
+    else if(a==='begin')beginBatch();
+    else if(a==='next')advancePlanStep();
+    else if(a==='summary')renderPlanSummary();
+  });
+  answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
+  submitBtn.addEventListener('click',submitBatchAnswer);
+  answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitBatchAnswer();}});
+
+  function init(){fetchSubjects();enterPlanMode();updateSubmitBtn();updateWordCount();}
+  init();
+</script>
+</body>
+</html>

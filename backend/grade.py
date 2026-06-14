@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ollama_client import ollama_chat  # noqa: E402
+from weakness import log_weakness  # noqa: E402
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 
@@ -81,6 +82,51 @@ def compute_score(grading: dict) -> dict:
     }
 
 
+# Phrases that mean "the student DID cover this point". A 3B model sometimes writes
+# one of these in the evidence while still marking awarded=False -- a self-contradiction
+# we correct deterministically (no prompt/schema change). Lowercase for case-insensitive match.
+POSITIVE_MATCH_PHRASES = (
+    "student gave", "student mentioned", "student described",
+    "student provided", "student said", "student stated",
+    "student explained", "student identified",
+    "answer contains", "answer mentions", "answer includes",
+    "answer describes", "answer states", "answer explains",
+    "present in the answer", "covered in the answer",
+    "addressed in the answer",
+)
+
+EMPTY_EVIDENCE_FILL = "No relevant content found in answer."
+
+
+def reconcile_grading(result: dict) -> dict:
+    """Post-process LLM grading to fix known 3B-model failure modes.
+
+    Called after grade_against_syllabus / grade_synthesis produce the raw judged
+    points and BEFORE compute_score, so corrected awards flow into both the score
+    and (for synthesis) the per-objective weakness_log.
+
+    Fix 1 -- Evidence-based flip: a point marked awarded=False whose evidence names
+    the student as having covered it (POSITIVE_MATCH_PHRASES) is flipped to True,
+    with "[auto-corrected] " prepended to the evidence so the correction is auditable.
+
+    Fix 2 -- Empty evidence fill: a point still awarded=False with empty/whitespace
+    evidence gets a clear placeholder instead of a blank string.
+
+    Mutates and returns `result`. A result without a "points" list is returned as-is.
+    """
+    for point in result.get("points", []):
+        if point.get("awarded"):
+            continue
+        evidence = point.get("evidence") or ""
+        evidence_lc = evidence.lower()
+        if any(phrase in evidence_lc for phrase in POSITIVE_MATCH_PHRASES):
+            point["awarded"] = True
+            point["evidence"] = "[auto-corrected] " + evidence
+        elif not evidence.strip():
+            point["evidence"] = EMPTY_EVIDENCE_FILL
+    return result
+
+
 def fetch_mark_points(db: sqlite3.Connection, question_id: str) -> list[dict]:
     rows = db.execute(
         """
@@ -100,6 +146,32 @@ def _load_examiner_prompt() -> str:
 
 def _load_syllabus_examiner_prompt() -> str:
     return (PROMPTS_DIR / "syllabus_examiner.txt").read_text(encoding="utf-8")
+
+
+def _load_synthesis_examiner_prompt() -> str:
+    return (PROMPTS_DIR / "synthesis_examiner.txt").read_text(encoding="utf-8")
+
+
+def _synthesis_schema(n: int) -> dict:
+    """GRADING_SCHEMA pinned to EXACTLY n points -- one per objective (Option C).
+
+    A small local model will otherwise emit too few/too many points; min==max==n
+    forces one judged point per objective in the batch.
+    """
+    return {
+        "type": "object",
+        "required": ["objective_id", "question_id", "points"],
+        "properties": {
+            "objective_id": {"type": "string"},
+            "question_id": {"type": "string"},
+            "points": {
+                "type": "array",
+                "minItems": n,
+                "maxItems": n,
+                "items": GRADING_SCHEMA["properties"]["points"]["items"],
+            },
+        },
+    }
 
 
 def _build_user_message(question_id: str, student_answer: str,
@@ -177,7 +249,9 @@ def _build_syllabus_message(objective_id: str, objective: dict,
         f"SKILL TYPE: {objective['skill_type'] or '(unspecified)'}\n\n"
         f"QUESTION:\n{question_stem}\n\n"
         f"STUDENT ANSWER:\n{student_answer}\n\n"
-        f"List 3-6 expected points for THIS question, then judge each. Use "
+        f"Anchor every point to what THIS question asks (not everything in the "
+        f"content statement). Aim for 3-4 distinct, non-overlapping points; use 5-6 "
+        f"only if the question has that many separate sub-tasks. Then judge each. Use "
         f'synthetic mark_point_id values "{objective_id}-syn-1", '
         f'"{objective_id}-syn-2", and so on, numbered in the order you list them.'
     )
@@ -218,6 +292,112 @@ def grade_against_syllabus(db: sqlite3.Connection, objective_id: str,
     # keeps a real objective_id for the weakness_log.
     grading["objective_id"] = objective_id
 
+    # Fix self-contradictory / blank-evidence 3B output before scoring.
+    grading = reconcile_grading(grading)
+
     score = compute_score(grading)
     grading.update(score)
+    return grading
+
+
+def _build_synthesis_message(batch_id: int, objectives: list[dict],
+                             student_answer: str) -> dict:
+    """Hand the synthesis examiner every objective in the batch and the answer.
+
+    Each objective's command_words is a JSON array string; a missing/malformed
+    value degrades to an empty list rather than raising.
+    """
+    lines = []
+    for i, obj in enumerate(objectives, 1):
+        try:
+            command_words = json.loads(obj["command_words"]) if obj["command_words"] else []
+        except (json.JSONDecodeError, TypeError):
+            command_words = []
+        cw = ", ".join(command_words) if command_words else "(none specified)"
+        lines.append(
+            f"{i}. OBJECTIVE ID: {obj['objective_id']}\n"
+            f"   CONTENT STATEMENT: {obj['content_stmt']}\n"
+            f"   COMMAND WORDS: {cw}"
+        )
+    objectives_block = "\n".join(lines)
+    content = (
+        f"BATCH ID: {batch_id}\n\n"
+        f"OBJECTIVES ({len(objectives)} in this batch):\n{objectives_block}\n\n"
+        f"STUDENT ANSWER:\n{student_answer}\n\n"
+        f"Produce EXACTLY {len(objectives)} points, one per objective, in the order "
+        f'listed. Each mark_point_id MUST be "{batch_id}-syn-<OBJECTIVE ID>" '
+        f'(e.g. "{batch_id}-syn-{objectives[0]["objective_id"]}").'
+    )
+    return {"role": "user", "content": content}
+
+
+def grade_synthesis(db: sqlite3.Connection, batch_id: int, student_answer: str,
+                    messages: list[dict] | None = None,
+                    chat_fn=ollama_chat) -> dict:
+    """Grade a synthesis answer against a batch's objectives (Option C).
+
+    Loads the batch's objective_ids, derives ONE expected point per objective via
+    the synthesis examiner, and lets Python compute the /N score with
+    compute_score(). For each objective, log_weakness is called independently with
+    100 (point awarded) or 0 (missed) so each objective's Leitner box and weakness
+    record update on its own -- exactly once per objective in the batch.
+
+    Returns the GRADING_SCHEMA-shaped result (objective_id, question_id, points,
+    score_pct, awarded, total, missed_points). Errors:
+      {"error": "unknown_batch"}     -- no such batch_id.
+      {"error": "unknown_objective"} -- a batch objective_id is missing.
+    """
+    batch = db.execute(
+        "SELECT subject_id, objective_ids FROM study_batches WHERE batch_id = ?",
+        (batch_id,),
+    ).fetchone()
+    if batch is None:
+        return {"error": "unknown_batch"}
+
+    objective_ids = json.loads(batch["objective_ids"])
+    subject_id = batch["subject_id"]
+
+    objectives = []
+    for oid in objective_ids:
+        obj = _fetch_objective(db, oid)
+        if obj is None:
+            return {"error": "unknown_objective"}
+        objectives.append(obj)
+
+    n = len(objectives)
+    messages = list(messages or [])
+    messages.append(_build_synthesis_message(batch_id, objectives, student_answer))
+
+    raw = chat_fn(messages, system=_load_synthesis_examiner_prompt(),
+                  schema=_synthesis_schema(n))
+    grading = json.loads(raw)
+
+    # Deterministic identity (Rule 1 / Rule 2): never trust the model for these.
+    grading["objective_id"] = f"batch-{batch_id}"
+    grading["question_id"] = f"synthesis-{batch_id}"
+    grading["batch_id"] = batch_id
+
+    # Fix self-contradictory / blank-evidence 3B output before scoring AND before
+    # the per-objective weakness loop below, so corrected awards flow into both.
+    grading = reconcile_grading(grading)
+
+    score = compute_score(grading)
+    grading.update(score)
+
+    # Update each objective's weakness_log independently. Match points back to
+    # objectives by the synthetic mark_point_id; a missing/unmatched point counts
+    # as not awarded so a real objective_id is still recorded (Rule 1).
+    awarded_by_id = {
+        p.get("mark_point_id"): bool(p.get("awarded"))
+        for p in grading.get("points", [])
+    }
+    for oid in objective_ids:
+        awarded = awarded_by_id.get(f"{batch_id}-syn-{oid}", False)
+        log_weakness(
+            db,
+            {"objective_id": oid, "subject_id": subject_id,
+             "score_pct": 100 if awarded else 0},
+            session_id=0,
+        )
+
     return grading

@@ -23,6 +23,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
 import app as app_module  # noqa: E402
+import controller  # noqa: E402
+import notes as notes_module  # noqa: E402
 
 
 @pytest.fixture
@@ -161,6 +163,31 @@ def test_quiz_page_returns_200(client):
     assert "text/html" in res.headers["content-type"]
 
 
+def test_plan_page_returns_200(client):
+    """The standalone Study Plan page is served at /plan."""
+    res = client.get("/plan")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+
+
+def test_quiz_page_no_study_plan_pill(client):
+    """quiz.html now offers only Past Paper | Syllabus Practice -- no Study Plan
+    pill. (A 'Study Plan →' nav link in the topbar is fine; the mode selector
+    must not contain a Study Plan mode.)"""
+    res = client.get("/quiz")
+    assert res.status_code == 200
+    html = res.text
+    # Isolate the mode selector (.mode-toggle block) and assert no Study Plan mode.
+    start = html.index('class="mode-toggle"')
+    end = html.index("</div>", start)
+    mode_selector = html[start:end]
+    assert "Study Plan" not in mode_selector
+    assert "modePlan" not in mode_selector
+    # Sanity: the two intended modes remain.
+    assert "Past Paper" in mode_selector
+    assert "Syllabus Practice" in mode_selector
+
+
 def test_questions_query_param_returns_list(client):
     app_module.app.state.db.execute.return_value.fetchall.return_value = []
     res = client.get("/api/questions", params={"subject_id": "Principles_of_Business"})
@@ -213,3 +240,231 @@ def test_chat_practice_returns_practice_question_id(client, monkeypatch):
     assert body["question_id"].startswith("practice-")
     assert body["objective_id"] == "POB-1.1"
     assert body["paper"] == "Syllabus Practice"
+
+
+# ---------------------------------------------------------------------------
+# Study Plan endpoints
+# ---------------------------------------------------------------------------
+def test_plan_start_batch_returns_objectives_and_batch_id(client, monkeypatch):
+    objectives = [{"objective_id": f"POB-1.{i}", "content_stmt": f"o{i}"} for i in range(1, 6)]
+    monkeypatch.setattr(app_module, "handle_request", lambda db, req, *a, **k: {
+        "route": "start_batch", "batch_id": 7, "subject_id": "Principles_of_Business",
+        "objectives": objectives,
+        "progress": {"total": 87, "mastered": 0, "met_once": 0, "in_progress": 0,
+                     "unmet": 87, "percent_mastered": 0},
+    })
+    res = client.post("/api/plan/start_batch", json={"subject_id": "Principles_of_Business"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["batch_id"] == 7
+    assert len(body["objectives"]) == 5
+    assert body["progress"]["total"] == 87
+
+
+def test_plan_progress_returns_progress_dict(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = [
+        {"status": "mastered", "c": 23},
+        {"status": "unmet", "c": 64},
+    ]
+    res = client.get("/api/plan/progress/Principles_of_Business")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 87
+    assert body["mastered"] == 23
+    assert body["unmet"] == 64
+    assert body["percent_mastered"] == 26
+    assert set(body) >= {"total", "mastered", "met_once", "in_progress", "unmet", "percent_mastered"}
+
+
+def test_explain_missed_returns_feedback(client, monkeypatch):
+    """A request with missed points returns 200 and a feedback string."""
+    captured = {}
+
+    def fake_handle(db, req, *a, **k):
+        captured["req"] = req
+        return {"feedback": "You should have said money did not exist yet, so people swapped goods."}
+
+    monkeypatch.setattr(app_module, "handle_request", fake_handle)
+    res = client.post("/api/plan/explain_missed", json={
+        "subject_id": "Principles_of_Business",
+        "objective_id": "POB-1.1",
+        "missed_points": [
+            {"mark_point_id": "POB-1.1-syn-1", "expected": "no money existed yet",
+             "evidence": "not mentioned"},
+        ],
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert "feedback" in body and body["feedback"]
+    assert captured["req"]["route"] == "explain_missed"
+    assert captured["req"]["objective_id"] == "POB-1.1"
+    assert len(captured["req"]["missed_points"]) == 1
+
+
+def test_explain_missed_empty_returns_empty_without_llm(client, monkeypatch):
+    """Empty missed_points short-circuits to {"feedback": ""} with NO LLM call.
+
+    Runs the REAL controller but injects a chat_fn that raises -- if the empty-list
+    branch ever reached the model, this would surface as an error, not a clean 200.
+    """
+    def boom_chat(*a, **k):
+        raise AssertionError("LLM must not be called for empty missed_points")
+
+    def real_handle_no_llm(db, req, *a, **k):
+        return controller.handle_request(db, req, chat_fn=boom_chat)
+
+    monkeypatch.setattr(app_module, "handle_request", real_handle_no_llm)
+    res = client.post("/api/plan/explain_missed", json={
+        "subject_id": "Principles_of_Business",
+        "objective_id": "POB-1.1",
+        "missed_points": [],
+    })
+    assert res.status_code == 200
+    assert res.json() == {"feedback": ""}
+
+
+# ---------------------------------------------------------------------------
+# Welcome page routing  (GET /  and  GET /chat)
+# ---------------------------------------------------------------------------
+def test_root_serves_welcome_page(client):
+    """GET / now serves the Welcome page (HTML)."""
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+    assert "Add Study Notes" in res.text   # a Welcome-page-only marker
+
+
+def test_chat_page_served_at_chat_path(client):
+    """The chat UI moved from / to /chat."""
+    res = client.get("/chat")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/objectives/{subject_id}
+# ---------------------------------------------------------------------------
+def test_objectives_returns_list(client):
+    row = {"objective_id": "POB-1.1", "content_stmt": "Define a business",
+           "objective_num": "1.1", "section_title": "Nature of Business",
+           "section_num": "1"}
+    app_module.app.state.db.execute.return_value.fetchall.return_value = [row]
+    res = client.get("/api/objectives/Principles_of_Business")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body) == 1
+    assert body[0]["objective_id"] == "POB-1.1"
+
+
+def test_objectives_empty_is_ok(client):
+    app_module.app.state.db.execute.return_value.fetchall.return_value = []
+    res = client.get("/api/objectives/Principles_of_Business")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+# ---------------------------------------------------------------------------
+# POST /api/notes/classify
+# ---------------------------------------------------------------------------
+def test_notes_classify_returns_subject_and_objectives(client, monkeypatch):
+    """A classify call returns subject_id, confidence, reasoning, suggested_objectives.
+
+    The LLM (chat_fn) and embeddings (embed_fn) are stubbed so no Ollama is needed;
+    the objective ranking runs the real deterministic cosine pass over mock rows.
+    """
+    notes_module._OBJ_EMBED_CACHE.clear()
+    monkeypatch.setattr(app_module, "ollama_chat", lambda msgs, system, schema=None:
+                        '{"subject_id": "Principles_of_Business", '
+                        '"confidence": "high", "reasoning": "Business ownership."}')
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.1, 0.2, 0.3])
+
+    objectives = [
+        {"objective_id": "POB-2.1", "content_stmt": "Types of business ownership"},
+        {"objective_id": "POB-2.2", "content_stmt": "Advantages of sole trader"},
+    ]
+    app_module.app.state.db.execute.return_value.fetchall.return_value = objectives
+
+    res = client.post("/api/notes/classify", json={
+        "text": "A sole trader is a business owned by one person...",
+        "available_subjects": ["Principles_of_Business"],
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["subject_id"] == "Principles_of_Business"
+    assert body["confidence"] == "high"
+    assert "suggested_objectives" in body
+    assert len(body["suggested_objectives"]) == 2
+    assert body["suggested_objectives"][0]["objective_id"] in ("POB-2.1", "POB-2.2")
+
+
+def test_notes_classify_null_subject_falls_back(client, monkeypatch):
+    """An LLM subject not in available_subjects collapses to subject_id=None, [] objs."""
+    notes_module._OBJ_EMBED_CACHE.clear()
+    monkeypatch.setattr(app_module, "ollama_chat", lambda msgs, system, schema=None:
+                        '{"subject_id": null, "confidence": "low", "reasoning": "Unclear."}')
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.1, 0.2, 0.3])
+
+    res = client.post("/api/notes/classify", json={
+        "text": "Some ambiguous text",
+        "available_subjects": ["Principles_of_Business"],
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["subject_id"] is None
+    assert body["suggested_objectives"] == []
+
+
+# ---------------------------------------------------------------------------
+# POST /api/notes/upload
+# ---------------------------------------------------------------------------
+def test_notes_upload_text_creates_chunks(client, monkeypatch):
+    """Uploading pasted text under a confirmed objective returns chunks_created > 0."""
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.0, 0.0, 0.0])
+    # save_notes validates the objective belongs to the subject; MagicMock fetchone
+    # is truthy by default, so the validation passes.
+    res = client.post("/api/notes/upload", data={
+        "subject_id": "Principles_of_Business",
+        "objective_id": "POB-2.1",
+        "text": "A sole trader is a business owned and controlled by one person.",
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["objective_id"] == "POB-2.1"
+    assert body["chunks_created"] > 0
+    assert body["doc_id"].startswith("notes-")
+
+
+def test_notes_upload_rejects_unknown_objective(client, monkeypatch):
+    """An objective not in the subject is refused (400) -- no chunk indexed unmapped."""
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.0, 0.0, 0.0])
+    app_module.app.state.db.execute.return_value.fetchone.return_value = None
+    res = client.post("/api/notes/upload", data={
+        "subject_id": "Principles_of_Business",
+        "objective_id": "NOPE-9.9",
+        "text": "Some notes.",
+    })
+    assert res.status_code == 400
+
+
+def test_plan_grade_batch_routes_synthesis_question(client, monkeypatch):
+    captured = {}
+
+    def fake_handle(db, req, *args, **kwargs):
+        captured["req"] = req
+        return {"route": "grade_batch_question", "is_synthesis": True,
+                "score_pct": 80, "awarded": 4, "total": 5, "points": [],
+                "progress": {"total": 87, "mastered": 0, "met_once": 5,
+                             "in_progress": 0, "unmet": 82, "percent_mastered": 0}}
+
+    monkeypatch.setattr(app_module, "handle_request", fake_handle)
+    res = client.post("/api/plan/grade_batch", json={
+        "batch_id": 7, "question_id": "synthesis-7", "answer": "a connected answer here",
+    })
+    assert res.status_code == 200
+    # the endpoint forwards a grade_batch_question route with the synthesis id
+    assert captured["req"]["route"] == "grade_batch_question"
+    assert captured["req"]["question_id"] == "synthesis-7"
+    assert captured["req"]["batch_id"] == 7
+    body = res.json()
+    assert body["is_synthesis"] is True
+    assert body["progress"]["met_once"] == 5
