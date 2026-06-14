@@ -131,6 +131,8 @@ def test_chat_prepends_system_and_returns_content(monkeypatch):
     assert msgs[0] == {"role": "system", "content": "be terse"}
     assert msgs[1] == {"role": "user", "content": "hi"}
     assert captured["json"]["stream"] is False
+    # the chat model stays resident across a session (embeddings still evict at 0)
+    assert captured["json"]["keep_alive"] == "30m"
     assert "format" not in captured["json"]  # no schema → no format key
 
 

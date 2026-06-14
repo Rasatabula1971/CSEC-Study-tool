@@ -33,7 +33,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # backend/ on sys.path so the bare module imports below resolve whether the app
 # is launched as `backend.app:app` or imported directly in tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ollama_client import ollama_health  # noqa: E402
+from ollama_client import ollama_health, ollama_chat  # noqa: E402
 from controller import handle_request  # noqa: E402
 from schedule import get_due_objectives  # noqa: E402
 
@@ -65,7 +65,16 @@ async def lifespan(app: FastAPI):
     if ssd_root and not os.path.exists(ssd_root):
         sys.exit(f"ERROR: SSD not mounted at {ssd_root}. Plug in the drive and restart.")
 
-    if not ollama_health():
+    if ollama_health():
+        # Pre-warm: one tiny chat call loads the 3B chat model into RAM now (held by
+        # ollama_chat's keep_alive=30m), so the first Submit of the session doesn't
+        # pay the cold model-load tax. Non-fatal -- a failure just warns.
+        try:
+            ollama_chat([{"role": "user", "content": "ready"}],
+                        system="Respond with one word: ready.")
+        except Exception as exc:
+            logger.warning("Ollama pre-warm failed (%s) -- first response may be slow.", exc)
+    else:
         logger.warning("Ollama is not reachable at %s -- study mode will surface the "
                         "error. Starting the app anyway.", os.getenv("OLLAMA_BASE"))
 

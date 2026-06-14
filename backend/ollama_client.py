@@ -35,11 +35,18 @@ def ollama_embed(text: str) -> list[float]:
 
 
 def ollama_chat(messages: list[dict], system: str, schema: dict | None = None) -> str:
-    """Chat completion. `schema` (a JSON Schema dict) forces conforming JSON output."""
+    """Chat completion. `schema` (a JSON Schema dict) forces conforming JSON output.
+
+    keep_alive="30m" holds the 3B chat model resident across a study session so
+    the first Submit isn't paying a cold model-load tax. This is the opposite of
+    ollama_embed (keep_alive=0): the embedding model still evicts immediately so
+    the chat model keeps its RAM slot (CLAUDE.md v3.0 RAM budget).
+    """
     payload = {
         "model": MODEL_CHAT,
         "messages": [{"role": "system", "content": system}] + messages,
         "stream": False,
+        "keep_alive": "30m",
     }
     if schema:
         payload["format"] = schema
