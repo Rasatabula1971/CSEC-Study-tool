@@ -57,9 +57,20 @@
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
     .topbar-subject span{color:var(--color-accent);font-weight:500;}
     .selector-bar{flex-shrink:0;border-bottom:var(--border);background:var(--color-surface);}
+    .mode-toggle{display:flex;gap:var(--space-2);padding:var(--space-4) var(--space-6) 0;
+      max-width:var(--content-max);margin:0 auto;width:100%;}
+    .mode-pill{padding:var(--space-2) var(--space-4);border-radius:999px;
+      border:var(--border);background:var(--color-surface-2);color:var(--color-text-muted);
+      font-size:var(--text-sm);font-weight:500;
+      transition:background-color 120ms ease,color 120ms ease,border-color 120ms ease,transform 80ms var(--ease-spring);}
+    .mode-pill:hover{color:var(--color-text);border-color:var(--color-accent-dim);}
+    .mode-pill:active{transform:scale(0.97);}
+    .mode-pill.active{background:var(--color-accent-glow);color:var(--color-accent);
+      border-color:rgba(108,99,255,0.4);}
+    .mode-pill:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
     .selector-row{display:grid;gap:var(--space-4);padding:var(--space-4) var(--space-6);
       max-width:var(--content-max);margin:0 auto;width:100%;}
-    .selector-row-top{grid-template-columns:2fr 1fr 1fr;}
+    .selector-row-top{grid-template-columns:2fr 1fr;}
     .selector-row-bottom{grid-template-columns:1fr auto;padding-top:0;}
     .selector-field{display:flex;flex-direction:column;gap:var(--space-1);}
     .selector-label{font-size:var(--text-xs);font-weight:500;
@@ -155,6 +166,10 @@
       background:rgba(255,255,255,0.8);animation:dot-pulse 1.2s ease infinite;}
     .submit-btn-dot:nth-child(2){animation-delay:.2s;}
     .submit-btn-dot:nth-child(3){animation-delay:.4s;}
+    .grade-status{display:none;font-size:var(--text-xs);line-height:1.6;
+      color:var(--color-text-faint);}
+    .grade-status.visible{display:block;}
+    .grade-status-reassure{margin-top:var(--space-1);}
     .grade-card{background:var(--color-surface);border:var(--border);
       border-radius:var(--radius-lg);overflow:hidden;display:none;
       animation:card-arrive 220ms var(--ease-spring) both;}
@@ -231,6 +246,10 @@
   </header>
 
   <div class="selector-bar">
+    <div class="mode-toggle" role="tablist" aria-label="Quiz mode">
+      <button type="button" class="mode-pill active" id="modePastPaper" role="tab" aria-selected="true">Past Paper</button>
+      <button type="button" class="mode-pill" id="modePractice" role="tab" aria-selected="false">Syllabus Practice</button>
+    </div>
     <div class="selector-row selector-row-top">
       <div class="selector-field">
         <label class="selector-label" for="subjectSelect">Subject</label>
@@ -245,25 +264,28 @@
           <option value="Information_Technology">Information Technology</option>
         </select>
       </div>
-      <div class="selector-field">
+      <!-- Past Paper mode -->
+      <div class="selector-field" id="paperField">
         <label class="selector-label" for="paperSelect">Paper</label>
         <select class="selector-select" id="paperSelect" aria-label="Select paper" disabled>
           <option value="">— paper —</option>
         </select>
       </div>
-      <div class="selector-field">
-        <label class="selector-label" for="yearSelect">Year</label>
-        <select class="selector-select" id="yearSelect" aria-label="Select year" disabled>
-          <option value="">— year —</option>
+      <!-- Syllabus Practice mode -->
+      <div class="selector-field" id="sectionField" style="display:none;">
+        <label class="selector-label" for="sectionSelect">Section</label>
+        <select class="selector-select" id="sectionSelect" aria-label="Select syllabus section" disabled>
+          <option value="">— choose a subject first —</option>
         </select>
       </div>
     </div>
     <div class="selector-row selector-row-bottom">
-      <div class="question-select-wrap">
+      <!-- Past Paper mode -->
+      <div class="question-select-wrap" id="questionField">
         <label class="selector-label" for="questionSelect">Question</label>
         <div style="position:relative;">
           <select class="selector-select" id="questionSelect" aria-label="Select question" disabled>
-            <option value="">— select subject, paper and year first —</option>
+            <option value="">— select subject and paper first —</option>
           </select>
           <div class="questions-loading" id="questionsLoading" aria-live="polite">
             <div class="questions-loading-dot"></div>
@@ -272,6 +294,13 @@
             Loading questions...
           </div>
         </div>
+      </div>
+      <!-- Syllabus Practice mode -->
+      <div class="question-select-wrap" id="objectiveField" style="display:none;">
+        <label class="selector-label" for="objectiveSelect">Objective</label>
+        <select class="selector-select" id="objectiveSelect" aria-label="Select syllabus objective" disabled>
+          <option value="">— select a section first —</option>
+        </select>
       </div>
       <div style="padding-top:var(--space-5);align-self:flex-end;">
         <button type="button" class="load-btn" id="loadBtn" disabled>Load Question</button>
@@ -291,7 +320,7 @@
               </svg>
             </div>
             <div class="question-empty-title">No question loaded</div>
-            <div class="question-empty-body">Select a subject, paper, year and question above, then click Load Question.</div>
+            <div class="question-empty-body">Select a subject, paper and question above, then click Load Question.</div>
           </div>
         </div>
       </div>
@@ -311,6 +340,10 @@
               <span class="submit-btn-dot"></span>
             </span>
           </button>
+        </div>
+        <div class="grade-status" id="gradeStatus" aria-live="polite">
+          <div class="grade-status-msg" id="gradeStatusMsg"></div>
+          <div class="grade-status-reassure" id="gradeStatusReassure" style="display:none;">Still working — long answers take a moment.</div>
         </div>
       </div>
 
@@ -339,14 +372,21 @@
 
 <script>
   const API_BASE='http://127.0.0.1:8000';
-  const state={subjectId:'',subjectDisplay:'',paper:'',year:'',
+  const state={mode:'pastpaper',subjectId:'',subjectDisplay:'',paper:'',
     questionId:null,questionStem:'',marksTotal:0,
-    isLoading:false,isGrading:false,allQuestions:[]};
+    isLoading:false,isGrading:false,allQuestions:[],allSections:[]};
 
+  const modePastPaper=document.getElementById('modePastPaper');
+  const modePractice=document.getElementById('modePractice');
+  const paperField=document.getElementById('paperField');
+  const questionField=document.getElementById('questionField');
+  const sectionField=document.getElementById('sectionField');
+  const objectiveField=document.getElementById('objectiveField');
   const subjectSelect=document.getElementById('subjectSelect');
   const paperSelect=document.getElementById('paperSelect');
-  const yearSelect=document.getElementById('yearSelect');
   const questionSelect=document.getElementById('questionSelect');
+  const sectionSelect=document.getElementById('sectionSelect');
+  const objectiveSelect=document.getElementById('objectiveSelect');
   const questionsLoading=document.getElementById('questionsLoading');
   const loadBtn=document.getElementById('loadBtn');
   const topbarSubject=document.getElementById('topbarSubject');
@@ -354,6 +394,10 @@
   const answerTextarea=document.getElementById('answerTextarea');
   const wordCount=document.getElementById('wordCount');
   const submitBtn=document.getElementById('submitBtn');
+  const submitBtnLabel=submitBtn.querySelector('.submit-btn-label');
+  const gradeStatus=document.getElementById('gradeStatus');
+  const gradeStatusMsg=document.getElementById('gradeStatusMsg');
+  const gradeStatusReassure=document.getElementById('gradeStatusReassure');
   const errorNotice=document.getElementById('errorNotice');
   const gradeCard=document.getElementById('gradeCard');
   const gradeLabel=document.getElementById('gradeLabel');
@@ -369,32 +413,35 @@
   function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
   function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
   function hideError(){errorNotice.classList.remove('visible');}
-  function updateLoadBtn(){loadBtn.disabled=!(state.subjectId&&state.paper&&state.year&&questionSelect.value&&!state.isLoading);}
+  function updateLoadBtn(){
+    if(state.mode==='practice'){
+      loadBtn.disabled=!(state.subjectId&&objectiveSelect.value&&!state.isLoading);
+    }else{
+      loadBtn.disabled=!(state.subjectId&&state.paper&&questionSelect.value&&!state.isLoading);
+    }
+  }
   function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
   function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
 
   function resetFilters(){
     while(paperSelect.options.length>0)paperSelect.remove(0);
-    while(yearSelect.options.length>0)yearSelect.remove(0);
     const po=document.createElement('option');po.value='';po.textContent='— paper —';paperSelect.appendChild(po);
-    const yo=document.createElement('option');yo.value='';yo.textContent='— year —';yearSelect.appendChild(yo);
-    paperSelect.disabled=true;yearSelect.disabled=true;
+    paperSelect.disabled=true;
   }
 
-  function populateFilters(papers,years){
+  function populateFilters(papers){
     while(paperSelect.options.length>0)paperSelect.remove(0);
-    while(yearSelect.options.length>0)yearSelect.remove(0);
     if(papers.length===0){
       const po=document.createElement('option');po.value='';po.textContent='— no papers available —';paperSelect.appendChild(po);
-      const yo=document.createElement('option');yo.value='';yo.textContent='— no papers available —';yearSelect.appendChild(yo);
-      paperSelect.disabled=true;yearSelect.disabled=true;
+      paperSelect.disabled=true;
       return;
     }
     const pPlaceholder=document.createElement('option');pPlaceholder.value='';pPlaceholder.textContent='— paper —';paperSelect.appendChild(pPlaceholder);
+    // Each paper string is the full combined label ("Paper 2 - January 2026")
+    // returned by /api/filters; it is both the value and the display text and
+    // is sent verbatim as the `paper` param to /api/questions.
     papers.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;paperSelect.appendChild(o);});
-    const yPlaceholder=document.createElement('option');yPlaceholder.value='';yPlaceholder.textContent='— year —';yearSelect.appendChild(yPlaceholder);
-    years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;yearSelect.appendChild(o);});
-    paperSelect.disabled=false;yearSelect.disabled=false;
+    paperSelect.disabled=false;
   }
 
   async function fetchFilters(subjectId){
@@ -405,42 +452,44 @@
       const res=await fetch(url.toString());
       if(!res.ok)throw new Error(`HTTP ${res.status}`);
       const data=await res.json();
-      populateFilters(Array.isArray(data.papers)?data.papers:[],Array.isArray(data.years)?data.years:[]);
-    }catch(e){populateFilters([],[]);}
+      populateFilters(Array.isArray(data.papers)?data.papers:[]);
+    }catch(e){populateFilters([]);}
   }
 
-  async function fetchQuestions(subjectId){
-    if(!subjectId)return;
+  async function fetchQuestions(subjectId,paper){
+    if(!subjectId||!paper){state.allQuestions=[];populateQuestions();return;}
     questionsLoading.classList.add('visible');
     questionSelect.disabled=true;
     state.allQuestions=[];
     try{
+      // The paper string already carries the year ("Paper 2 - January 2026"),
+      // so it is the only filter sent -- no separate year param.
       const url=new URL(`${API_BASE}/api/questions`);
       url.searchParams.set('subject_id',subjectId);
+      url.searchParams.set('paper',paper);
       const res=await fetch(url.toString());
       if(!res.ok)throw new Error(`HTTP ${res.status}`);
       const data=await res.json();
       state.allQuestions=Array.isArray(data)?data:[];
     }catch(e){state.allQuestions=[];}
     finally{questionsLoading.classList.remove('visible');}
-    filterQuestions();
+    populateQuestions();
   }
 
-  function filterQuestions(){
+  function populateQuestions(){
     while(questionSelect.options.length>1)questionSelect.remove(1);
-    questionSelect.options[0].textContent='— loading... —';
     questionSelect.disabled=true;
-    const paper=state.paper;
-    const year=state.year?parseInt(state.year,10):null;
-    let filtered=state.allQuestions;
-    if(paper)filtered=filtered.filter(q=>q.paper===paper);
-    if(year)filtered=filtered.filter(q=>q.year===year);
-    if(filtered.length===0){
-      questionSelect.options[0].textContent=state.subjectId?'— no questions found for this filter —':'— select subject, paper and year first —';
+    if(!state.paper){
+      questionSelect.options[0].textContent=state.subjectId?'— select a paper —':'— select subject and paper first —';
       updateLoadBtn();return;
     }
-    questionSelect.options[0].textContent=`— ${filtered.length} question${filtered.length!==1?'s':''} —`;
-    filtered.forEach(q=>{
+    const list=state.allQuestions;
+    if(list.length===0){
+      questionSelect.options[0].textContent='— no questions found for this paper —';
+      updateLoadBtn();return;
+    }
+    questionSelect.options[0].textContent=`— ${list.length} question${list.length!==1?'s':''} —`;
+    list.forEach(q=>{
       const o=document.createElement('option');
       o.value=q.question_id;
       o.dataset.stem=q.stem??'';
@@ -448,24 +497,138 @@
       o.dataset.year=q.year??'';
       o.dataset.paper=q.paper??'';
       o.dataset.qnum=q.question_num??'';
-      o.textContent=`${q.year} · ${q.paper} · Q${q.question_num}${q.marks_total?` (${q.marks_total} marks)`:''}`;
+      o.textContent=`${q.paper} · Q${q.question_num}${q.marks_total?` (${q.marks_total} marks)`:''}`;
       questionSelect.appendChild(o);
     });
     questionSelect.disabled=false;
     updateLoadBtn();
   }
 
-  function renderQuestionCard(opt){
-    state.questionId=opt.value;
-    state.questionStem=opt.dataset.stem||'';
-    state.marksTotal=parseInt(opt.dataset.marks,10)||0;
-    const year=opt.dataset.year,paper=opt.dataset.paper,qnum=opt.dataset.qnum;
+  // --- Syllabus Practice mode ---------------------------------------------
+  function resetSectionObjective(){
+    while(sectionSelect.options.length>0)sectionSelect.remove(0);
+    const so=document.createElement('option');so.value='';
+    so.textContent='— choose a subject first —';sectionSelect.appendChild(so);
+    sectionSelect.disabled=true;
+    while(objectiveSelect.options.length>0)objectiveSelect.remove(0);
+    const oo=document.createElement('option');oo.value='';
+    oo.textContent='— select a section first —';objectiveSelect.appendChild(oo);
+    objectiveSelect.disabled=true;
+  }
+
+  function populateSections(){
+    while(sectionSelect.options.length>0)sectionSelect.remove(0);
+    const ph=document.createElement('option');ph.value='';
+    if(state.allSections.length===0){
+      ph.textContent='— no sections available —';sectionSelect.appendChild(ph);
+      sectionSelect.disabled=true;populateObjectives();return;
+    }
+    ph.textContent='— section —';sectionSelect.appendChild(ph);
+    state.allSections.forEach((s,i)=>{
+      const o=document.createElement('option');o.value=String(i);
+      o.textContent=`${s.section_num?s.section_num+'. ':''}${s.title}`;
+      sectionSelect.appendChild(o);
+    });
+    sectionSelect.disabled=false;
+    populateObjectives();
+  }
+
+  function populateObjectives(){
+    while(objectiveSelect.options.length>0)objectiveSelect.remove(0);
+    const ph=document.createElement('option');ph.value='';
+    const idx=sectionSelect.value;
+    if(idx===''||!state.allSections[idx]){
+      ph.textContent='— select a section first —';objectiveSelect.appendChild(ph);
+      objectiveSelect.disabled=true;updateLoadBtn();return;
+    }
+    const objs=state.allSections[idx].objectives||[];
+    if(objs.length===0){
+      ph.textContent='— no objectives in this section —';objectiveSelect.appendChild(ph);
+      objectiveSelect.disabled=true;updateLoadBtn();return;
+    }
+    ph.textContent=`— ${objs.length} objective${objs.length!==1?'s':''} —`;objectiveSelect.appendChild(ph);
+    objs.forEach(o=>{
+      const opt=document.createElement('option');opt.value=o.objective_id;
+      const stmt=o.content_stmt||'';
+      const short=stmt.length>72?stmt.slice(0,72)+'…':stmt;
+      opt.textContent=`${o.objective_num} — ${short}`;
+      objectiveSelect.appendChild(opt);
+    });
+    objectiveSelect.disabled=false;
+    updateLoadBtn();
+  }
+
+  async function fetchSections(subjectId){
+    state.allSections=[];
+    if(!subjectId){resetSectionObjective();return;}
+    try{
+      const url=new URL(`${API_BASE}/api/sections`);
+      url.searchParams.set('subject_id',subjectId);
+      const res=await fetch(url.toString());
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      state.allSections=Array.isArray(data)?data:[];
+    }catch(e){state.allSections=[];}
+    populateSections();
+  }
+
+  async function loadPracticeQuestion(){
+    const objId=objectiveSelect.value;
+    if(!state.subjectId||!objId)return;
+    state.isLoading=true;updateLoadBtn();
+    const prevLabel=loadBtn.textContent;loadBtn.textContent='Generating…';
+    hideError();hideGrade();
+    try{
+      const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:'(practice)',subject_id:state.subjectId,route:'practice',objective_id:objId})});
+      if(!res.ok){const e=await res.text().catch(()=>'');showError(`Couldn't generate a question (${res.status}). ${e||'Is the FastAPI server running?'}`);return;}
+      const data=await res.json();
+      if(data.error==='out_of_scope'){showError('That objective is out of scope.');return;}
+      if(data.error){showError(`Error: ${data.error}`);return;}
+      showQuestion({questionId:data.question_id,stem:data.stem||'',
+        paper:data.paper||'Syllabus Practice',qnum:data.question_num||'Practice',
+        marks:data.marks_total||0});
+    }catch(err){
+      if(err instanceof TypeError&&err.message.includes('fetch')){
+        showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");
+      }else{showError(`Something went wrong: ${err.message}`);}
+    }finally{state.isLoading=false;loadBtn.textContent=prevLabel;updateLoadBtn();}
+  }
+
+  function setMode(mode){
+    if(state.mode===mode)return;
+    state.mode=mode;
+    const practice=mode==='practice';
+    modePastPaper.classList.toggle('active',!practice);
+    modePractice.classList.toggle('active',practice);
+    modePastPaper.setAttribute('aria-selected',String(!practice));
+    modePractice.setAttribute('aria-selected',String(practice));
+    paperField.style.display=practice?'none':'';
+    questionField.style.display=practice?'none':'';
+    sectionField.style.display=practice?'':'none';
+    objectiveField.style.display=practice?'':'none';
+    resetQuestionCard();hideGrade();hideError();
+    if(practice){
+      if(state.subjectId)fetchSections(state.subjectId);else resetSectionObjective();
+    }else{
+      if(state.subjectId)fetchFilters(state.subjectId);
+    }
+    updateLoadBtn();
+  }
+
+  function showQuestion({questionId,stem,paper,qnum,marks}){
+    state.questionId=questionId;
+    state.questionStem=stem||'';
+    state.marksTotal=marks||0;
+    // Past-paper qnums start with a digit ("1(a)") so prefix "Q"; the practice
+    // label ("Practice") is shown as-is.
+    const qLabel=/^\d/.test(String(qnum||''))?`Q${qnum}`:String(qnum||'');
     questionCard.innerHTML=`
       <div class="question-card-header">
         <div class="question-card-meta">
-          <span class="question-meta-tag year">${escapeHtml(year)}</span>
           <span class="question-meta-tag paper">${escapeHtml(paper)}</span>
-          <span class="question-meta-tag qnum">Q${escapeHtml(qnum)}</span>
+          ${qLabel?`<span class="question-meta-tag qnum">${escapeHtml(qLabel)}</span>`:''}
         </div>
         ${state.marksTotal?`<span class="marks-badge">${state.marksTotal} mark${state.marksTotal!==1?'s':''}</span>`:''}
       </div>
@@ -478,6 +641,12 @@
     hideGrade();hideError();updateSubmitBtn();
   }
 
+  function renderQuestionCard(opt){
+    showQuestion({questionId:opt.value,stem:opt.dataset.stem||'',
+      paper:opt.dataset.paper,qnum:opt.dataset.qnum,
+      marks:parseInt(opt.dataset.marks,10)||0});
+  }
+
   function resetQuestionCard(){
     state.questionId=null;state.questionStem='';state.marksTotal=0;
     questionCard.innerHTML=`
@@ -488,7 +657,7 @@
           </svg>
         </div>
         <div class="question-empty-title">No question loaded</div>
-        <div class="question-empty-body">Select a subject, paper, year and question above, then click Load Question.</div>
+        <div class="question-empty-body">Select a subject, paper and question above, then click Load Question.</div>
       </div>`;
     answerTextarea.disabled=true;answerTextarea.value='';
     answerTextarea.placeholder='Load a question first, then write your answer here using full sentences.';
@@ -522,11 +691,41 @@
 
   function hideGrade(){gradeCard.classList.remove('visible');gradeLabel.style.display='none';gradePoints.innerHTML='';}
 
+  // Perceived-latency polish: while the backend grades, cycle a calm status
+  // line every 3s and, past 30s, append a reassurance. Plain text only.
+  const GRADE_STATUS_MESSAGES=[
+    'Reading your answer...',
+    'Checking against mark scheme...',
+    'Identifying which points you covered...',
+    'Computing score...'];
+  let gradeStatusInterval=null,gradeStatusTimeout=null;
+
+  function startGradeStatus(){
+    let i=0;
+    gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[0];
+    gradeStatusReassure.style.display='none';
+    gradeStatus.classList.add('visible');
+    gradeStatusInterval=setInterval(()=>{
+      i=(i+1)%GRADE_STATUS_MESSAGES.length;
+      gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[i];
+    },3000);
+    gradeStatusTimeout=setTimeout(()=>{gradeStatusReassure.style.display='block';},30000);
+  }
+
+  function stopGradeStatus(){
+    if(gradeStatusInterval){clearInterval(gradeStatusInterval);gradeStatusInterval=null;}
+    if(gradeStatusTimeout){clearTimeout(gradeStatusTimeout);gradeStatusTimeout=null;}
+    gradeStatus.classList.remove('visible');
+    gradeStatusMsg.textContent='';
+    gradeStatusReassure.style.display='none';
+  }
+
   async function submitAnswer(){
     if(!state.questionId)return;
     const text=answerTextarea.value.trim();
     if(countWords(text)<10)return;
-    state.isGrading=true;submitBtn.classList.add('grading');submitBtn.disabled=true;hideError();
+    state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';
+    hideError();startGradeStatus();
     try{
       const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -541,7 +740,7 @@
       if(err instanceof TypeError&&err.message.includes('fetch')){
         showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");
       }else{showError(`Something went wrong: ${err.message}`);}
-    }finally{state.isGrading=false;submitBtn.classList.remove('grading');updateSubmitBtn();}
+    }finally{state.isGrading=false;stopGradeStatus();submitBtnLabel.textContent='Submit Answer';updateSubmitBtn();}
   }
 
   function tryAnother(){answerTextarea.value='';updateWordCount();hideGrade();hideError();updateSubmitBtn();answerTextarea.focus();document.querySelector('.content-area').scrollTop=0;}
@@ -557,22 +756,33 @@
     }catch{}
   }
 
+  modePastPaper.addEventListener('click',()=>setMode('pastpaper'));
+  modePractice.addEventListener('click',()=>setMode('practice'));
+
   subjectSelect.addEventListener('change',()=>{
     const opt=subjectSelect.options[subjectSelect.selectedIndex];
     state.subjectId=opt.value;
     setSubjectDisplay(opt.value?opt.textContent.trim():'');
-    state.paper='';state.year='';
+    state.paper='';
     resetQuestionCard();hideError();
     while(questionSelect.options.length>1)questionSelect.remove(1);
-    questionSelect.options[0].textContent='— select paper and year —';
-    questionSelect.disabled=true;updateLoadBtn();
-    if(state.subjectId){fetchFilters(state.subjectId);fetchQuestions(state.subjectId);}
-    else{resetFilters();}
+    questionSelect.options[0].textContent='— select a paper —';
+    questionSelect.disabled=true;
+    if(state.mode==='practice'){
+      if(state.subjectId){fetchSections(state.subjectId);}else{resetSectionObjective();}
+    }else{
+      if(state.subjectId){fetchFilters(state.subjectId);}else{resetFilters();}
+    }
+    updateLoadBtn();
   });
-  paperSelect.addEventListener('change',()=>{state.paper=paperSelect.value;filterQuestions();updateLoadBtn();});
-  yearSelect.addEventListener('change',()=>{state.year=yearSelect.value;filterQuestions();updateLoadBtn();});
+  paperSelect.addEventListener('change',()=>{state.paper=paperSelect.value;state.questionId=null;fetchQuestions(state.subjectId,state.paper);});
   questionSelect.addEventListener('change',()=>{updateLoadBtn();});
-  loadBtn.addEventListener('click',()=>{const opt=questionSelect.options[questionSelect.selectedIndex];if(!opt||!opt.value)return;renderQuestionCard(opt);});
+  sectionSelect.addEventListener('change',()=>{populateObjectives();});
+  objectiveSelect.addEventListener('change',()=>{updateLoadBtn();});
+  loadBtn.addEventListener('click',()=>{
+    if(state.mode==='practice'){loadPracticeQuestion();return;}
+    const opt=questionSelect.options[questionSelect.selectedIndex];if(!opt||!opt.value)return;renderQuestionCard(opt);
+  });
   answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
   submitBtn.addEventListener('click',submitAnswer);
   tryAnotherBtn.addEventListener('click',tryAnother);
