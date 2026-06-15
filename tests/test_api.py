@@ -11,6 +11,7 @@ set app.state.db ourselves and patch the controller/health hooks.
 Run: pytest tests/test_api.py -v
 """
 
+import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -21,6 +22,8 @@ from starlette.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
+
+SCHEMA_PATH = ROOT / "backend" / "db" / "schema.sql"
 
 import app as app_module  # noqa: E402
 import controller  # noqa: E402
@@ -198,6 +201,114 @@ def test_questions_empty_is_ok(client):
     res = client.get("/api/questions/Principles_of_Business")
     assert res.status_code == 200
     assert res.json() == []
+
+
+def _real_db() -> sqlite3.Connection:
+    """A real in-memory DB (schema.sql + sqlite-vec) so the actual SQL join runs.
+
+    The other /api/questions tests mock app.state.db, which never exercises the
+    join. This one must, to prove the '-stem' join fix end-to-end.
+    """
+    try:
+        import sqlite_vec
+    except ImportError:
+        pytest.skip("sqlite-vec not installed -- skipping real-DB API test")
+    # check_same_thread=False: TestClient runs the sync endpoint in a worker thread.
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
+    for stmt in SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+        if stmt.strip():
+            conn.execute(stmt)
+    conn.commit()
+    return conn
+
+
+def test_questions_join_matches_stem_chunk_id():
+    """ingest_solutions stores mark_points.question_id == chunk_id (already '-stem').
+
+    The grade picker joins on equality, not by appending '-stem'. This also proves
+    the apply_runtime_migrations() data fix: an OLD-convention mark_point (no '-stem')
+    is normalised at startup so it, too, joins to its '-stem' chunk and returns real
+    question_text.
+
+    Note on ordering: apply_runtime_migrations() runs AFTER the legacy row is seeded
+    -- exactly as it does in production (startup runs against an existing DB whose
+    rows already exist). Running it before seeding would find 0 rows and could not
+    migrate a row that does not yet exist.
+    """
+    conn = _real_db()
+    try:
+        conn.execute(
+            "INSERT INTO subjects (subject_id, display_name, syllabus_locked) "
+            "VALUES ('Principles_of_Business', 'Principles of Business', 1)"
+        )
+        conn.execute(
+            "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
+            "VALUES ('POB-SEC-1', 'Principles_of_Business', 'Nature of Business', '1')"
+        )
+        conn.execute(
+            "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt) "
+            "VALUES ('POB-1.1', 'POB-SEC-1', 'Principles_of_Business', '1.1', 'Define the term business.')"
+        )
+        conn.execute(
+            "INSERT INTO documents (doc_id, subject_id, content_type, paper, year, source_file, content_hash) "
+            "VALUES ('sol-1', 'Principles_of_Business', 'mark_scheme', 'Paper 2 - June 2024', 2024, "
+            "'june2024.txt', 'hash-1')"
+        )
+        # Two chunks, both with '-stem' chunk_ids (the canonical convention).
+        conn.execute(
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) "
+            "VALUES ('sol-1', 'POB-1.1', 'Principles_of_Business', "
+            "'Define the term business and give one example.', '1', 'POB-1.1-June2024-q1-stem')"
+        )
+        conn.execute(
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) "
+            "VALUES ('sol-1', 'POB-1.1', 'Principles_of_Business', "
+            "'State two functions of an entrepreneur.', '2', 'POB-1.1-June2024-q2-stem')"
+        )
+        # New-convention mark_point: question_id already ends in '-stem'.
+        conn.execute(
+            "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, point_text, "
+            "marks_value, point_order) VALUES ('POB-1.1-June2024-q1-stem-mp1', 'POB-1.1', "
+            "'POB-1.1-June2024-q1-stem', 'sol-1', 'An organisation supplying goods or services.', 1, 1)"
+        )
+        # OLD-convention mark_point: question_id WITHOUT '-stem'. Its chunk_id is the
+        # question_id + '-stem'; the migration must normalise it for the join to hit.
+        conn.execute(
+            "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, point_text, "
+            "marks_value, point_order) VALUES ('POB-1.1-June2024-q2-mp1', 'POB-1.1', "
+            "'POB-1.1-June2024-q2', 'sol-1', 'Organising the factors of production.', 1, 1)"
+        )
+        conn.commit()
+
+        # Startup migration normalises the legacy row's question_id to '-stem'.
+        app_module.apply_runtime_migrations(conn)
+        migrated = conn.execute(
+            "SELECT question_id FROM mark_points WHERE mark_point_id = 'POB-1.1-June2024-q2-mp1'"
+        ).fetchone()["question_id"]
+        assert migrated == "POB-1.1-June2024-q2-stem"   # the UPDATE ran
+
+        app_module.app.state.db = conn
+        res = TestClient(app_module.app).get("/api/questions/Principles_of_Business")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body) == 2                              # both questions returned
+        by_qid = {item["question_id"]: item for item in body}
+
+        new = by_qid["POB-1.1-June2024-q1-stem"]
+        assert new["question_text"] is not None            # was None before the join fix
+        assert new["question_num"] == "1"
+
+        # The migrated legacy row now joins to its '-stem' chunk and has real text.
+        legacy = by_qid["POB-1.1-June2024-q2-stem"]
+        assert legacy["question_text"] is not None
+        assert legacy["question_num"] == "2"
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

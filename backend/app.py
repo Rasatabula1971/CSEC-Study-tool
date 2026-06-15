@@ -21,6 +21,7 @@ import sqlite3
 import sys
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -39,6 +40,7 @@ from gemini_client import is_gemini_available, gemini_key_valid  # noqa: E402
 from controller import handle_request  # noqa: E402
 from schedule import get_due_objectives  # noqa: E402
 from study_plan import get_plan_progress  # noqa: E402
+from export_progress import export_progress, fetch_progress  # noqa: E402
 from notes import classify_notes, save_notes  # noqa: E402
 from extract import detect_mime_type, extract_text  # noqa: E402
 
@@ -114,9 +116,20 @@ def open_db(db_path: str) -> sqlite3.Connection:
 
 
 def apply_runtime_migrations(db: sqlite3.Connection) -> None:
-    """Run idempotent CREATE TABLE IF NOT EXISTS migrations against the live DB."""
+    """Run idempotent migrations against the live DB: schema (CREATE TABLE IF NOT
+    EXISTS) plus a data-normalisation pass. Safe to run on every startup."""
     for stmt in RUNTIME_MIGRATIONS:
         db.execute(stmt)
+    # Data migration: normalise question_id to the -stem convention used by
+    # ingest_solutions.py. Old PDF-ingester rows stored question_id without
+    # the suffix; this makes the grade-picker join work for all rows.
+    db.execute(
+        """
+        UPDATE mark_points
+        SET    question_id = question_id || '-stem'
+        WHERE  question_id NOT LIKE '%-stem'
+        """
+    )
     db.commit()
 
 
@@ -341,7 +354,7 @@ def questions(subject_id: str, request: Request) -> list[dict]:
                COUNT(mp.mark_point_id)   AS marks
         FROM   mark_points mp
         JOIN   documents d ON d.doc_id = mp.doc_id
-        LEFT   JOIN chunks c ON c.chunk_id = mp.question_id || '-stem'
+        LEFT   JOIN chunks c ON c.chunk_id = mp.question_id
         WHERE  d.subject_id = ?
         GROUP  BY mp.question_id
         ORDER  BY d.year DESC, d.paper, mp.question_id
@@ -572,6 +585,28 @@ def plan_explain_missed(body: ExplainMissedRequest, request: Request) -> dict:
 def plan_progress(subject_id: str, request: Request) -> dict:
     """Mastery counts for a subject's study plan (deterministic aggregation)."""
     return get_plan_progress(request.app.state.db, subject_id)
+
+
+@app.get("/api/export/progress/{subject_id}")
+def export_progress_report(subject_id: str, request: Request) -> FileResponse:
+    """Generate a colour-coded study-progress workbook and return it as a download.
+
+    Same logic as backend/export_progress.py (the CLI). Lets the UI add a "Download
+    Progress Report" button. Returns the .xlsx as an attachment; 404 if the subject
+    has no objectives.
+    """
+    db = request.app.state.db
+    reports_root = os.getenv("REPORTS_ROOT")
+    if not reports_root:
+        raise HTTPException(status_code=500, detail="REPORTS_ROOT not configured")
+    if not fetch_progress(db, subject_id):
+        raise HTTPException(status_code=404, detail=f"No objectives for subject '{subject_id}'")
+    path = export_progress(db, subject_id, reports_root, date.today().isoformat())
+    return FileResponse(
+        path,
+        filename=path.name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ---------------------------------------------------------------------------

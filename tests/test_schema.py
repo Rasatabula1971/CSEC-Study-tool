@@ -31,6 +31,9 @@ EXPECTED_REGULAR_TABLES = {
     "weakness_log",
     "revision_schedule",
     "ingest_review_queue",
+    "practice_questions",
+    "study_plan",
+    "study_batches",
 }
 
 EXPECTED_VEC_TABLES = {
@@ -93,6 +96,14 @@ def test_vec_tables_exist(db):
     names = {r["name"] for r in rows}
     for table in EXPECTED_VEC_TABLES:
         assert table in names, f"Missing vec table: {table}"
+
+
+def test_ingest_review_queue_has_objective_and_doc_columns(db):
+    """The objective_id / doc_id columns (formerly added via ensure_queue_columns'
+    ALTER TABLE) are now part of the canonical schema."""
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(ingest_review_queue)")}
+    assert "objective_id" in cols
+    assert "doc_id" in cols
 
 
 # ---------------------------------------------------------------------------

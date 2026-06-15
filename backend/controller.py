@@ -74,10 +74,20 @@ def _objective_context(db, objective_id: str) -> dict | None:
 
     The lesson must be grounded in the *named* objective (CLAUDE.md Rule 1), never a
     semantic match -- a generic query like "Teach me this objective" would otherwise
-    embed to an arbitrary nearest chunk and teach the wrong topic. Prefer a real
-    notes chunk for the objective; fall back to its syllabus content statement so a
-    lesson is still possible before notes are ingested. Returns None only when the
-    objective_id is unknown. Crucially, ctx["objective_id"] always equals the input.
+    embed to an arbitrary nearest chunk and teach the wrong topic.
+
+    Source preference, best first:
+      1. A real *notes* chunk for the objective.
+      2. ANY other chunk for the objective (mark_scheme > past_paper > specimen) --
+         all carry a real FK, so a worked solution or exam question still gives the
+         tutor concrete material to ground a lesson in.
+      3. Only when zero chunks exist: an ENRICHED syllabus context (section title +
+         objective + skill type + command words), so a four-word content statement
+         still yields a real lesson rather than a vague one.
+
+    The returned dict always includes a "context_source" tag (notes / mark_scheme /
+    past_paper / specimen / syllabus_only) for the UI, and ctx["objective_id"]
+    always equals the input. Returns None only when the objective_id is unknown.
     """
     row = db.execute(
         """
@@ -92,16 +102,66 @@ def _objective_context(db, objective_id: str) -> dict | None:
         (objective_id,),
     ).fetchone()
     if row is not None:
-        return dict(row)
+        ctx = dict(row)
+        ctx["context_source"] = "notes"
+        return ctx
 
+    # No notes: take the best available chunk of any content type. The CASE ranks
+    # the types so a worked mark scheme is preferred over a raw past paper, etc.
+    row = db.execute(
+        """
+        SELECT c.objective_id, c.chunk_text, c.page, d.source_file, d.content_type
+        FROM   chunks c
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.objective_id = ?
+        ORDER  BY CASE d.content_type
+                      WHEN 'notes'       THEN 0
+                      WHEN 'mark_scheme' THEN 1
+                      WHEN 'past_paper'  THEN 2
+                      WHEN 'specimen'    THEN 3
+                      ELSE 4
+                  END,
+                  c.id
+        LIMIT  1
+        """,
+        (objective_id,),
+    ).fetchone()
+    if row is not None:
+        ctx = dict(row)
+        ctx["context_source"] = ctx.pop("content_type")
+        return ctx
+
+    # Zero chunks for this objective: enrich the bare content statement so the tutor
+    # has enough to teach without inventing beyond the syllabus (grounding rule kept).
     obj = get_objective(db, objective_id)
     if obj is None:
         return None
+
+    section = db.execute(
+        "SELECT title FROM syllabus_sections WHERE section_id = ?",
+        (obj["section_id"],),
+    ).fetchone()
+    section_title = section["title"] if section is not None else "(unknown section)"
+
+    try:
+        command_words = json.loads(obj["command_words"]) if obj["command_words"] else []
+    except (json.JSONDecodeError, TypeError):
+        command_words = []
+    cw = ", ".join(command_words) if command_words else "(none specified)"
+    skill_type = obj["skill_type"] or "(unspecified)"
+
+    enriched = (
+        f"Section: {section_title}\n"
+        f"Objective {obj['objective_num']}: {obj['content_stmt']}\n"
+        f"Skill type: {skill_type}\n"
+        f"Command words: {cw}"
+    )
     return {
         "objective_id": objective_id,
-        "chunk_text": obj["content_stmt"],
+        "chunk_text": enriched,
         "source_file": "syllabus",
         "page": None,
+        "context_source": "syllabus_only",
     }
 
 
@@ -168,6 +228,10 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
         "objective_id": objective_id,
         "source_file": ctx["source_file"],
         "page": ctx["page"],
+        # notes / mark_scheme / past_paper / specimen / syllabus_only -- lets the UI
+        # nudge "add notes for this topic" when only the syllabus statement was used.
+        # None for the free-text semantic path (get_context returns no tag).
+        "context_source": ctx.get("context_source"),
         "lesson": lesson,
     }
 

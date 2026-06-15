@@ -1,12 +1,15 @@
 """
 tests/test_ingest_solutions.py
 ==============================
-Tests for backend/ingest_solutions.py -- the Paper 2 worked-solution ingester
-that populates the grader's mark_points (the app's "answer half").
+Tests for backend/ingest_solutions.py -- the text-format Paper 2 solution
+ingester. Exercises parsing + storage on plain strings (not files) against an
+in-memory SQLite DB with the full schema and sqlite-vec loaded. A fake embedder
+is injected, so these tests need neither Ollama nor PyMuPDF.
 
-Parsing is exercised on plain text strings; ingestion runs against an in-memory
-SQLite DB with the full schema + sqlite-vec. No PyMuPDF and no Ollama are
-needed (PDF extraction and embeddings are not touched here).
+The headline guarantee: every stored question is a '-stem' chunk that the quiz
+page (GET /api/questions, /api/filters) can actually see, with mark_points keyed
+on question_id == chunk_id (what grade.fetch_mark_points and the quiz mark-count
+subquery both rely on).
 
 Run: pytest tests/test_ingest_solutions.py -v
 """
@@ -24,41 +27,53 @@ sys.path.insert(0, str(ROOT / "backend"))
 import backend.ingest_solutions as isol  # noqa: E402
 
 SCHEMA_PATH = ROOT / "backend" / "db" / "schema.sql"
+EMBED_DIM = 768
 
-# A realistic two-sub-question solution page (January 2026 Paper 2, Q1a/Q1b).
+SUBJECT = "Principles_of_Business"
+
+# A self-contained sample paper (mirrors the template's format) with three
+# questions whose vocabulary clearly overlaps the three seeded objectives.
 SAMPLE = """\
-Page 286
-January 2026 Paper 02
-Question 1
-1(a) Maria's career choices
-Maria wants to pursue business education. List THREE careers in the field of
-business that Maria could pursue. (3 marks)
-Three careers in the field of business that Maria could pursue are:
-•
-Accountant - a person who keeps the financial records of a business and gives
-financial advice to the owners.
-•
-Marketing manager - a person who plans and runs the activities to promote and
-sell the products of a business.
-•
-Human resource manager - a person in charge of recruiting and training workers.
-1(b) Stakeholders in business activities
-List THREE stakeholders involved in business activities. (3 marks)
-Three stakeholders involved in business activities are:
-•
-Owners or shareholders, who provide the capital used to run the business.
-•
-Employees, who provide their labour in exchange for wages.
-•
-Customers, who buy the goods and services produced by the business.
+SUBJECT: Principles_of_Business
+PAPER: 2
+SESSION: June
+YEAR: 2024
+
+QUESTION 1
+Explain THREE functions that an entrepreneur performs when organising a business.
+ANSWER:
+- Organising the factors of production such as land, labour and capital.
+- Bearing the risk of financial loss in the business.
+- Making decisions about what to produce and how to finance it.
+
+QUESTION 2
+Distinguish between the private sector and the public sector and give an example of each.
+ANSWER:
+- The private sector is owned and controlled by private individuals for profit.
+- The public sector is owned and controlled by the government to provide services.
+- A valid example of an organisation in each sector.
+
+QUESTION 3
+Outline FOUR reasons why a business should keep proper accounting records.
+ANSWER:
+- To monitor the profit or loss of the business.
+- To support financial decisions made by the owner.
+- To meet legal requirements such as paying taxes.
+- To support a request for a loan or other finance.
 """
+
+
+def fake_embed(text: str) -> list[float]:
+    """Deterministic dummy embedding -- no Ollama required."""
+    return [0.0] * EMBED_DIM
 
 
 def open_test_db() -> sqlite3.Connection:
     try:
         import sqlite_vec
     except ImportError:
-        pytest.skip("sqlite-vec not installed -- skipping solutions ingest tests")
+        pytest.skip("sqlite-vec not installed -- skipping solution-ingest tests")
+
     db = sqlite3.connect(":memory:")
     db.enable_load_extension(True)
     sqlite_vec.load(db)
@@ -72,23 +87,33 @@ def open_test_db() -> sqlite3.Connection:
     return db
 
 
-def seed_subject(db: sqlite3.Connection) -> None:
+def seed_locked_subject(db: sqlite3.Connection) -> None:
+    """Locked POB subject + one section + three objectives the sample maps to."""
     db.execute(
         "INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, ?, 1)",
-        ("Principles_of_Business", "Principles of Business"),
+        (SUBJECT, "Principles of Business"),
     )
     db.execute(
         "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
-        "VALUES ('POB-SEC-1', 'Principles_of_Business', 'Nature of Business', '1')",
+        "VALUES (?, ?, ?, ?)",
+        ("POB-SEC-1", SUBJECT, "Nature of Business", "1"),
     )
-    for oid, stmt in [
-        ("POB-1.14", "Describe the careers in the field of business."),
-        ("POB-1.10", "Discuss the role and functions of the stakeholders involved in business activities."),
-    ]:
+    objectives = [
+        ("POB-1.1", "1.1",
+         "Explain the functions of the entrepreneur and the concept of a business, "
+         "including organising the factors of production and bearing risk."),
+        ("POB-1.2", "1.2",
+         "Distinguish between the private sector and the public sector and give "
+         "examples of organisations in each."),
+        ("POB-5.1", "5.1",
+         "Outline the reasons a business should keep accounting records, including "
+         "monitoring profit and supporting financial decisions."),
+    ]
+    for oid, num, stmt in objectives:
         db.execute(
             "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, "
-            "content_stmt) VALUES (?, 'POB-SEC-1', 'Principles_of_Business', ?, ?)",
-            (oid, oid.split("-")[1], stmt),
+            "content_stmt, skill_type) VALUES (?, ?, ?, ?, ?, ?)",
+            (oid, "POB-SEC-1", SUBJECT, num, stmt, "Understanding"),
         )
     db.commit()
 
@@ -96,198 +121,218 @@ def seed_subject(db: sqlite3.Connection) -> None:
 @pytest.fixture
 def db():
     conn = open_test_db()
-    seed_subject(conn)
+    seed_locked_subject(conn)
     yield conn
     conn.close()
 
 
-def lines_of(text: str) -> list[tuple[int, str]]:
-    """Mimic extract_lines() output: every line on page 1."""
-    return [(1, ln) for ln in text.splitlines()]
-
-
 def objectives(db):
-    return isol.load_objectives(db, "Principles_of_Business")
+    return isol.load_objectives(db, SUBJECT)
 
 
-# ---------------------------------------------------------------------------
-# Pure parsing
-# ---------------------------------------------------------------------------
-def test_parse_session_january():
-    meta = isol.parse_session("January 2026 Paper 02")
-    assert meta == {"month_tag": "Jan", "year": 2026, "paper_label": "Paper 2 - January 2026"}
-
-
-def test_parse_session_mayjune():
-    meta = isol.parse_session("May/June 2010 Paper 02")
-    assert meta["month_tag"] == "Jun"
-    assert meta["year"] == 2010
-    assert meta["paper_label"] == "Paper 2 - June 2010"
-
-
-def test_parse_session_none_when_absent():
-    assert isol.parse_session("just some prose with no header") is None
-
-
-def test_split_points_drops_leadin_and_joins_multiline():
-    body = [
-        "Three careers ... are:",          # lead-in before first bullet -> dropped
-        "•",
-        "Accountant - keeps financial",
-        "records of a business.",          # continuation joined to the point above
-        "•",
-        "Marketing manager - promotes products.",
-    ]
-    pts = isol.split_points(body)
-    assert pts == [
-        "Accountant - keeps financial records of a business.",
-        "Marketing manager - promotes products.",
-    ]
-
-
-def test_parse_subquestions_splits_two_subparts_with_marks():
-    subs = isol.parse_subquestions(lines_of(SAMPLE))
-    assert [s["label"] for s in subs] == ["1(a)", "1(b)"]
-    a = subs[0]
-    assert a["question_num"] == 1 and a["sub"] == "a"
-    assert a["marks"] == 3
-    assert len(a["points"]) == 3
-    assert a["points"][0].startswith("Accountant")
-    # the stem holds the question prose (ends at the "(3 marks)" line)
-    assert "List THREE careers" in a["stem"]
-    assert "Accountant" not in a["stem"]
-
-
-def test_parse_subquestion_with_no_bullets_yields_no_points():
-    text = "January 2026 Paper 02\n1(c) Prose answer\nDescribe X. (2 marks)\nProduction is the area that makes goods.\n"
-    subs = isol.parse_subquestions(lines_of(text))
-    assert len(subs) == 1
-    assert subs[0]["points"] == []
-    assert subs[0]["marks"] == 2
-
-
-# ---------------------------------------------------------------------------
-# Ingestion against a real (in-memory) schema
-# ---------------------------------------------------------------------------
-def test_ingest_populates_mark_points_keyed_by_question_id(db):
+def ingest_sample(db, text=SAMPLE):
     counts = isol.new_counts()
-    isol.ingest_solution_lines(
-        db, lines=lines_of(SAMPLE), subject_id="Principles_of_Business",
-        source_file=r"D:\sol\jan2026.pdf", objectives=objectives(db),
-        counts=counts, code="POB",
+    meta = isol.ingest_solution_text(
+        db, text=text, subject_id=SUBJECT, source_file="POB_Paper2_June2024.txt",
+        objectives=objectives(db), counts=counts, embed_fn=fake_embed,
+        content_hash="hash-sample-1",
     )
     db.commit()
+    return meta, counts
 
-    # one document, content_type mark_scheme, session disambiguated in `paper`
-    doc = db.execute("SELECT content_type, paper, year FROM documents").fetchone()
-    assert doc["content_type"] == "mark_scheme"
-    assert doc["paper"] == "Paper 2 - January 2026"
-    assert doc["year"] == 2026
 
-    # Q1(a) is keyed and gradeable -- exactly what grade.fetch_mark_points needs
-    qid = "POB-2026Jan-P2-q1a"
+# ---------------------------------------------------------------------------
+# Pure-function tests
+# ---------------------------------------------------------------------------
+def test_parse_header():
+    meta = isol.parse_header(SAMPLE)
+    assert meta is not None
+    assert meta["paper_num"] == "2"
+    assert meta["session"] == "June"
+    assert meta["year"] == 2024
+    assert meta["paper_label"] == "Paper 2 - June 2024"
+    assert meta["paper_short"] == "June2024"
+
+
+def test_parse_header_requires_paper_and_year():
+    assert isol.parse_header("SUBJECT: POB\nSESSION: June\n") is None        # no PAPER/YEAR
+    assert isol.parse_header("PAPER: 2\nYEAR: not-a-year\n") is None          # no 4-digit year
+
+
+def test_parse_header_without_session():
+    meta = isol.parse_header("PAPER: 1\nYEAR: 2019\n\nQUESTION 1\nx\n")
+    assert meta["paper_label"] == "Paper 1 - 2019"
+    assert meta["paper_short"] == "P12019"
+
+
+def test_parse_questions():
+    qs = isol.parse_questions(SAMPLE)
+    assert [q["num"] for q in qs] == [1, 2, 3]
+    assert "entrepreneur performs" in qs[0]["stem"]
+    assert "ANSWER" not in qs[0]["stem"]               # the separator is not part of the stem
+    assert len(qs[0]["points"]) == 3
+    assert len(qs[2]["points"]) == 4
+    assert qs[0]["points"][0].startswith("Organising the factors")
+
+
+# ---------------------------------------------------------------------------
+# Storage: chunks, mark_points, FK integrity, quiz visibility
+# ---------------------------------------------------------------------------
+def test_stem_chunks_created(db):
+    meta, counts = ingest_sample(db)
+    assert meta["paper_label"] == "Paper 2 - June 2024"
+    assert counts["questions"] == 3
+
+    stems = db.execute(
+        "SELECT chunk_id, objective_id, question_num FROM chunks "
+        "WHERE chunk_id LIKE '%-stem' ORDER BY chunk_id"
+    ).fetchall()
+    assert len(stems) == 3
+    # chunk_id format: {objective_id}-{paper_short}-q{num}-stem
+    ids = {r["chunk_id"] for r in stems}
+    assert "POB-1.1-June2024-q1-stem" in ids
+    assert "POB-1.2-June2024-q2-stem" in ids
+    assert "POB-5.1-June2024-q3-stem" in ids
+    # every stem chunk carries a real question_num (the quiz filter needs it)
+    assert all(r["question_num"] is not None for r in stems)
+
+
+def test_mark_points_fk_to_chunks(db):
+    ingest_sample(db)
+
+    # 3 + 3 + 4 bullets across the three questions
+    total = db.execute("SELECT COUNT(*) FROM mark_points").fetchone()[0]
+    assert total == 10
+
+    # Every mark point's question_id must equal an existing '-stem' chunk_id, and
+    # its objective_id must match that chunk's objective_id (FK + key integrity).
+    orphans = db.execute(
+        """
+        SELECT mp.mark_point_id
+        FROM   mark_points mp
+        LEFT   JOIN chunks c ON c.chunk_id = mp.question_id
+        WHERE  c.chunk_id IS NULL
+            OR c.objective_id <> mp.objective_id
+        """
+    ).fetchall()
+    assert orphans == []
+
+    # mark_point_id format: {chunk_id}-mp{n}
+    q1 = db.execute(
+        "SELECT mark_point_id, point_order FROM mark_points "
+        "WHERE question_id = 'POB-1.1-June2024-q1-stem' ORDER BY point_order"
+    ).fetchall()
+    assert [r["mark_point_id"] for r in q1] == [
+        "POB-1.1-June2024-q1-stem-mp1",
+        "POB-1.1-June2024-q1-stem-mp2",
+        "POB-1.1-June2024-q1-stem-mp3",
+    ]
+
+
+def test_chunks_visible_to_quiz_page_query(db):
+    """The chunks must satisfy the exact GET /api/questions filter (app.py)."""
+    ingest_sample(db)
     rows = db.execute(
-        "SELECT point_text, objective_id, point_order FROM mark_points "
-        "WHERE question_id = ? ORDER BY point_order", (qid,)
+        """
+        SELECT c.chunk_id AS question_id,
+               c.question_num AS question_num,
+               d.paper AS paper,
+               d.year AS year,
+               (SELECT COUNT(*) FROM mark_points mp
+                  WHERE mp.question_id = c.chunk_id) AS marks_total
+        FROM   chunks c
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.subject_id = ?
+          AND  d.content_type IN ('past_paper', 'mark_scheme')
+          AND  c.question_num IS NOT NULL
+          AND  c.chunk_id LIKE '%-stem'
+        ORDER  BY c.question_num ASC
+        """,
+        (SUBJECT,),
     ).fetchall()
     assert len(rows) == 3
-    assert rows[0]["point_text"].startswith("Accountant")
-    assert rows[0]["objective_id"] == "POB-1.14"        # careers objective
-    assert counts["mark_points"] == 6                   # 3 + 3 across both parts
-
-    # stem chunk exists so the question picker can show the prompt
-    stem = db.execute(
-        "SELECT chunk_text, question_num FROM chunks WHERE chunk_id = ?", (qid + "-stem",)
-    ).fetchone()
-    assert stem is not None
-    assert stem["question_num"] == "1(a)"
-    assert "List THREE careers" in stem["chunk_text"]
-
-    # Q1(b) maps to the stakeholders objective
-    b = db.execute(
-        "SELECT DISTINCT objective_id FROM mark_points WHERE question_id = ?",
-        ("POB-2026Jan-P2-q1b",)
-    ).fetchone()
-    assert b["objective_id"] == "POB-1.10"
+    assert [r["paper"] for r in rows] == ["Paper 2 - June 2024"] * 3
+    assert [r["year"] for r in rows] == [2024, 2024, 2024]
+    # The quiz page's mark-count subquery resolves (>0) for every question.
+    assert all(r["marks_total"] > 0 for r in rows)
+    assert [r["marks_total"] for r in rows] == [3, 3, 4]
 
 
-def test_ingest_offline_writes_no_vectors(db):
-    """Default (embed_fn=None) stores mark points but indexes no embeddings."""
-    counts = isol.new_counts()
-    isol.ingest_solution_lines(
-        db, lines=lines_of(SAMPLE), subject_id="Principles_of_Business",
-        source_file=r"D:\sol\jan2026.pdf", objectives=objectives(db),
-        counts=counts, code="POB",
-    )
-    db.commit()
-    assert db.execute("SELECT count(*) FROM vec_mark_schemes").fetchone()[0] == 0
-    assert db.execute("SELECT count(*) FROM mark_points").fetchone()[0] == 6
+def test_stem_chunks_embedded_into_vec_mark_schemes(db):
+    ingest_sample(db)
+    chunk_ids = [r["id"] for r in db.execute(
+        "SELECT id FROM chunks WHERE chunk_id LIKE '%-stem'"
+    ).fetchall()]
+    placeholders = ",".join("?" * len(chunk_ids))
+    indexed = db.execute(
+        f"SELECT COUNT(*) FROM vec_mark_schemes WHERE rowid IN ({placeholders})",
+        chunk_ids,
+    ).fetchone()[0]
+    assert indexed == 3
 
 
-PROSE_SAMPLE = """\
-January 2026 Paper 02
-Question 1
-1(c) Stakeholders in business
-Describe the role of the stakeholders involved in business activities. (4 marks)
-Owners provide the capital and expect a profit in return. Employees provide their
-labour in exchange for wages and depend on the business for job security.
-"""
-
-
-def test_prose_no_bullets_retains_answer_body_and_columns(db):
-    """A matched prose (no-bullet) answer is queued with reason
-    'prose_answer_no_bullets', the answer body retained, and objective_id/doc_id
-    populated on the row -- and produces no mark points."""
-    counts = isol.new_counts()
-    isol.ingest_solution_lines(
-        db, lines=lines_of(PROSE_SAMPLE), subject_id="Principles_of_Business",
-        source_file=r"D:\sol\jan2026.pdf", objectives=objectives(db),
-        counts=counts, code="POB",
-    )
-    db.commit()
-
-    assert db.execute("SELECT count(*) FROM mark_points").fetchone()[0] == 0
-    q = db.execute(
-        "SELECT chunk_text, reason, objective_id, doc_id FROM ingest_review_queue"
-    ).fetchone()
-    assert q["reason"] == "prose_answer_no_bullets"
-    assert q["objective_id"] == "POB-1.10"          # stakeholders objective
-    assert q["doc_id"] is not None                   # known doc recorded on the row
-    assert "ANSWER:" in q["chunk_text"]
-    assert "Describe the role" in q["chunk_text"]    # question stem retained
-    assert "Owners provide the capital" in q["chunk_text"]  # prose answer retained
-    assert counts["queued_no_points"] == 1
-
-
-def test_unmatched_subquestion_queued_not_stored(db):
+def test_unmatched_question_goes_to_review_queue(db):
     text = (
-        "January 2026 Paper 02\n1(a) Off-syllabus\n"
-        "Xyzzy plugh frobnicate quux wibble. (2 marks)\n"
-        "•\nzorp blarg wibble frobnicate.\n"
+        "PAPER: 2\nSESSION: June\nYEAR: 2024\n\n"
+        "QUESTION 1\nXyzzy plugh frobnicate quux wibble zorp grault.\n"
+        "ANSWER:\n- garply waldo fred plugh\n"
     )
     counts = isol.new_counts()
-    isol.ingest_solution_lines(
-        db, lines=lines_of(text), subject_id="Principles_of_Business",
-        source_file=r"D:\sol\x.pdf", objectives=objectives(db),
-        counts=counts, code="POB",
+    isol.ingest_solution_text(
+        db, text=text, subject_id=SUBJECT, source_file="unmatched.txt",
+        objectives=objectives(db), counts=counts, embed_fn=fake_embed,
+        content_hash="hash-unmatched",
     )
     db.commit()
-    assert db.execute("SELECT count(*) FROM mark_points").fetchone()[0] == 0
-    q = db.execute("SELECT reason FROM ingest_review_queue").fetchone()
-    assert q["reason"] == "no_objective_match"
+
+    assert counts["questions"] == 0
     assert counts["queued_no_objective"] == 1
+    assert db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM mark_points").fetchone()[0] == 0
+    queued = db.execute("SELECT reason FROM ingest_review_queue").fetchall()
+    assert [r["reason"] for r in queued] == ["no_objective_match"]
 
 
-def test_no_session_header_queues_whole_doc(db):
+def test_question_without_bullets_is_queued_not_stored(db):
+    text = (
+        "PAPER: 2\nSESSION: June\nYEAR: 2024\n\n"
+        "QUESTION 1\nExplain the functions of the entrepreneur in a business.\n"
+        "ANSWER:\nThe entrepreneur organises production and bears risk.\n"
+    )
     counts = isol.new_counts()
-    meta = isol.ingest_solution_lines(
-        db, lines=lines_of("a page with no recognizable header\nsome prose"),
-        subject_id="Principles_of_Business", source_file=r"D:\sol\bad.pdf",
-        objectives=objectives(db), counts=counts, code="POB",
+    isol.ingest_solution_text(
+        db, text=text, subject_id=SUBJECT, source_file="prose.txt",
+        objectives=objectives(db), counts=counts, embed_fn=fake_embed,
+        content_hash="hash-prose",
+    )
+    db.commit()
+
+    assert counts["questions"] == 0
+    assert counts["queued_no_points"] == 1
+    assert db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] == 0
+    row = db.execute(
+        "SELECT reason, objective_id FROM ingest_review_queue"
+    ).fetchone()
+    assert row["reason"] == "no_mark_points"
+    assert row["objective_id"] == "POB-1.1"   # objective resolved, just no bullets
+
+
+def test_missing_header_is_queued(db):
+    counts = isol.new_counts()
+    meta = isol.ingest_solution_text(
+        db, text="QUESTION 1\nno header here\nANSWER:\n- a point\n",
+        subject_id=SUBJECT, source_file="bad.txt",
+        objectives=objectives(db), counts=counts, embed_fn=fake_embed,
+        content_hash="hash-bad",
     )
     db.commit()
     assert meta is None
-    assert db.execute("SELECT count(*) FROM documents").fetchone()[0] == 0
-    assert db.execute(
-        "SELECT reason FROM ingest_review_queue"
-    ).fetchone()["reason"] == "no_session_header"
+    assert counts["files"] == 0
+    row = db.execute("SELECT reason FROM ingest_review_queue").fetchone()
+    assert row["reason"] == "no_header"
+
+
+def test_locked_subject_gate_reused(db):
+    isol.assert_subject_locked(db, SUBJECT)        # no SystemExit
+    with pytest.raises(SystemExit):
+        isol.assert_subject_locked(db, "Nonexistent_Subject")

@@ -224,12 +224,45 @@ CREATE TABLE IF NOT EXISTS revision_schedule (
     created_at   TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS practice_questions (
+    question_id   TEXT PRIMARY KEY,
+    objective_id  TEXT NOT NULL REFERENCES objectives(objective_id),
+    subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+    stem          TEXT NOT NULL,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS study_plan (
+    plan_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+    objective_id  TEXT NOT NULL REFERENCES objectives(objective_id),
+    status        TEXT NOT NULL DEFAULT 'unmet',
+        -- unmet | in_progress | met_once | mastered
+    met_count     INTEGER NOT NULL DEFAULT 0,
+    last_met_at   TEXT,
+    created_at    TEXT DEFAULT (datetime('now')),
+    UNIQUE(subject_id, objective_id)
+);
+
+CREATE TABLE IF NOT EXISTS study_batches (
+    batch_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id      TEXT NOT NULL REFERENCES subjects(subject_id),
+    objective_ids   TEXT NOT NULL,   -- JSON array of objective_ids
+    synthesis_qid   TEXT,            -- question_id of the synthesis question
+    status          TEXT NOT NULL DEFAULT 'active',
+        -- active | completed | abandoned
+    created_at      TEXT DEFAULT (datetime('now')),
+    completed_at    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ingest_review_queue (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_file TEXT NOT NULL,
-    chunk_text  TEXT NOT NULL,
-    reason      TEXT,
-    created_at  TEXT DEFAULT (datetime('now'))
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_file  TEXT NOT NULL,
+    chunk_text   TEXT NOT NULL,
+    reason       TEXT,
+    objective_id TEXT,                          -- known at queue time (prose rows)
+    doc_id       TEXT REFERENCES documents(doc_id),
+    created_at   TEXT DEFAULT (datetime('now'))
 );
 
 -- sqlite-vec virtual tables  (EMBED_DIM = 768 for nomic-embed-text)

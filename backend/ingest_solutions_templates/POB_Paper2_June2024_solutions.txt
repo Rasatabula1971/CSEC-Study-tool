@@ -1,0 +1,43 @@
+SUBJECT: Principles_of_Business
+PAPER: 2
+SESSION: June
+YEAR: 2024
+
+# -------------------------------------------------------------------------
+# FORMAT NOTES ('#' lines and blank lines are ignored by the ingester):
+#
+#   * Header above: PAPER and YEAR are REQUIRED. SESSION and SUBJECT optional.
+#   * Each question starts with a line "QUESTION <n>".
+#   * Everything from that line up to "ANSWER:" is the QUESTION STEM
+#     (it may span several lines).
+#   * Everything after "ANSWER:" is the MARK SCHEME -- one bullet per markable
+#     point. Bullet markers "-", "*", "" are all accepted.
+#   * IMPORTANT: keep each mark point on a SINGLE line. A wrapped continuation
+#     line (one that does not start with a bullet) is dropped, which would
+#     truncate the point text.
+#   * Each question is mapped to a syllabus objective by keyword overlap, so
+#     write the stem and points in plain syllabus language for a solid match.
+# -------------------------------------------------------------------------
+
+QUESTION 1
+Maria has decided to start her own small business selling handmade jewellery rather than seek paid employment. Explain THREE functions that Maria, as the entrepreneur, will perform in setting up and running her business.
+ANSWER:
+- Organising the factors of production -- bringing together land, labour and capital so the business can produce its goods.
+- Bearing the risk of the business -- accepting the possibility of financial loss if the jewellery does not sell.
+- Decision making -- choosing what to produce, how to produce it and how to finance the venture.
+
+QUESTION 2
+Distinguish between the private sector and the public sector, and state ONE example of an organisation found in each sector in your country.
+ANSWER:
+- The private sector is owned and controlled by individuals or private firms with the main aim of earning profit.
+- The public sector is owned and controlled by the government, mainly to provide essential services to the population.
+- A valid private-sector example, such as a sole-trader shop or a commercial bank.
+- A valid public-sector example, such as the police service or a state-owned utility.
+
+QUESTION 3
+Outline FOUR reasons why a business should keep proper accounting records.
+ANSWER:
+- To monitor the profit or loss the business is making over a period.
+- To help the owner make informed financial decisions and plan ahead.
+- To meet legal requirements such as calculating and paying taxes.
+- To provide information that supports a request for a loan or other finance.
