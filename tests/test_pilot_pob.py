@@ -30,6 +30,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from unittest.mock import patch, MagicMock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -38,6 +39,8 @@ sys.path.insert(0, str(ROOT / "backend" / "db"))
 
 import controller  # noqa: E402
 import init_db      # noqa: E402  (production open_db / init_schema)
+import app as app_module        # noqa: E402  (apply_runtime_migrations)
+from weakness import log_weakness  # noqa: E402
 
 SCHEMA_PATH = ROOT / "backend" / "db" / "schema.sql"
 SUBJECT = "Principles_of_Business"
@@ -399,3 +402,244 @@ def test_group6_lock_gate_unlocked_subject_no_llm(db):
         chat_fn=boom_chat, embed_fn=boom_embed,   # gate must trip before either
     )
     assert out == {"error": "out_of_scope"}
+
+
+# ===========================================================================
+# Stage 7 integration class — the six-part full study loop, driven through
+# controller.handle_request against a real (in-memory) DB that includes the
+# runtime migrations. Ollama is mocked with unittest.mock.patch in every test
+# that reaches the controller; the real Ollama is never contacted.
+#
+# Setup differs from the module-level fixture above in two deliberate ways the
+# Stage 7 spec calls for: the DB has apply_runtime_migrations() applied, and the
+# mark_points use the canonical '-stem' question_id convention.
+# ===========================================================================
+ZERO_VEC = [0.0] * EMBED_DIM   # fixed test embedding — never calls Ollama
+
+
+def open_loop_db():
+    """Real :memory: DB: production open_db + schema.sql + runtime migrations."""
+    try:
+        import sqlite_vec  # noqa: F401
+    except ImportError:
+        pytest.skip("sqlite-vec not installed -- skipping pilot loop tests")
+    db = init_db.open_db(":memory:")
+    init_db.init_schema(db, SCHEMA_PATH)
+    app_module.apply_runtime_migrations(db)   # the three runtime tables + question_id fix
+    return db
+
+
+def seed_loop(db) -> None:
+    """POB slice for the full-loop class: 3 objectives, 5 '-stem' mark points,
+    2 vec_notes + 2 vec_mark_schemes chunks (zero vectors), and a past-paper
+    chunk (POB_2024_P2.pdf, page 4) linked to POB-1.1 for traceability.
+
+    POB-1.1 deliberately has NO notes chunk, so its teach context resolves to the
+    past-paper chunk -- exercising both the teach loop and traceability.
+    """
+    db.execute(
+        "INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, ?, 1)",
+        (SUBJECT, "Principles of Business"),
+    )
+    db.execute(
+        "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
+        "VALUES ('POB-SEC-1', ?, 'Nature of Business', '1')",
+        (SUBJECT,),
+    )
+    for oid, num, stmt in [
+        ("POB-1.1", "1.1", "Explain the nature and functions of a business"),
+        ("POB-1.2", "1.2", "Describe the types of economic activity"),
+        ("POB-1.3", "1.3", "Outline the factors of production"),
+    ]:
+        db.execute(
+            "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt) "
+            "VALUES (?, 'POB-SEC-1', ?, ?, ?)",
+            (oid, SUBJECT, num, stmt),
+        )
+
+    db.executemany(
+        "INSERT INTO documents (doc_id, subject_id, content_type, paper, year, source_file, content_hash) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("doc_notes", SUBJECT, "notes",       None, None, "pob_notes.pdf",      "hash_notes"),
+            ("doc_ms",    SUBJECT, "mark_scheme",  None, None, "pob_markscheme.pdf", "hash_ms"),
+            ("doc_trace", SUBJECT, "past_paper",   "P2", 2024, "POB_2024_P2.pdf",    "hash_trace"),
+        ],
+    )
+
+    # 2 notes chunks -> vec_notes (POB-1.2, POB-1.3 -- NOT POB-1.1)
+    for oid, text, page, cid in [
+        ("POB-1.2", "Economic activity is primary, secondary or tertiary.", 5, "c_notes_1"),
+        ("POB-1.3", "The factors of production are land, labour, capital and enterprise.", 6, "c_notes_2"),
+    ]:
+        cur = db.execute(
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, page, chunk_id) "
+            "VALUES ('doc_notes', ?, ?, ?, ?, ?)",
+            (oid, SUBJECT, text, page, cid),
+        )
+        db.execute("INSERT INTO vec_notes (rowid, embedding) VALUES (?, ?)",
+                   (cur.lastrowid, _serialize(ZERO_VEC)))
+
+    # 2 mark-scheme chunks -> vec_mark_schemes
+    for oid, text, page, cid in [
+        ("POB-1.2", "Mark scheme: 1 mark per correct type of economic activity.", 7, "c_ms_1"),
+        ("POB-1.3", "Mark scheme: land, labour, capital, enterprise.", 9, "c_ms_2"),
+    ]:
+        cur = db.execute(
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, page, chunk_id) "
+            "VALUES ('doc_ms', ?, ?, ?, ?, ?)",
+            (oid, SUBJECT, text, page, cid),
+        )
+        db.execute("INSERT INTO vec_mark_schemes (rowid, embedding) VALUES (?, ?)",
+                   (cur.lastrowid, _serialize(ZERO_VEC)))
+
+    # Past-paper chunk for POB-1.1 -> drives traceability (source_file + page).
+    db.execute(
+        "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, page, question_num, chunk_id) "
+        "VALUES ('doc_trace', 'POB-1.1', ?, ?, 4, '1a', 'c_trace_1')",
+        (SUBJECT, "Define the term 'business' and state one function. (2 marks)"),
+    )
+
+    # 5 mark points across POB-1.1 (3) and POB-1.2 (2); question_id ends in '-stem'.
+    mark_points = [
+        ("POB-1.1-q1-stem-mp1", "POB-1.1", "POB-1.1-q1-stem", "an organisation/entity", 1),
+        ("POB-1.1-q1-stem-mp2", "POB-1.1", "POB-1.1-q1-stem", "supplies goods and services", 2),
+        ("POB-1.1-q1-stem-mp3", "POB-1.1", "POB-1.1-q1-stem", "to satisfy needs/wants", 3),
+        ("POB-1.2-q2-stem-mp1", "POB-1.2", "POB-1.2-q2-stem", "primary economic activity", 1),
+        ("POB-1.2-q2-stem-mp2", "POB-1.2", "POB-1.2-q2-stem", "secondary economic activity", 2),
+    ]
+    for mp_id, oid, qid, text, order in mark_points:
+        db.execute(
+            "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+            "point_text, marks_value, point_order) VALUES (?, ?, ?, 'doc_ms', ?, 1, ?)",
+            (mp_id, oid, qid, text, order),
+        )
+
+    db.commit()
+
+
+@pytest.fixture
+def loop_db():
+    conn = open_loop_db()
+    seed_loop(conn)
+    yield conn
+    conn.close()
+
+
+class TestPOBStudyLoop:
+    """The six Stage 7 acceptance tests for the full POB study loop."""
+
+    def test_teach_loop(self, loop_db):
+        """teach for POB-1.1 returns a non-empty lesson containing a question."""
+        # MOCK ollama_chat (Tutor role): lesson body with one embedded question.
+        def fake_chat(messages, system, schema=None):
+            return ("A business is an organisation that supplies goods and services.\n"
+                    "Example: a bakery sells bread to customers.\n"
+                    "Q: What is the main purpose of a business?")
+
+        with patch("controller.ollama_chat", fake_chat):
+            out = controller.handle_request(
+                loop_db,
+                {"route": "teach", "subject_id": SUBJECT,
+                 "objective_id": "POB-1.1", "query": "nature of a business"},
+            )
+        assert out["route"] == "teach"
+        assert out["objective_id"] == "POB-1.1"
+        # The controller returns the lesson (with the question embedded) under the
+        # single "lesson" key -- there is no separate lesson_text/question field.
+        lesson = out["lesson"]
+        assert isinstance(lesson, str) and lesson.strip()   # lesson_text: non-empty
+        assert "?" in lesson                                 # a question is present
+
+    def test_grading_loop(self, loop_db):
+        """2 of 3 mark points awarded -> Python score 67; fail (<70) -> Leitner box 1."""
+        # MOCK ollama_chat (Examiner role): valid GRADING_SCHEMA JSON, 2/3 awarded.
+        grading_json = json.dumps({
+            "objective_id": "POB-1.1",
+            "question_id": "POB-1.1-q1-stem",
+            "points": [
+                {"mark_point_id": "POB-1.1-q1-stem-mp1", "awarded": True,  "evidence": "organisation"},
+                {"mark_point_id": "POB-1.1-q1-stem-mp2", "awarded": True,  "evidence": "goods/services"},
+                {"mark_point_id": "POB-1.1-q1-stem-mp3", "awarded": False, "evidence": "purpose not stated"},
+            ],
+        })
+
+        def fake_chat(messages, system, schema=None):
+            return grading_json
+
+        with patch("controller.ollama_chat", fake_chat):
+            out = controller.handle_request(
+                loop_db,
+                {"route": "grade", "subject_id": SUBJECT, "question_id": "POB-1.1-q1-stem",
+                 "student_answer": "A business is an organisation that supplies goods."},
+            )
+        assert out["score_pct"] == 67          # round(100 * 2/3), computed in Python
+        row = loop_db.execute(
+            "SELECT leitner_box FROM weakness_log WHERE objective_id = 'POB-1.1'"
+        ).fetchone()
+        assert row is not None
+        assert row["leitner_box"] == 1         # score < 70 -> reset to box 1
+
+    def test_scope_gate(self, loop_db):
+        """An unknown subject is refused with no LLM call."""
+        # MOCK ollama_chat: must NOT be called for an out-of-scope request.
+        mock_chat = MagicMock(name="ollama_chat")
+        with patch("controller.ollama_chat", mock_chat):
+            out = controller.handle_request(
+                loop_db,
+                {"route": "teach", "subject_id": "Fake_Subject",
+                 "objective_id": "FAKE-1.1", "query": "anything"},
+            )
+        assert out == {"error": "out_of_scope"}
+        mock_chat.assert_not_called()
+
+    def test_revision_plan(self, loop_db):
+        """3 objectives due today (boxes 1, 2, 1) come back ordered by box ascending."""
+        today = date.today().isoformat()
+        loop_db.executemany(
+            "INSERT INTO weakness_log (objective_id, subject_id, score_pct, leitner_box, next_review) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                ("POB-1.1", SUBJECT, 30, 1, today),
+                ("POB-1.2", SUBJECT, 50, 2, today),
+                ("POB-1.3", SUBJECT, 40, 1, today),
+            ],
+        )
+        loop_db.commit()
+
+        # MOCK ollama_chat: the plan route is fully deterministic -> no LLM call.
+        mock_chat = MagicMock(name="ollama_chat")
+        with patch("controller.ollama_chat", mock_chat):
+            out = controller.handle_request(loop_db, {"route": "plan", "subject_id": SUBJECT})
+
+        tasks = out["tasks"]
+        ids = [t["objective_id"] for t in tasks]
+        assert {"POB-1.1", "POB-1.2", "POB-1.3"}.issubset(set(ids))
+        boxes = [t["leitner_box"] for t in tasks]
+        assert boxes == sorted(boxes)                       # ascending by leitner_box
+        # the box-2 objective comes after both box-1 objectives
+        assert ids.index("POB-1.2") > ids.index("POB-1.1")
+        assert ids.index("POB-1.2") > ids.index("POB-1.3")
+        mock_chat.assert_not_called()
+
+    def test_traceability(self, loop_db):
+        """teach for POB-1.1 surfaces objective_id + source_file + page (VAL-08)."""
+        # MOCK ollama_chat (Tutor role): traceability is about the source metadata.
+        def fake_chat(messages, system, schema=None):
+            return "Lesson grounded in the 2024 P2 extract.\nQ: Define a business."
+
+        with patch("controller.ollama_chat", fake_chat):
+            out = controller.handle_request(
+                loop_db,
+                {"route": "teach", "subject_id": SUBJECT,
+                 "objective_id": "POB-1.1", "query": "define business"},
+            )
+        assert out["objective_id"] == "POB-1.1"
+        assert out["source_file"] == "POB_2024_P2.pdf"
+        assert out["page"] == 4
+
+    def test_weakness_validation(self, loop_db):
+        """log_weakness raises ValueError on a missing required field (never silent)."""
+        # No controller / no Ollama: a malformed grading_result must be rejected.
+        with pytest.raises(ValueError):
+            log_weakness(loop_db, {"subject_id": SUBJECT, "score_pct": 50}, session_id=0)  # no objective_id
