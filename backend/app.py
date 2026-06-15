@@ -213,9 +213,15 @@ class StartBatchRequest(BaseModel):
 
 
 class BatchQuestionRequest(BaseModel):
-    """Ask for the question at one step of a batch. step = "1".."N" | "synthesis"."""
+    """Ask for the question at one step of a batch. step = "1".."N" | "synthesis".
+
+    lesson_context: the lesson text the student just read (already stripped of its
+    own trailing question). When present, the generator is constrained to test what
+    that lesson actually taught, so the question card stays aligned with the lesson.
+    """
     batch_id: int
     step: str = Field(min_length=1)
+    lesson_context: str | None = None
 
 
 class GradeBatchRequest(BaseModel):
@@ -549,6 +555,8 @@ def plan_start_batch(body: StartBatchRequest, request: Request) -> dict:
 def plan_batch_question(body: BatchQuestionRequest, request: Request) -> dict:
     """Generate the question for one step of a batch (per-objective or synthesis)."""
     req = {"route": "batch_question", "batch_id": body.batch_id, "step": body.step}
+    if body.lesson_context:
+        req["lesson_context"] = body.lesson_context
     return handle_request(request.app.state.db, req)
 
 

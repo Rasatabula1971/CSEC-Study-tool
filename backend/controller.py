@@ -484,13 +484,28 @@ def _handle_batch_question(db, request, chat_fn) -> dict:
     if objective is None:
         return {"error": "unknown_objective"}
 
-    user_msg = (
-        f"OBJECTIVE: {objective_id}\n"
-        f"CONTENT STATEMENT: {objective['content_stmt']}\n\n"
-        "Generate exactly ONE CSEC exam-style practice question that tests this "
-        "objective. Output only the question itself -- no lesson, no answer, no "
-        "preamble."
-    )
+    # When the UI supplies the lesson the student just read, constrain the question
+    # to that lesson so the gradeable card tests exactly what was taught -- the two
+    # are otherwise generated from independent context and drift to different
+    # sub-topics of the same objective.
+    lesson_context = (request.get("lesson_context") or "").strip()
+    if lesson_context:
+        user_msg = (
+            f"The student just read this lesson:\n{lesson_context}\n\n"
+            f"OBJECTIVE: {objective_id}\n"
+            f"CONTENT STATEMENT: {objective['content_stmt']}\n\n"
+            "Generate exactly ONE CSEC exam-style practice question that tests "
+            "exactly what this lesson explains. Do not introduce new sub-topics. "
+            "Output only the question itself -- no lesson, no answer, no preamble."
+        )
+    else:
+        user_msg = (
+            f"OBJECTIVE: {objective_id}\n"
+            f"CONTENT STATEMENT: {objective['content_stmt']}\n\n"
+            "Generate exactly ONE CSEC exam-style practice question that tests this "
+            "objective. Output only the question itself -- no lesson, no answer, no "
+            "preamble."
+        )
     stem = chat_fn([{"role": "user", "content": user_msg}],
                    system=_load_prompt("tutor.txt"))
     question_id = f"batch-{batch['batch_id']}-step-{step}"

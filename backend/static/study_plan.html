@@ -307,9 +307,10 @@
   function stripTrailingQuestion(text){
     if(!text)return text;
     const lines=text.split('\n');
-    // Distinctive lead-in phrases — match ANYWHERE in the line (e.g.
-    // "Now, let's check your understanding:" or "**Active-Recall Question:**").
-    const leadIn=/(active[\s-]*recall|recall\s+question|check\s+your\s+understanding|test\s+your\s+understanding)/i;
+    // Distinctive lead-in phrases — match ANYWHERE in the line. Covers every
+    // tutor heading variant seen: "Now, let's test your understanding:",
+    // "Now, let's check your understanding:", "**Active-Recall Question:**".
+    const leadIn=/(active[\s-]*recall|recall\s+question|(?:check|test|assess)\s+your\s+understanding|your\s+understanding)/i;
     // A bare question heading — only at the line start, so prose like
     // "this raises the question" is never mistaken for a heading.
     const headingRe=/^[\s>*#_-]*(question\b|q[:.)])/i;
@@ -532,9 +533,14 @@
     planStage.innerHTML=`<div class="plan-stepper-header"><span class="plan-step-count">Question ${state.plan.step} of ${totalSteps}</span>${synBanner}</div><div id="planLessonHost"></div>`;
     resetQuestionCard();
     questionCard.innerHTML=`<div class="question-stem" style="color:var(--color-text-muted)">Generating question…</div>`;
-    if(!isSyn)loadLesson(state.plan.objectives[state.plan.step-1]);
+    // Load the lesson FIRST (awaited) so it always renders before the question, then
+    // feed its text to the generator so the gradeable question tests what was taught.
+    let lessonContext='';
+    if(!isSyn)lessonContext=await loadLesson(state.plan.objectives[state.plan.step-1]);
     try{
-      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)})});
+      const reqBody={batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)};
+      if(lessonContext)reqBody.lesson_context=lessonContext;
+      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
       if(!res.ok){showError(`Couldn't load the question (${res.status}).`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}
@@ -543,18 +549,28 @@
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
   }
 
+  // Loads + renders the lesson for an objective and RETURNS the stripped lesson
+  // text (or '' if none), so loadBatchStep can pass it as context to the question
+  // generator. Awaited by the caller, which is what guarantees lesson-before-question.
   async function loadLesson(objective){
-    if(!objective)return;
-    const host=document.getElementById('planLessonHost');if(!host)return;
+    if(!objective)return '';
+    const host=document.getElementById('planLessonHost');if(!host)return '';
     host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div><span style="color:var(--color-text-muted)">Loading lesson…</span></div>`;
     try{
       const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Teach me this objective',subject_id:state.subjectId,route:'teach',objective_id:objective.objective_id})});
       const data=res.ok?await res.json():{};
+      console.log('[study-plan] raw lesson from /api/chat:', JSON.stringify(data&&data.lesson));
       // Lesson is best-effort: if no notes are ingested (teach has no context),
       // silently drop it and let the student answer the question directly.
-      if(data&&data.lesson){host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(stripTrailingQuestion(data.lesson))}</div>`;}
-      else{host.innerHTML='';}
-    }catch{host.innerHTML='';}
+      if(data&&data.lesson){
+        const lessonText=stripTrailingQuestion(data.lesson);
+        console.log('[study-plan] lesson after stripTrailingQuestion:', JSON.stringify(lessonText));
+        host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonText)}</div>`;
+        return lessonText;
+      }
+      host.innerHTML='';
+      return '';
+    }catch{host.innerHTML='';return '';}
   }
 
   async function submitBatchAnswer(){
