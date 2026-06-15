@@ -298,6 +298,33 @@
 
   function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
   function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
+  // The Tutor lesson always ends with one active-recall question (tutor.txt).
+  // In the Study Plan the gradeable question is the separate Question card, so that
+  // trailing lesson question is a confusing duplicate — strip it here (display only;
+  // the chat page still shows it). Cut at the last "...Question"/"Q:" heading; if the
+  // lesson has none, drop a trailing paragraph that is itself a question.
+  function stripTrailingQuestion(text){
+    if(!text)return text;
+    const lines=text.split('\n');
+    const markerRe=/^[\s>*#_-]*(active[\s-]*recall|recall\s+question|check\s+your\s+understanding|question\b|q[:.)])/i;
+    for(let i=lines.length-1;i>=0;i--){
+      if(markerRe.test(lines[i])){
+        const head=lines.slice(0,i).join('\n').trim();
+        if(head)return head;            // never strip the whole lesson away
+        break;
+      }
+    }
+    // Fallback: no labelled heading — drop the final paragraph if it ends with '?'.
+    let end=lines.length;
+    while(end>0&&lines[end-1].trim()==='')end--;
+    let start=end;
+    while(start>0&&lines[start-1].trim()!=='')start--;
+    if(lines.slice(start,end).join(' ').trim().endsWith('?')){
+      const head=lines.slice(0,start).join('\n').trim();
+      if(head)return head;
+    }
+    return text.trim();
+  }
   function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
   function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
   function hideError(){errorNotice.classList.remove('visible');}
@@ -519,7 +546,7 @@
       const data=res.ok?await res.json():{};
       // Lesson is best-effort: if no notes are ingested (teach has no context),
       // silently drop it and let the student answer the question directly.
-      if(data&&data.lesson){host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(data.lesson)}</div>`;}
+      if(data&&data.lesson){host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(stripTrailingQuestion(data.lesson))}</div>`;}
       else{host.innerHTML='';}
     }catch{host.innerHTML='';}
   }
