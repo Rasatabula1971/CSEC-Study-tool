@@ -301,20 +301,26 @@
   // The Tutor lesson always ends with one active-recall question (tutor.txt).
   // In the Study Plan the gradeable question is the separate Question card, so that
   // trailing lesson question is a confusing duplicate — strip it here (display only;
-  // the chat page still shows it). Cut at the last "...Question"/"Q:" heading; if the
-  // lesson has none, drop a trailing paragraph that is itself a question.
+  // the chat page still shows it). Cut at the lead-in that introduces the question
+  // (so the lesson never ends on a dangling "...check your understanding:"); if the
+  // lesson has no labelled lead-in, drop a trailing paragraph that is itself a question.
   function stripTrailingQuestion(text){
     if(!text)return text;
     const lines=text.split('\n');
-    const markerRe=/^[\s>*#_-]*(active[\s-]*recall|recall\s+question|check\s+your\s+understanding|question\b|q[:.)])/i;
+    // Distinctive lead-in phrases — match ANYWHERE in the line (e.g.
+    // "Now, let's check your understanding:" or "**Active-Recall Question:**").
+    const leadIn=/(active[\s-]*recall|recall\s+question|check\s+your\s+understanding|test\s+your\s+understanding)/i;
+    // A bare question heading — only at the line start, so prose like
+    // "this raises the question" is never mistaken for a heading.
+    const headingRe=/^[\s>*#_-]*(question\b|q[:.)])/i;
     for(let i=lines.length-1;i>=0;i--){
-      if(markerRe.test(lines[i])){
+      if(leadIn.test(lines[i])||headingRe.test(lines[i])){
         const head=lines.slice(0,i).join('\n').trim();
         if(head)return head;            // never strip the whole lesson away
         break;
       }
     }
-    // Fallback: no labelled heading — drop the final paragraph if it ends with '?'.
+    // Fallback: no labelled lead-in — drop the final paragraph if it ends with '?'.
     let end=lines.length;
     while(end>0&&lines[end-1].trim()==='')end--;
     let start=end;
