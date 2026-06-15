@@ -266,6 +266,9 @@
   const API_BASE='http://127.0.0.1:8000';
   const state={subjectId:'',subjectDisplay:'',
     questionId:null,questionStem:'',marksTotal:0,isGrading:false,
+    // Per-objective grading sends these instead of a stored question_id: the
+    // question text extracted from the lesson, and the objective it belongs to.
+    questionText:'',questionFromLesson:false,currentObjectiveId:null,
     plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
       currentIsSynthesis:false,results:[],synthScore:null,progress:null}};
 
@@ -298,40 +301,75 @@
 
   function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
   function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
-  // The Tutor lesson always ends with one active-recall question (tutor.txt).
-  // In the Study Plan the gradeable question is the separate Question card, so that
-  // trailing lesson question is a confusing duplicate — strip it here (display only;
-  // the chat page still shows it). Cut at the lead-in that introduces the question
-  // (so the lesson never ends on a dangling "...check your understanding:"); if the
-  // lesson has no labelled lead-in, drop a trailing paragraph that is itself a question.
-  function stripTrailingQuestion(text){
-    if(!text)return text;
-    const lines=text.split('\n');
-    // Distinctive lead-in phrases — match ANYWHERE in the line. Covers every
-    // tutor heading variant seen: "Now, let's test your understanding:",
-    // "Now, let's check your understanding:", "**Active-Recall Question:**".
-    const leadIn=/(active[\s-]*recall|recall\s+question|(?:check|test|assess)\s+your\s+understanding|your\s+understanding)/i;
-    // A bare question heading — only at the line start, so prose like
-    // "this raises the question" is never mistaken for a heading.
-    const headingRe=/^[\s>*#_-]*(question\b|q[:.)])/i;
-    for(let i=lines.length-1;i>=0;i--){
-      if(leadIn.test(lines[i])||headingRe.test(lines[i])){
-        const head=lines.slice(0,i).join('\n').trim();
-        if(head)return head;            // never strip the whole lesson away
-        break;
+  // The Tutor lesson always ends with one active-recall question (tutor.txt). The
+  // study plan now makes ONE LLM call (the lesson) and reuses that embedded question
+  // as the gradeable card, so lesson and question can never describe different
+  // sub-topics. Returns { lessonClean, questionText }: split at the LAST question
+  // heading; if none matches, the last non-empty paragraph is the question.
+  function extractQuestionFromLesson(lesson) {
+    if (!lesson) return { lessonClean: '', questionText: '' };
+
+    const patterns = [
+      /\*{0,2}\s*active[- ]recall question\s*\*{0,2}\s*:/gi,
+      /\*{0,2}\s*now,?\s+let'?s (?:test|check) your understanding\s*\*{0,2}\s*:/gi,
+      /\*{0,2}\s*(?:test|check|assess) your understanding\s*\*{0,2}\s*:/gi,
+      /\*{0,2}\s*question\s*\*{0,2}\s*:/gi,
+    ];
+
+    let bestMatch = null;
+    for (const re of patterns) {
+      let m;
+      while ((m = re.exec(lesson)) !== null) {
+        if (!bestMatch || m.index > bestMatch.index) {
+          bestMatch = { index: m.index, length: m[0].length };
+        }
       }
     }
-    // Fallback: no labelled lead-in — drop the final paragraph if it ends with '?'.
-    let end=lines.length;
-    while(end>0&&lines[end-1].trim()==='')end--;
-    let start=end;
-    while(start>0&&lines[start-1].trim()!=='')start--;
-    if(lines.slice(start,end).join(' ').trim().endsWith('?')){
-      const head=lines.slice(0,start).join('\n').trim();
-      if(head)return head;
+
+    if (bestMatch) {
+      const lessonClean = lesson.slice(0, bestMatch.index).trimEnd();
+      // Strip any markdown left after the colon (e.g. the closing "**" of
+      // "**Active-Recall Question:**") plus surrounding whitespace.
+      const questionText = lesson
+        .slice(bestMatch.index + bestMatch.length)
+        .replace(/^[\s*:>#-]+/, '')
+        .trim();
+      return { lessonClean, questionText };
     }
-    return text.trim();
+
+    // Fallback: last paragraph is the question.
+    const paragraphs = lesson.split(/\n\s*\n/).filter(p => p.trim());
+    if (paragraphs.length >= 2) {
+      const questionText = paragraphs[paragraphs.length - 1].trim();
+      const lessonClean = paragraphs.slice(0, -1).join('\n\n').trimEnd();
+      return { lessonClean, questionText };
+    }
+
+    // Degenerate fallback: no question detectable.
+    return { lessonClean: lesson, questionText: '' };
   }
+
+  // Self-test — logs PASS/FAIL to the console on page load (the regression guard
+  // for this frontend logic, which the Python suite does not cover).
+  (function testExtractQuestion() {
+    const cases = [
+      { name: 'Active-Recall Question with bold',
+        input: 'Lesson body here.\n\n**Active-Recall Question:**\n\nWhat is X?', expectQ: 'What is X?' },
+      { name: 'lowercase active recall no bold',
+        input: 'Body.\n\nactive recall question: What is Y?', expectQ: 'What is Y?' },
+      { name: "now let's test",
+        input: "Body.\n\nNow, let's test your understanding:\n\nDefine Z.", expectQ: 'Define Z.' },
+      { name: 'plain Question:',
+        input: 'Body.\n\nQuestion: Explain W.', expectQ: 'Explain W.' },
+      { name: 'fallback last paragraph',
+        input: 'Para one.\n\nPara two ends with what is V?', expectQ: 'Para two ends with what is V?' },
+    ];
+    for (const c of cases) {
+      const out = extractQuestionFromLesson(c.input);
+      const pass = out.questionText === c.expectQ;
+      console.log((pass ? 'PASS' : 'FAIL') + ' — ' + c.name + ' — got: ' + JSON.stringify(out.questionText));
+    }
+  })();
   function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
   function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
   function hideError(){errorNotice.classList.remove('visible');}
@@ -532,15 +570,16 @@
     const synBanner=isSyn?`<span class="plan-syn-banner">SYNTHESIS — connects all ${state.plan.n} topics</span>`:'';
     planStage.innerHTML=`<div class="plan-stepper-header"><span class="plan-step-count">Question ${state.plan.step} of ${totalSteps}</span>${synBanner}</div><div id="planLessonHost"></div>`;
     resetQuestionCard();
+    state.questionText='';state.questionFromLesson=false;state.currentObjectiveId=null;
     questionCard.innerHTML=`<div class="question-stem" style="color:var(--color-text-muted)">Generating question…</div>`;
-    // Load the lesson FIRST (awaited) so it always renders before the question, then
-    // feed its text to the generator so the gradeable question tests what was taught.
-    let lessonContext='';
-    if(!isSyn)lessonContext=await loadLesson(state.plan.objectives[state.plan.step-1]);
+    // Per-objective: ONE LLM call. loadLesson renders the lesson AND shows its embedded
+    // active-recall question as the gradeable card — no separate /api/plan/batch_question.
+    let extracted='';
+    if(!isSyn)extracted=await loadLesson(state.plan.objectives[state.plan.step-1]);
+    if(extracted)return;   // lesson produced the question card; nothing more to fetch
+    // Synthesis (no lesson), or a lesson that failed to load -> generate a question.
     try{
-      const reqBody={batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)};
-      if(lessonContext)reqBody.lesson_context=lessonContext;
-      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reqBody)});
+      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)})});
       if(!res.ok){showError(`Couldn't load the question (${res.status}).`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}
@@ -549,9 +588,11 @@
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
   }
 
-  // Loads + renders the lesson for an objective and RETURNS the stripped lesson
-  // text (or '' if none), so loadBatchStep can pass it as context to the question
-  // generator. Awaited by the caller, which is what guarantees lesson-before-question.
+  // Fetches the lesson for an objective (ONE LLM call), splits its embedded
+  // active-recall question out, renders the clean lesson, and shows that question as
+  // the gradeable card. Returns the extracted questionText ('' if the lesson failed
+  // to load or had no detectable question), so loadBatchStep falls back to generating
+  // a question only when there is genuinely nothing to extract.
   async function loadLesson(objective){
     if(!objective)return '';
     const host=document.getElementById('planLessonHost');if(!host)return '';
@@ -560,13 +601,21 @@
       const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Teach me this objective',subject_id:state.subjectId,route:'teach',objective_id:objective.objective_id})});
       const data=res.ok?await res.json():{};
       console.log('[study-plan] raw lesson from /api/chat:', JSON.stringify(data&&data.lesson));
-      // Lesson is best-effort: if no notes are ingested (teach has no context),
-      // silently drop it and let the student answer the question directly.
       if(data&&data.lesson){
-        const lessonText=stripTrailingQuestion(data.lesson);
-        console.log('[study-plan] lesson after stripTrailingQuestion:', JSON.stringify(lessonText));
-        host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonText)}</div>`;
-        return lessonText;
+        const {lessonClean,questionText}=extractQuestionFromLesson(data.lesson);
+        console.log('[study-plan] lessonClean:', JSON.stringify(lessonClean));
+        console.log('[study-plan] extracted questionText:', JSON.stringify(questionText));
+        host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonClean)}</div>`;
+        if(questionText){
+          // The extracted question IS the gradeable card. Grading goes by objective_id
+          // + question_text (no stored question_id) — see submitBatchAnswer.
+          state.questionText=questionText;
+          state.questionFromLesson=true;
+          state.currentObjectiveId=objective.objective_id;
+          showQuestion({questionId:`lesson-${state.plan.batchId}-${objective.objective_id}`,
+            stem:questionText,paper:`Objective ${objective.objective_num||state.plan.step}`,qnum:'',marks:0});
+        }
+        return questionText;
       }
       host.innerHTML='';
       return '';
@@ -580,7 +629,12 @@
     state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';
     hideError();startGradeStatus();
     try{
-      const res=await fetch(`${API_BASE}/api/plan/grade_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,question_id:state.questionId,answer:text})});
+      // Per-objective extracted question -> grade by objective_id + question_text (no
+      // stored question to resolve). Synthesis / generated fallback -> grade by question_id.
+      const body=(!state.plan.currentIsSynthesis&&state.questionFromLesson)
+        ?{batch_id:state.plan.batchId,objective_id:state.currentObjectiveId,question_text:state.questionText,answer:text}
+        :{batch_id:state.plan.batchId,question_id:state.questionId,answer:text};
+      const res=await fetch(`${API_BASE}/api/plan/grade_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||'Check that the FastAPI server is running.'}`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}

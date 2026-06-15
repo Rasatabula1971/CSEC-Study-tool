@@ -537,10 +537,16 @@ def _handle_grade_batch_question(db, request, chat_fn) -> dict:
         return OUT_OF_SCOPE
 
     question_id = request.get("question_id")
+    objective_id_req = request.get("objective_id")
+    question_text = request.get("question_text", "")
     answer = request.get("answer", request.get("student_answer", ""))
     objective_ids = json.loads(batch["objective_ids"])
-    is_synthesis = question_id == batch.get("synthesis_qid") or \
-        question_id == f"synthesis-{batch['batch_id']}"
+    # Guard on a truthy question_id: a per-objective grade now sends objective_id and
+    # NO question_id, so a bare None must not collide with an unset synthesis_qid.
+    is_synthesis = bool(question_id) and (
+        question_id == batch.get("synthesis_qid")
+        or question_id == f"synthesis-{batch['batch_id']}"
+    )
 
     if is_synthesis:
         grading = grade_synthesis(db, batch["batch_id"], answer,
@@ -564,17 +570,26 @@ def _handle_grade_batch_question(db, request, chat_fn) -> dict:
         )
         db.commit()
     else:
-        resolved = _resolve_question_objective(db, question_id)
-        if resolved is None:
-            return {"error": "no_question"}
-        obj_id, stem = resolved
+        if objective_id_req:
+            # Single-call architecture: the question was extracted from the lesson on
+            # the client, so there is no stored question to resolve. Grade the answer
+            # against the named objective, using the extracted question as the stem.
+            obj_id, stem = objective_id_req, question_text
+        else:
+            # Legacy / fallback path: resolve a stored question_id (a past-paper
+            # chunk, a practice question, or a generated batch question).
+            resolved = _resolve_question_objective(db, question_id)
+            if resolved is None:
+                return {"error": "no_question"}
+            obj_id, stem = resolved
         if not is_in_scope(db, subject_id, obj_id):
             return OUT_OF_SCOPE
         grading = grade_against_syllabus(db, obj_id, stem, answer,
                                          request.get("messages"), chat_fn=chat_fn)
         if "error" in grading:
             return grading
-        grading["question_id"] = question_id
+        # Keep a stable question_id on the result even on the extracted path.
+        grading["question_id"] = question_id or f"lesson-{batch['batch_id']}-{obj_id}"
         mark_objective_outcome(db, subject_id, obj_id, grading["score_pct"],
                                update_weakness=True)
 

@@ -225,9 +225,16 @@ class BatchQuestionRequest(BaseModel):
 
 
 class GradeBatchRequest(BaseModel):
-    """Grade one batch answer (per-objective or synthesis)."""
+    """Grade one batch answer (per-objective or synthesis).
+
+    Per-objective steps (single-call architecture) send objective_id + question_text:
+    the question was extracted from the lesson client-side, so there is no stored
+    question to resolve. Synthesis (and the no-lesson fallback) still send question_id.
+    """
     batch_id: int
-    question_id: str = Field(min_length=1)
+    question_id: str | None = None
+    objective_id: str | None = None
+    question_text: str | None = None
     answer: str = Field(min_length=1)
 
 
@@ -566,9 +573,16 @@ def plan_grade_batch(body: GradeBatchRequest, request: Request) -> dict:
     req = {
         "route": "grade_batch_question",
         "batch_id": body.batch_id,
-        "question_id": body.question_id,
         "answer": body.answer,
     }
+    # Forward only what was supplied: question_id for synthesis/fallback, or
+    # objective_id + question_text for the extracted per-objective question.
+    if body.question_id:
+        req["question_id"] = body.question_id
+    if body.objective_id:
+        req["objective_id"] = body.objective_id
+    if body.question_text is not None:
+        req["question_text"] = body.question_text
     result = handle_request(request.app.state.db, req)
     return _shape_for_ui(result)
 
