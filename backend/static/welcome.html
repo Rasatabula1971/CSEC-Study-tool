@@ -46,12 +46,24 @@
 
     /* --- Section 1: greeting --- */
     .greeting {
+      position: relative;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: var(--space-5);
     }
+    .grading-status {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: 0.02em;
+      opacity: 0.85;
+      min-height: 1em;
+    }
+    @media (max-width: 560px) { .grading-status { position: static; margin-top: var(--space-2); } }
     .greeting-eyebrow {
       font-family: var(--font-mono);
       font-size: var(--text-xs);
@@ -149,6 +161,33 @@
     .file-label:focus-within { outline: 2px solid var(--booklet-bright); outline-offset: 2px; }
     .file-label input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     .file-name { color: var(--booklet-bright); font-weight: 600; }
+    .file-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-faint);
+      line-height: 1.5;
+      margin-top: calc(-1 * var(--space-2));
+    }
+    .format-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: calc(-1 * var(--space-2));
+    }
+    .format-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px var(--space-2);
+      border: var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--ink-3);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+    }
+    .format-chip-ocr { color: var(--booklet-bright); border-color: var(--booklet); }
+    .format-chip-ocr svg { flex: none; }
 
     /* Classification result card */
     .classify-card {
@@ -178,6 +217,13 @@
     .conf-medium { background: var(--color-warn-bg); color: var(--color-warn); }
     .conf-low { background: var(--color-fail-bg); color: var(--red-pen); }
     .classify-reason { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
+    .classify-extracted {
+      display: none;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--tick);
+    }
+    .classify-extracted.visible { display: block; }
     .classify-label {
       font-family: var(--font-mono);
       font-size: var(--text-xs);
@@ -331,6 +377,8 @@
       </div>
 
       <div class="progress-summary" id="progressSummary"></div>
+
+      <div class="grading-status" id="gradingStatus" role="status" aria-live="polite"></div>
     </section>
 
     <!-- ========================================================
@@ -339,29 +387,44 @@
     <section class="section">
       <h2 class="section-header">Add Study Notes</h2>
       <p class="section-sub">
-        Paste notes, textbook excerpts, or study material. The system will figure
-        out which subject and topic it belongs to.
+        Paste text, or upload a document or a photo of your notes. The system
+        reads it, then figures out which subject and topic it belongs to.
       </p>
 
       <div class="notes-box">
         <textarea
           class="notes-textarea"
           id="notesText"
-          placeholder="Paste your notes here..."
+          placeholder="Paste your notes here — or attach a file below…"
           aria-label="Study notes"
         ></textarea>
 
         <div class="notes-controls">
           <label class="file-label">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <span id="fileLabelText">Attach a .pdf or .txt</span>
-            <input type="file" id="notesFile" accept=".pdf,.txt" />
+            <span id="fileLabelText">Attach a file</span>
+            <input type="file" id="notesFile" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png" />
           </label>
           <button type="button" class="btn" id="analyseBtn" disabled>Analyse</button>
         </div>
 
+        <div class="format-row" aria-label="Accepted file formats">
+          <span class="format-chip">PDF</span>
+          <span class="format-chip">Word .docx</span>
+          <span class="format-chip">Text .txt</span>
+          <span class="format-chip format-chip-ocr">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            Photo (JPG / PNG)
+          </span>
+        </div>
+        <p class="file-hint">
+          Photos of printed or handwritten notes are read with text recognition (OCR).
+          For Google Docs, download as PDF first.
+        </p>
+
         <!-- Classification result -->
         <div class="classify-card" id="classifyCard">
+          <div class="classify-extracted" id="classifyExtracted"></div>
           <div>
             <span class="classify-subject" id="classifySubject"></span>
             <span class="conf-badge" id="classifyConf"></span>
@@ -539,16 +602,6 @@
     $('saveBtn').disabled = !(state.chosenSubject && state.chosenObjective);
   }
 
-  // Read a .txt file's text client-side (PDFs are extracted server-side on save).
-  function readTextFile(file) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result || '');
-      reader.onerror = () => resolve('');
-      reader.readAsText(file);
-    });
-  }
-
   function renderObjectiveOptions(objectives) {
     const box = $('objOptions');
     box.innerHTML = '';
@@ -599,48 +652,54 @@
   async function analyse() {
     clearStatus();
     $('classifyCard').classList.remove('visible');
-    $('analyseBtn').disabled = true;
-    $('analyseBtn').textContent = 'Analysing…';
 
-    // Gather text to classify: textarea, or a client-readable .txt file.
-    let text = $('notesText').value.trim();
+    const text = $('notesText').value.trim();
     const file = $('notesFile').files[0];
-    if (!text && file) {
-      if (file.name.toLowerCase().endsWith('.txt')) {
-        text = (await readTextFile(file)).trim();
-      } else {
-        // PDF: no client-side text. Ask for a snippet to classify; the full PDF
-        // is still uploaded on save.
-        showStatus('Paste a short snippet from the PDF to classify it — the full file will be saved once you confirm a topic.', 'info');
-        $('analyseBtn').textContent = 'Analyse';
-        $('analyseBtn').disabled = false;
-        return;
-      }
-    }
-    if (!text) {
-      showStatus('Add some text or a .txt file to analyse.', 'error');
-      $('analyseBtn').textContent = 'Analyse';
-      updateAnalyseState();
+
+    // File takes priority over the textarea (the upload path classifies the whole
+    // file server-side); fall back to pasted text; otherwise prompt for input.
+    if (!file && !text) {
+      showStatus('Paste some notes or choose a file first.', 'error');
       return;
     }
 
+    $('analyseBtn').disabled = true;
+    $('analyseBtn').textContent = 'Analysing…';
+
     try {
-      const res = await fetch(`${API_BASE}/api/notes/classify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text.slice(0, 2000),
-          available_subjects: state.subjects.map(s => s.subject_id),
-        }),
-      });
+      let res;
+      if (file) {
+        showStatus(`Extracting text from ${file.name}…`, 'info');
+        const form = new FormData();
+        form.append('file', file);
+        res = await fetch(`${API_BASE}/api/notes/classify_file`, {
+          method: 'POST', body: form,
+        });
+        // The classifier runs server-side after extraction; reflect that.
+        if (res.ok) showStatus('Classifying content…', 'info');
+      } else {
+        showStatus('Classifying content…', 'info');
+        res = await fetch(`${API_BASE}/api/notes/classify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: text.slice(0, 2000),
+            available_subjects: state.subjects.map(s => s.subject_id),
+          }),
+        });
+      }
       if (!res.ok) {
         const t = await res.text().catch(() => '');
-        showStatus(`Classification failed (${res.status}). ${t}`, 'error');
+        // The API returns {"detail": "..."} for 4xx; surface that message plainly.
+        let msg = t;
+        try { msg = JSON.parse(t).detail || t; } catch { /* keep raw text */ }
+        showStatus(`Classification failed (${res.status}). ${msg}`, 'error');
         return;
       }
       const data = await res.json();
       state.classification = data;
-      renderClassification(data);
+      clearStatus();
+      renderClassification(data, file ? file.name : null);
     } catch (err) {
       showStatus("Couldn't reach the study system. Make sure Ollama and the server are running.", 'error');
     } finally {
@@ -654,9 +713,20 @@
     return s ? s.display_name : subjectId;
   }
 
-  function renderClassification(data) {
+  function renderClassification(data, fileName) {
     const card = $('classifyCard');
     card.classList.add('visible');
+
+    // File path only: confirm how much text was pulled from the file.
+    const extracted = $('classifyExtracted');
+    if (fileName && typeof data.extracted_text_length === 'number') {
+      extracted.textContent =
+        `Extracted ${data.extracted_text_length.toLocaleString()} characters from ${fileName}`;
+      extracted.classList.add('visible');
+    } else {
+      extracted.textContent = '';
+      extracted.classList.remove('visible');
+    }
 
     if (data.subject_id) {
       // Confident path: show subject + suggested objectives.
@@ -691,24 +761,37 @@
     $('saveBtn').disabled = true;
     $('saveBtn').textContent = 'Saving…';
 
-    const form = new FormData();
-    form.append('subject_id', state.chosenSubject);
-    form.append('objective_id', state.chosenObjective);
     const file = $('notesFile').files[0];
     const text = $('notesText').value.trim();
-    // Prefer the full file when one is attached; otherwise send the pasted text.
+
+    // File path: send the file itself (server extracts + chunks it). Paste path:
+    // a JSON body with the raw text. Both carry the confirmed subject + objective.
+    let req;
     if (file) {
+      const form = new FormData();
+      form.append('subject_id', state.chosenSubject);
+      form.append('objective_id', state.chosenObjective);
       form.append('file', file);
-      if (text) form.append('text', text);
+      req = { method: 'POST', body: form };
     } else {
-      form.append('text', text);
+      req = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject_id: state.chosenSubject,
+          objective_id: state.chosenObjective,
+          text,
+        }),
+      };
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/notes/upload`, { method: 'POST', body: form });
+      const res = await fetch(`${API_BASE}/api/notes/upload`, req);
       if (!res.ok) {
         const t = await res.text().catch(() => '');
-        showStatus(`Save failed (${res.status}). ${t}`, 'error');
+        let msg = t;
+        try { msg = JSON.parse(t).detail || t; } catch { /* keep raw text */ }
+        showStatus(`Save failed (${res.status}). ${msg}`, 'error');
         return;
       }
       const data = await res.json();
@@ -728,7 +811,8 @@
   function resetNotesForm() {
     $('notesText').value = '';
     $('notesFile').value = '';
-    $('fileLabelText').textContent = 'Attach a .pdf or .txt';
+    $('fileLabelText').textContent = 'Attach a file';
+    $('classifyExtracted').classList.remove('visible');
     $('classifyCard').classList.remove('visible');
     $('manualPick').classList.remove('visible');
     state.classification = null;
@@ -744,7 +828,7 @@
   $('notesText').addEventListener('input', updateAnalyseState);
   $('notesFile').addEventListener('change', () => {
     const f = $('notesFile').files[0];
-    $('fileLabelText').textContent = f ? f.name : 'Attach a .pdf or .txt';
+    $('fileLabelText').textContent = f ? f.name : 'Attach a file';
     updateAnalyseState();
   });
   $('analyseBtn').addEventListener('click', analyse);
@@ -762,10 +846,34 @@
   });
 
   /* ============================================================
+     SECTION 1 — grading-engine status indicator
+     ============================================================ */
+  async function loadGradingStatus() {
+    const el = $('gradingStatus');
+    if (!el) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/status`);
+      if (!res.ok) return;
+      const s = await res.json();
+      if (s.gemini) {
+        el.textContent = 'Cloud grading: active';
+        el.style.color = 'var(--tick)';
+      } else if (s.ollama) {
+        el.textContent = 'Local grading: active';
+        el.style.color = 'var(--paper-dim)';
+      } else {
+        el.textContent = 'Grading offline';
+        el.style.color = 'var(--red-pen)';
+      }
+    } catch { /* API down — leave the indicator blank */ }
+  }
+
+  /* ============================================================
      INIT
      ============================================================ */
   loadDailyQuote();
   loadSubjectsAndProgress();
+  loadGradingStatus();
   updateAnalyseState();
 </script>
 </body>

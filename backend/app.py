@@ -19,11 +19,12 @@ import logging
 import os
 import sqlite3
 import sys
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -34,13 +35,22 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # is launched as `backend.app:app` or imported directly in tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ollama_client import ollama_health, ollama_chat, ollama_embed  # noqa: E402
+from gemini_client import is_gemini_available, gemini_key_valid  # noqa: E402
 from controller import handle_request  # noqa: E402
 from schedule import get_due_objectives  # noqa: E402
 from study_plan import get_plan_progress  # noqa: E402
 from notes import classify_notes, save_notes  # noqa: E402
-from ingest import extract_pdf_pages  # noqa: E402
+from extract import detect_mime_type, extract_text  # noqa: E402
 
 logger = logging.getLogger("csec.app")
+# Ensure our startup INFO lines (Ollama / Gemini status) actually surface: the
+# logger otherwise has no handler and defaults to WARNING, so INFO is dropped.
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WELCOME_HTML = STATIC_DIR / "welcome.html"
@@ -128,6 +138,22 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Ollama is not reachable at %s -- study mode will surface the "
                         "error. Starting the app anyway.", os.getenv("OLLAMA_BASE"))
+
+    # Validate the key once, here, with a single live ping -- not on every
+    # /api/status request. The result drives the UI's grading indicator so it
+    # reflects whether grading will REALLY reach Gemini, not just that a key exists.
+    if is_gemini_available():
+        if gemini_key_valid():
+            app.state.gemini_ok = True
+            logger.info("Gemini API key valid -- grading calls will use Gemini Flash "
+                        "with Ollama fallback")
+        else:
+            app.state.gemini_ok = False
+            logger.warning("Gemini API key present but REJECTED by Google (invalid or "
+                           "expired) -- grading falls back to local Ollama")
+    else:
+        app.state.gemini_ok = False
+        logger.info("No Gemini API key -- all calls use local Ollama")
 
     db_path = os.getenv("DB_PATH")
     if not db_path or not os.path.exists(db_path):
@@ -259,6 +285,26 @@ def chat_page() -> FileResponse:
 def health(request: Request) -> dict:
     db_ok = getattr(request.app.state, "db", None) is not None
     return {"status": "ok", "ollama": ollama_health(), "db": db_ok}
+
+
+@app.get("/api/status")
+def status(request: Request) -> dict:
+    """Which engine grading will really use, for the UI's status indicator.
+
+    `gemini` reflects key VALIDITY (verified once at startup, stored on
+    app.state.gemini_ok), not mere presence -- so an invalid key honestly shows
+    local grading instead of falsely claiming the cloud. grading_engine: 'gemini'
+    if the key works, else 'ollama' if Ollama is up, else 'unavailable'.
+    """
+    ollama_up = ollama_health()
+    gemini_ok = bool(getattr(request.app.state, "gemini_ok", False))
+    if gemini_ok:
+        engine = "gemini"
+    elif ollama_up:
+        engine = "ollama"
+    else:
+        engine = "unavailable"
+    return {"ollama": ollama_up, "gemini": gemini_ok, "grading_engine": engine}
 
 
 @app.get("/api/subjects")
@@ -531,23 +577,25 @@ def plan_progress(subject_id: str, request: Request) -> dict:
 # ---------------------------------------------------------------------------
 # Add Study Notes (Welcome page)
 # ---------------------------------------------------------------------------
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB (52428800 bytes)
 MAX_NOTE_CHARS = 50_000
 
 
-def _extract_pdf_text(data: bytes) -> str:
-    """Best-effort full-text extraction from in-memory PDF bytes via PyMuPDF.
+def _extract_upload_text(data: bytes, filename: str) -> str:
+    """Extract plain text from uploaded file bytes (PDF/DOCX/TXT/JPG/PNG).
 
-    Reuses ingest.extract_pdf_pages by spilling to a temp file so the upload path
-    and the batch ingest path share one extractor.
+    Writes the bytes to a temp file (extract.extract_text and its libraries take a
+    path), dispatches on the filename's mime type, then cleans up. Raises
+    ValueError -- which the caller maps to a 400 -- for unsupported types or when
+    the Tesseract OCR toolchain is missing for an image.
     """
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    mime = detect_mime_type(filename)  # ValueError -> caller returns 400
+    suffix = Path(filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(data)
         tmp_path = Path(tmp.name)
     try:
-        return "\n".join(text for _page, text in extract_pdf_pages(tmp_path))
+        return extract_text(str(tmp_path), mime)
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -573,34 +621,86 @@ def notes_classify(body: ClassifyNotesRequest, request: Request) -> dict:
     )
 
 
-@app.post("/api/notes/upload")
-async def notes_upload(
+@app.post("/api/notes/classify_file")
+async def notes_classify_file(
     request: Request,
-    subject_id: str = Form(...),
-    objective_id: str = Form(...),
-    text: str | None = Form(None),
-    file: UploadFile | None = File(None),
+    file: UploadFile = File(...),
 ) -> dict:
+    """Extract text from an uploaded file, then classify it like /classify.
+
+    Accepts a PDF, DOCX, TXT, JPG, or PNG. The full text is extracted server-side
+    (images via Tesseract OCR); the first 2000 chars feed the same LLM-subject +
+    deterministic-objective classifier as /api/notes/classify. Returns that result
+    plus `extracted_text_length` so the UI can confirm how much text it read. The
+    caller saves by re-sending the file to /api/notes/upload.
+    """
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 50 MB limit.")
+    try:
+        full_text = _extract_upload_text(data, file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    full_text = (full_text or "").strip()
+    if not full_text:
+        raise HTTPException(
+            status_code=422,
+            detail="No text could be extracted from the file.",
+        )
+
+    rows = request.app.state.db.execute(
+        "SELECT subject_id FROM subjects WHERE syllabus_locked = 1"
+    ).fetchall()
+    available = [r["subject_id"] for r in rows]
+
+    result = classify_notes(
+        request.app.state.db, full_text[:2000], available,
+        chat_fn=ollama_chat, embed_fn=ollama_embed,
+    )
+    result["extracted_text_length"] = len(full_text)
+    return result
+
+
+@app.post("/api/notes/upload")
+async def notes_upload(request: Request) -> dict:
     """Chunk, embed, and index confirmed notes under a subject + objective.
 
-    Accepts either raw `text` or an uploaded `.pdf`/`.txt` `file` (text wins if
-    both are present). Returns {doc_id, chunks_created, objective_id}.
+    Handles two request shapes (the paste path sends JSON, the upload path sends
+    multipart/form-data):
+      * JSON      -> {subject_id, objective_id, text}
+      * multipart -> subject_id, objective_id, and either a `text` field or a
+        `file` field (PDF/DOCX/TXT/JPG/PNG, extracted server-side). `text` wins
+        when both are present.
+    Returns {doc_id, chunks_created, objective_id}.
     """
-    note_text = (text or "").strip()
+    content_type = request.headers.get("content-type", "")
+    note_text = ""
     source_file = "pasted_notes"
 
-    if not note_text and file is not None:
-        data = await file.read()
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File exceeds the 10 MB limit.")
-        name = (file.filename or "").lower()
-        if name.endswith(".pdf"):
-            note_text = _extract_pdf_text(data)
-        elif name.endswith(".txt"):
-            note_text = data.decode("utf-8", errors="replace")
-        else:
-            raise HTTPException(status_code=400, detail="Only .pdf or .txt files are accepted.")
-        source_file = file.filename or "uploaded_file"
+    if content_type.startswith("application/json"):
+        body = await request.json()
+        subject_id = (body.get("subject_id") or "").strip()
+        objective_id = (body.get("objective_id") or "").strip()
+        note_text = (body.get("text") or "").strip()
+    else:
+        form = await request.form()
+        subject_id = (form.get("subject_id") or "").strip()
+        objective_id = (form.get("objective_id") or "").strip()
+        note_text = (form.get("text") or "").strip()
+        upload = form.get("file")
+        if not note_text and upload is not None and hasattr(upload, "read"):
+            data = await upload.read()
+            if len(data) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="File exceeds the 50 MB limit.")
+            try:
+                note_text = _extract_upload_text(data, upload.filename or "")
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            source_file = upload.filename or "uploaded_file"
+
+    if not subject_id or not objective_id:
+        raise HTTPException(status_code=422, detail="subject_id and objective_id are required.")
 
     note_text = note_text[:MAX_NOTE_CHARS].strip()
     if not note_text:

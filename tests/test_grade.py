@@ -157,6 +157,58 @@ def test_grade_synthesis_unknown_batch(db):
 
 
 # ---------------------------------------------------------------------------
+# Default routing: the syllabus/synthesis graders default to chat_for_grading
+# (the Gemini-preferred router), NOT ollama_chat directly.
+# ---------------------------------------------------------------------------
+def test_grade_against_syllabus_defaults_to_chat_for_grading(db, monkeypatch):
+    seed_batch(db, n=1)  # creates objective POB-1.1
+    payload = json.dumps({
+        "objective_id": "POB-1.1", "question_id": "q",
+        "points": [
+            {"mark_point_id": "POB-1.1-syn-1", "awarded": True, "evidence": "e1"},
+            {"mark_point_id": "POB-1.1-syn-2", "awarded": False, "evidence": "e2"},
+            {"mark_point_id": "POB-1.1-syn-3", "awarded": True, "evidence": "e3"},
+        ],
+    })
+    called = {"n": 0}
+
+    def fake_router(messages, system, schema=None):
+        called["n"] += 1
+        return payload
+
+    monkeypatch.setattr(grade, "chat_for_grading", fake_router)
+
+    # No chat_fn passed -> must route through chat_for_grading, not ollama_chat.
+    result = grade.grade_against_syllabus(db, "POB-1.1", "stem", "answer")
+    assert called["n"] == 1
+    assert result["total"] == 3 and result["awarded"] == 2
+
+
+def test_grade_synthesis_defaults_to_chat_for_grading(db, monkeypatch):
+    batch_id = seed_batch(db, n=3)
+    oids = [f"POB-1.{i}" for i in range(1, 4)]
+    payload = json.dumps({
+        "objective_id": f"batch-{batch_id}", "question_id": f"synthesis-{batch_id}",
+        "points": [
+            {"mark_point_id": f"{batch_id}-syn-{oid}", "awarded": True, "evidence": "e"}
+            for oid in oids
+        ],
+    })
+    called = {"n": 0}
+
+    def fake_router(messages, system, schema=None):
+        called["n"] += 1
+        return payload
+
+    monkeypatch.setattr(grade, "chat_for_grading", fake_router)
+
+    # No chat_fn passed -> must route through chat_for_grading.
+    result = grade.grade_synthesis(db, batch_id, "answer")
+    assert called["n"] == 1
+    assert result["total"] == 3 and result["awarded"] == 3
+
+
+# ---------------------------------------------------------------------------
 # reconcile_grading: deterministic repair of self-contradictory 3B output
 # ---------------------------------------------------------------------------
 def test_reconcile_flips_contradictory_miss():

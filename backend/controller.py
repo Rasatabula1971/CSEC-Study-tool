@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ollama_client import ollama_chat, ollama_embed  # noqa: E402
+from llm_router import chat_for_grading  # noqa: E402
 from scope import is_in_scope, subject_is_locked, get_objective  # noqa: E402
 from retrieval import get_context, has_structured_key, _structured_lookup  # noqa: E402
 from grade import (  # noqa: E402
@@ -171,7 +172,7 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
     }
 
 
-def _handle_grade(db, request, chat_fn, embed_fn) -> dict:
+def _handle_grade(db, request, grade_fn, local_fn, embed_fn) -> dict:
     subject_id = request.get("subject_id")
     if not subject_is_locked(db, subject_id):
         return OUT_OF_SCOPE
@@ -184,11 +185,14 @@ def _handle_grade(db, request, chat_fn, embed_fn) -> dict:
     student_answer = request.get("student_answer", "")
 
     # Mark-scheme path is unchanged: if the question has mark_points, grade against
-    # them. Otherwise fall back to grading against the syllabus objective -- either
-    # a past-paper question with no mark scheme, or a generated practice question.
+    # them. The mark-scheme grader just matches the answer to GIVEN points, so it
+    # stays on local Ollama (local_fn). The syllabus fallback GENERATES the expected
+    # points, where model quality matters more -- it routes through grade_fn
+    # (Gemini-preferred). Used when no mark scheme exists: a past-paper question
+    # without one, or a generated practice question.
     if fetch_mark_points(db, question_id):
         grading = grade_answer(db, question_id, student_answer,
-                               request.get("messages"), chat_fn=chat_fn)
+                               request.get("messages"), chat_fn=local_fn)
     else:
         resolved = _resolve_question_objective(db, question_id)
         if resolved is None:
@@ -198,7 +202,7 @@ def _handle_grade(db, request, chat_fn, embed_fn) -> dict:
         if not is_in_scope(db, subject_id, obj_id):
             return OUT_OF_SCOPE
         grading = grade_against_syllabus(db, obj_id, stem, student_answer,
-                                         request.get("messages"), chat_fn=chat_fn)
+                                         request.get("messages"), chat_fn=grade_fn)
         # Keep the real question_id on the result -- the model is not told it.
         grading["question_id"] = question_id
 
@@ -556,23 +560,38 @@ def _handle_explain_missed(db, request, chat_fn) -> dict:
 # Entry point
 # ---------------------------------------------------------------------------
 def handle_request(db: sqlite3.Connection, request: dict,
-                   chat_fn=ollama_chat, embed_fn=ollama_embed) -> dict:
-    """Route a request to teach / grade / plan. Out-of-scope -> immediate refusal."""
+                   chat_fn=None, embed_fn=ollama_embed) -> dict:
+    """Route a request to teach / grade / plan. Out-of-scope -> immediate refusal.
+
+    LLM routing (the cloud-grading upgrade): when `chat_fn` is provided (tests, or
+    a caller that wants one model for everything) it serves EVERY LLM call --
+    grading and generation alike -- preserving the injectable-stub contract. When
+    omitted (production), grading-quality calls (syllabus/synthesis graders,
+    explain_missed) route through chat_for_grading (Gemini preferred, Ollama silent
+    fallback), while generation (teach, practice, question generation) and the
+    mark-scheme grader stay on local Ollama.
+    """
+    if chat_fn is not None:
+        grade_fn = local_fn = chat_fn
+    else:
+        grade_fn = chat_for_grading
+        local_fn = ollama_chat
+
     route = request.get("route")
     if route == "teach":
-        return _handle_teach(db, request, chat_fn, embed_fn)
+        return _handle_teach(db, request, local_fn, embed_fn)
     if route == "grade":
-        return _handle_grade(db, request, chat_fn, embed_fn)
+        return _handle_grade(db, request, grade_fn, local_fn, embed_fn)
     if route == "practice":
-        return _handle_practice(db, request, chat_fn)
+        return _handle_practice(db, request, local_fn)
     if route == "plan":
         return _handle_plan(db, request)
     if route == "start_batch":
         return _handle_start_batch(db, request)
     if route == "batch_question":
-        return _handle_batch_question(db, request, chat_fn)
+        return _handle_batch_question(db, request, local_fn)
     if route == "grade_batch_question":
-        return _handle_grade_batch_question(db, request, chat_fn)
+        return _handle_grade_batch_question(db, request, grade_fn)
     if route == "explain_missed":
-        return _handle_explain_missed(db, request, chat_fn)
+        return _handle_explain_missed(db, request, grade_fn)
     return {"error": "unknown_route", "route": route}

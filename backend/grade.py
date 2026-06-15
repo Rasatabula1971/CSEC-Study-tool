@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ollama_client import ollama_chat  # noqa: E402
+from llm_router import chat_for_grading  # noqa: E402
 from weakness import log_weakness  # noqa: E402
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
@@ -261,7 +262,7 @@ def _build_syllabus_message(objective_id: str, objective: dict,
 def grade_against_syllabus(db: sqlite3.Connection, objective_id: str,
                            question_stem: str, student_answer: str,
                            messages: list[dict] | None = None,
-                           chat_fn=ollama_chat) -> dict:
+                           chat_fn=None) -> dict:
     """Grade an answer with no fixed mark scheme, against the syllabus objective.
 
     Used when no mark_points exist for a question, OR when the question was
@@ -278,6 +279,12 @@ def grade_against_syllabus(db: sqlite3.Connection, objective_id: str,
     objective = _fetch_objective(db, objective_id)
     if objective is None:
         return {"error": "unknown_objective"}
+
+    # Default to the grading router (Gemini-preferred, Ollama fallback). Resolved
+    # at call time -- not as a def-time default arg -- so it stays mockable and
+    # honours an injected chat_fn (the controller and tests pass one explicitly).
+    if chat_fn is None:
+        chat_fn = chat_for_grading
 
     messages = list(messages or [])
     messages.append(_build_syllabus_message(objective_id, objective,
@@ -333,7 +340,7 @@ def _build_synthesis_message(batch_id: int, objectives: list[dict],
 
 def grade_synthesis(db: sqlite3.Connection, batch_id: int, student_answer: str,
                     messages: list[dict] | None = None,
-                    chat_fn=ollama_chat) -> dict:
+                    chat_fn=None) -> dict:
     """Grade a synthesis answer against a batch's objectives (Option C).
 
     Loads the batch's objective_ids, derives ONE expected point per objective via
@@ -363,6 +370,11 @@ def grade_synthesis(db: sqlite3.Connection, batch_id: int, student_answer: str,
         if obj is None:
             return {"error": "unknown_objective"}
         objectives.append(obj)
+
+    # Default to the grading router (Gemini-preferred); resolved at call time so it
+    # stays mockable and honours an injected chat_fn (see grade_against_syllabus).
+    if chat_fn is None:
+        chat_fn = chat_for_grading
 
     n = len(objectives)
     messages = list(messages or [])

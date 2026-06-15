@@ -45,6 +45,52 @@ def test_health_returns_200(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# /api/status  (grading-engine indicator)
+# ---------------------------------------------------------------------------
+def test_status_returns_engine_fields(client, monkeypatch):
+    """ollama up, Gemini key invalid/absent -> grading_engine 'ollama'.
+
+    `gemini` reflects validity (app.state.gemini_ok), set at startup. The test
+    sets it directly since TestClient (no `with`) does not run lifespan.
+    """
+    monkeypatch.setattr(app_module, "ollama_health", lambda: True)
+    app_module.app.state.gemini_ok = False
+    res = client.get("/api/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert isinstance(body["ollama"], bool) and isinstance(body["gemini"], bool)
+    assert body["ollama"] is True and body["gemini"] is False
+    assert body["grading_engine"] == "ollama"
+
+
+def test_status_prefers_gemini_when_key_valid(client, monkeypatch):
+    monkeypatch.setattr(app_module, "ollama_health", lambda: True)
+    app_module.app.state.gemini_ok = True
+    res = client.get("/api/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["gemini"] is True
+    assert body["grading_engine"] == "gemini"
+
+
+def test_status_invalid_key_shows_local_not_cloud(client, monkeypatch):
+    """A present-but-invalid key (gemini_ok False) must NOT claim cloud grading."""
+    monkeypatch.setattr(app_module, "ollama_health", lambda: True)
+    app_module.app.state.gemini_ok = False
+    res = client.get("/api/status")
+    assert res.status_code == 200
+    assert res.json()["grading_engine"] == "ollama"
+
+
+def test_status_unavailable_when_both_down(client, monkeypatch):
+    monkeypatch.setattr(app_module, "ollama_health", lambda: False)
+    app_module.app.state.gemini_ok = False
+    res = client.get("/api/status")
+    assert res.status_code == 200
+    assert res.json()["grading_engine"] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
 # POST /api/chat
 # ---------------------------------------------------------------------------
 def test_chat_valid_payload_returns_json(client, monkeypatch):
@@ -444,6 +490,64 @@ def test_notes_upload_rejects_unknown_objective(client, monkeypatch):
         "text": "Some notes.",
     })
     assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/notes/classify_file  and  /api/notes/upload (file path)
+# ---------------------------------------------------------------------------
+def test_notes_classify_file_txt_returns_subject_and_objectives(client, monkeypatch):
+    """A TXT upload is extracted server-side, then classified like /classify.
+
+    First db.execute().fetchall() returns the locked-subject list (so the LLM's
+    subject is accepted); the second returns the subject's objectives for the
+    deterministic cosine ranking. extracted_text_length reflects the file text.
+    """
+    notes_module._OBJ_EMBED_CACHE.clear()
+    monkeypatch.setattr(app_module, "ollama_chat", lambda msgs, system, schema=None:
+                        '{"subject_id": "Principles_of_Business", '
+                        '"confidence": "high", "reasoning": "Business ownership."}')
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.1, 0.2, 0.3])
+
+    app_module.app.state.db.execute.return_value.fetchall.side_effect = [
+        [{"subject_id": "Principles_of_Business"}],                       # locked subjects
+        [{"objective_id": "POB-2.1", "content_stmt": "Types of business ownership"},
+         {"objective_id": "POB-2.2", "content_stmt": "Advantages of sole trader"}],  # objectives
+    ]
+
+    content = b"A sole trader is a business owned and controlled by one person."
+    res = client.post("/api/notes/classify_file",
+                      files={"file": ("notes.txt", content, "text/plain")})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["subject_id"] == "Principles_of_Business"
+    assert body["confidence"] == "high"
+    assert len(body["suggested_objectives"]) == 2
+    assert body["extracted_text_length"] == len(content)
+
+
+def test_notes_classify_file_unsupported_type_returns_400(client):
+    """An unsupported extension is rejected with a 400, never a 500."""
+    res = client.post("/api/notes/classify_file",
+                      files={"file": ("data.xlsx", b"\x00\x01", "application/octet-stream")})
+    assert res.status_code == 400
+
+
+def test_notes_upload_file_creates_chunks(client, monkeypatch):
+    """Uploading a TXT file (multipart) under a confirmed objective indexes chunks."""
+    monkeypatch.setattr(app_module, "ollama_embed", lambda text: [0.0, 0.0, 0.0])
+    # save_notes validates the objective belongs to the subject; MagicMock fetchone
+    # is truthy by default, so the validation passes.
+    content = b"A sole trader is a business owned and controlled by one person."
+    res = client.post(
+        "/api/notes/upload",
+        data={"subject_id": "Principles_of_Business", "objective_id": "POB-2.1"},
+        files={"file": ("notes.txt", content, "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["objective_id"] == "POB-2.1"
+    assert body["chunks_created"] > 0
+    assert body["doc_id"].startswith("notes-")
 
 
 def test_plan_grade_batch_routes_synthesis_question(client, monkeypatch):
