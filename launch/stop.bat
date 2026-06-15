@@ -11,9 +11,12 @@ echo.
 
 set "KILLED="
 REM Find the PID listening on port 8000 (more precise than killing all python).
+REM /t kills the whole process tree: uvicorn --reload spawns worker children that
+REM inherit the listening socket, so killing only the parent leaves an orphan
+REM still serving the port. /t takes those children down too.
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000 " ^| findstr LISTENING') do (
     echo Stopping server process %%p ...
-    taskkill /f /pid %%p >nul 2>&1
+    taskkill /f /t /pid %%p >nul 2>&1
     set "KILLED=1"
 )
 
