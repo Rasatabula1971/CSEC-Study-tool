@@ -260,6 +260,60 @@ def _grading_provenance(db: sqlite3.Connection, question_id: str,
     return basis, pending
 
 
+# Stage 13 (roadmap #3): plain-language labels for each source rank. Rank 5 is the
+# runtime "unreviewed" overlay -- it must never appear in a successful grade.
+SOURCE_RANK_LABELS = {
+    1: "Official CXC syllabus",
+    2: "Official specimen / mark scheme",
+    3: "Official past paper mark scheme",
+    4: "Generated, queued for review",
+    5: "Generated, unreviewed (hidden at runtime)",
+}
+
+
+def source_rank_info(db: sqlite3.Connection, question_id: str,
+                     mark_points: list[dict]) -> tuple[int | None, str | None, str | None]:
+    """Resolve (rank, label, blocked_objective_id) for a question's mark points.
+
+    rank = MIN(source_rank) over the question's points (best source wins). label is
+    the plain-language string for that rank. blocked_objective_id is non-None only
+    when a RANK-5 point is present: a generated point (source_rank >= 4) whose
+    objective still has an unreviewed ingest_review_queue row. Such content is too
+    unreliable to grade against, so the caller refuses.
+
+    A real past-paper point (rank <= 3) whose objective merely has an incidental
+    queue entry is NOT rank 5 -- it grades normally and surfaces pending_review as a
+    softer banner instead. On a DB predating the source_rank column, returns
+    (None, None, None) so grading proceeds unchanged (no rank shown).
+    """
+    try:
+        rows = db.execute(
+            "SELECT objective_id, source_rank FROM mark_points WHERE question_id = ?",
+            (question_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None, None, None  # pre-migration DB: no source_rank column
+    if not rows:
+        return None, None, None
+
+    # Rank-5 overlay: any generated (rank >= 4) point still pending review -> block.
+    for r in rows:
+        sr = r["source_rank"]
+        if sr is not None and sr >= 4:
+            queued = db.execute(
+                "SELECT 1 FROM ingest_review_queue WHERE objective_id = ? LIMIT 1",
+                (r["objective_id"],),
+            ).fetchone()
+            if queued:
+                return 5, SOURCE_RANK_LABELS[5], r["objective_id"]
+
+    ranks = [r["source_rank"] for r in rows if r["source_rank"] is not None]
+    if not ranks:
+        return None, None, None
+    rank = min(ranks)
+    return rank, SOURCE_RANK_LABELS.get(rank), None
+
+
 def fetch_mark_points(db: sqlite3.Connection, question_id: str) -> list[dict]:
     rows = db.execute(
         """
@@ -333,6 +387,18 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
     if not mark_points:
         return {"error": "no_mark_scheme"}
 
+    # Roadmap #3 rank-5 gate: if the question rests on generated, still-unreviewed
+    # mark points, refuse BEFORE spending the LLM call. The UI tells the student the
+    # objective is still being prepared. (rank/label are reused below on success.)
+    source_rank, source_rank_label, blocked_oid = source_rank_info(db, question_id, mark_points)
+    if blocked_oid is not None:
+        return {
+            "error": "mark_points pending review",
+            "objective_id": blocked_oid,
+            "source_rank": 5,
+            "source_rank_label": SOURCE_RANK_LABELS[5],
+        }
+
     messages = list(messages or [])
     messages.append(_build_user_message(question_id, student_answer, mark_points))
 
@@ -365,6 +431,11 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
     basis, pending = _grading_provenance(db, question_id, mark_points)
     grading["grading_basis"] = basis
     grading["pending_review"] = pending
+
+    # Roadmap #3: the source rank + label resolved above (1-4; rank 5 already
+    # refused). None on a pre-migration DB, in which case the UI omits the line.
+    grading["source_rank"] = source_rank
+    grading["source_rank_label"] = source_rank_label
 
     return grading
 

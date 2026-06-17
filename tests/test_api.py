@@ -487,9 +487,17 @@ def test_explain_missed_empty_returns_empty_without_llm(client, monkeypatch):
 # ---------------------------------------------------------------------------
 # Welcome page routing  (GET /  and  GET /chat)
 # ---------------------------------------------------------------------------
-def test_root_serves_welcome_page(client):
-    """GET / now serves the Welcome page (HTML)."""
+def test_root_serves_panel_shell(client):
+    """Stage 13: GET / now serves the panel shell (chat.html), not the Welcome page."""
     res = client.get("/")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+    assert "<!DOCTYPE html>" in res.text
+
+
+def test_welcome_page_moved_to_welcome_path(client):
+    """The previous Welcome front door is preserved at /welcome."""
+    res = client.get("/welcome")
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
     assert "Add Study Notes" in res.text   # a Welcome-page-only marker
@@ -770,3 +778,125 @@ def test_plan_grade_batch_routes_synthesis_question(client, monkeypatch):
     body = res.json()
     assert body["is_synthesis"] is True
     assert body["progress"]["met_once"] == 5
+
+
+# ---------------------------------------------------------------------------
+# Stage 13 panel-shell endpoints (real in-memory DB, not a MagicMock)
+# ---------------------------------------------------------------------------
+import sqlite_vec  # noqa: E402
+
+SCHEMA_PATH_S13 = ROOT / "backend" / "db" / "schema.sql"
+SUBJECT_S13 = "Principles_of_Business"
+
+
+def _open_real_db():
+    # check_same_thread=False: the TestClient runs sync endpoints in a worker thread.
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.enable_load_extension(False)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.row_factory = sqlite3.Row
+    for stmt in SCHEMA_PATH_S13.read_text(encoding="utf-8").split(";"):
+        if stmt.strip():
+            db.execute(stmt)
+    db.commit()
+    app_module.apply_runtime_migrations(db)
+    return db
+
+
+def _seed_panel_data(db):
+    """Subject + 1 section + 2 objectives; one with a lesson, a doc with a '-stem'
+    question + mark points, a weakness_log row, and one negative feedback."""
+    db.execute("INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, 'Principles of Business', 1)", (SUBJECT_S13,))
+    db.execute("INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) VALUES ('S1', ?, 'Nature of Business', '1')", (SUBJECT_S13,))
+    db.execute("INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt, command_words, skill_type) VALUES ('POB-1.1','S1',?,'1.1','Explain the concept of a business','[\"Explain\"]','Understanding')", (SUBJECT_S13,))
+    db.execute("INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt, command_words, skill_type) VALUES ('POB-1.2','S1',?,'1.2','State the functions of a business','[\"State\"]','Knowledge')", (SUBJECT_S13,))
+    # POB-1.1 has a canonical lesson; POB-1.2 does not.
+    db.execute("INSERT INTO objective_lessons (lesson_id, objective_id, subject_id, lesson_text, recall_questions, source_chunk_ids, confidence) VALUES ('L1','POB-1.1',?,'lesson body','[\"Q1?\"]','[\"c1\"]',85)", (SUBJECT_S13,))
+    # A gradeable paper: doc + '-stem' question chunk + mark points.
+    db.execute("INSERT INTO documents (doc_id, subject_id, content_type, paper, year, source_file, content_hash) VALUES ('D1',?,'mark_scheme','Paper 2 - June 2024',2024,'d1.pdf','d1h')", (SUBJECT_S13,))
+    db.execute("INSERT INTO documents (doc_id, subject_id, content_type, paper, year, source_file, content_hash) VALUES ('D2',?,'mark_scheme','Paper 2 - June 2023',2023,'d2.pdf','d2h')", (SUBJECT_S13,))
+    db.execute("INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) VALUES ('D1','POB-1.1',?,'Explain two functions of a business. (6 marks)','2b','POB-1.1-q2b-stem')", (SUBJECT_S13,))
+    db.execute("INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) VALUES ('D2','POB-1.2',?,'State three functions. (3 marks)','1a','POB-1.2-q1a-stem')", (SUBJECT_S13,))
+    for i in range(1, 4):
+        db.execute("INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, point_text, marks_value, point_order, source_type) VALUES (?,?,?,?,?,?,?, 'past_paper')",
+                   (f"POB-1.1-q2b-mp{i}", "POB-1.1", "POB-1.1-q2b-stem", "D1", f"point {i}", 2, i))
+    # POB-1.1 has weakness + a session; POB-1.2 has neither (null values in progress).
+    db.execute("INSERT INTO weakness_log (objective_id, subject_id, score_pct, leitner_box, next_review) VALUES ('POB-1.1',?,60,2,'2026-06-20')", (SUBJECT_S13,))
+    db.execute("INSERT INTO study_sessions (subject_id, objective_id, mode, outcome, score_pct, created_at) VALUES (?, 'POB-1.1','grade','fail',60,'2026-06-17 10:00:00')", (SUBJECT_S13,))
+    db.execute("INSERT INTO user_feedback (objective_id, subject_id, feedback_type, sentiment) VALUES ('POB-1.1',?,'lesson','negative')", (SUBJECT_S13,))
+    db.commit()
+    app_module.apply_runtime_migrations(db)  # backfill source_rank for the new mark points
+
+
+@pytest.fixture
+def real_client():
+    db = _open_real_db()
+    _seed_panel_data(db)
+    app_module.app.state.db = db
+    yield TestClient(app_module.app)
+    db.close()
+
+
+def test_syllabus_endpoint_returns_tree(real_client):
+    res = real_client.get(f"/api/syllabus/{SUBJECT_S13}")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["subject_id"] == SUBJECT_S13
+    assert body["display_name"] == "Principles of Business"
+    assert len(body["sections"]) == 1
+    objs = body["sections"][0]["objectives"]
+    by_id = {o["objective_id"]: o for o in objs}
+    # every objective carries the three derived fields
+    for o in objs:
+        assert "has_lesson" in o and "mark_point_count" in o and "best_source_rank" in o
+    assert by_id["POB-1.1"]["has_lesson"] is True
+    assert by_id["POB-1.1"]["mark_point_count"] == 3
+    assert by_id["POB-1.1"]["best_source_rank"] == 3       # past_paper -> 3
+    assert by_id["POB-1.1"]["command_words"] == ["Explain"]
+    assert by_id["POB-1.2"]["has_lesson"] is False
+    assert by_id["POB-1.2"]["mark_point_count"] == 0
+    assert by_id["POB-1.2"]["best_source_rank"] is None    # no mark points
+
+
+def test_progress_endpoint_includes_all_objectives(real_client):
+    res = real_client.get(f"/api/progress/{SUBJECT_S13}")
+    assert res.status_code == 200
+    objs = {o["objective_id"]: o for o in res.json()["objectives"]}
+    assert set(objs) == {"POB-1.1", "POB-1.2"}             # ALL objectives, not just weak ones
+    assert objs["POB-1.1"]["leitner_box"] == 2
+    assert objs["POB-1.1"]["latest_score_pct"] == 60
+    assert objs["POB-1.1"]["feedback_negative"] == 1
+    # POB-1.2 has no weakness_log / sessions -> null values present, not missing
+    assert objs["POB-1.2"]["leitner_box"] is None
+    assert objs["POB-1.2"]["latest_score_pct"] is None
+    assert objs["POB-1.2"]["next_review"] is None
+
+
+def test_past_papers_endpoint_sorted_year_desc(real_client):
+    res = real_client.get(f"/api/past-papers/{SUBJECT_S13}")
+    assert res.status_code == 200
+    papers = res.json()["papers"]
+    assert len(papers) == 2
+    assert [p["year"] for p in papers] == [2024, 2023]     # year descending
+    p2024 = papers[0]
+    assert p2024["doc_id"] == "D1"
+    assert p2024["question_count"] == 1
+    assert p2024["objectives_covered"] == ["POB-1.1"]
+
+
+def test_practice_question_endpoint_returns_question(real_client):
+    res = real_client.get("/api/practice-question/D1/2b")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["question_id"] == "POB-1.1-q2b-stem"
+    assert body["question_num"] == "2b"
+    assert body["objective_id"] == "POB-1.1"
+    assert body["marks_total"] == 3
+    assert body["command_words"] == ["Explain"]
+
+
+def test_practice_question_endpoint_404_when_missing(real_client):
+    res = real_client.get("/api/practice-question/D1/9z")
+    assert res.status_code == 404

@@ -16,6 +16,7 @@ Run (dev):
     python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 """
 
+import json
 import logging
 import os
 import sqlite3
@@ -256,6 +257,35 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # table/indexes already present -- re-run is a no-op
+    # Stage 13 (roadmap #3): source_rank ranks the trustworthiness of a mark point's
+    # source, 1 (best) .. 4 (generated). Rank 1 is reserved for content loaded from
+    # objectives.content_stmt directly; mark_points are point-level, so they earn 2-4.
+    # Rank 5 ("generated, unreviewed") is a RUNTIME overlay (an unreviewed
+    # ingest_review_queue row), never stored. content_type lives on documents, joined
+    # via doc_id. Backfill only NULL rows so a re-run is idempotent.
+    try:
+        db.execute("ALTER TABLE mark_points ADD COLUMN source_rank INTEGER")
+    except sqlite3.OperationalError:
+        pass  # column already present
+    try:
+        db.execute(
+            """
+            UPDATE mark_points
+            SET source_rank = CASE
+                WHEN source_type = 'past_paper' AND (
+                     SELECT d.content_type FROM documents d
+                     WHERE d.doc_id = mark_points.doc_id
+                ) = 'specimen'                                    THEN 2
+                WHEN source_type = 'past_paper'                   THEN 3
+                WHEN source_type IN ('recovered_extraction',
+                                     'syllabus_derived')          THEN 4
+                ELSE NULL
+            END
+            WHERE source_rank IS NULL
+            """
+        )
+    except sqlite3.OperationalError:
+        pass  # source_type column absent on a very old DB -- leave source_rank NULL
     # Data migration: normalise question_id to the -stem convention used by
     # ingest_solutions.py. Old PDF-ingester rows stored question_id without
     # the suffix; this makes the grade-picker join work for all rows.
@@ -447,14 +477,21 @@ def plan_page() -> FileResponse:
 
 @app.get("/")
 def index() -> FileResponse:
-    """The Welcome page is the app's front door (greeting, add-notes, navigation)."""
-    return FileResponse(WELCOME_HTML)
+    """Stage 13: the panel shell (Learn/Practice/Review/Progress/Library/Exam) is now
+    the app's front door. The old Welcome page remains on disk at /welcome."""
+    return FileResponse(CHAT_HTML)
 
 
 @app.get("/chat")
 def chat_page() -> FileResponse:
-    """The tutor chat UI, moved here from / when the Welcome page took the root."""
+    """The panel shell, also reachable at /chat (kept for existing bookmarks)."""
     return FileResponse(CHAT_HTML)
+
+
+@app.get("/welcome")
+def welcome_page() -> FileResponse:
+    """The previous Welcome front door (greeting, add-notes, navigation), preserved."""
+    return FileResponse(WELCOME_HTML)
 
 
 @app.get("/health")
@@ -692,6 +729,201 @@ def objectives(subject_id: str, request: Request) -> list[dict]:
         (subject_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Stage 13 panel-shell endpoints (syllabus tree / progress heatmap / papers)
+# ---------------------------------------------------------------------------
+def _decode_command_words(raw) -> list[str]:
+    """objectives.command_words is a JSON array string -> Python list ([] if absent)."""
+    if not raw:
+        return []
+    try:
+        val = json.loads(raw)
+        return [str(c) for c in val] if isinstance(val, list) else [str(val)]
+    except (json.JSONDecodeError, TypeError):
+        return [str(raw)]
+
+
+@app.get("/api/syllabus/{subject_id}")
+def syllabus(subject_id: str, request: Request) -> dict:
+    """Section + objective tree for the Learn and Library panels.
+
+    Each objective carries has_lesson (a row in objective_lessons), mark_point_count
+    (COUNT on mark_points), and best_source_rank (MIN(source_rank)). command_words
+    is JSON-decoded to a list. Returns empty sections for an unknown subject.
+    """
+    db = request.app.state.db
+    subj = db.execute(
+        "SELECT subject_id, display_name FROM subjects WHERE subject_id = ?",
+        (subject_id,),
+    ).fetchone()
+    display_name = subj["display_name"] if subj else subject_id
+
+    secs = db.execute(
+        "SELECT section_id, section_num, title FROM syllabus_sections "
+        "WHERE subject_id = ? ORDER BY CAST(section_num AS INTEGER), section_num",
+        (subject_id,),
+    ).fetchall()
+
+    sections = []
+    for s in secs:
+        objs = db.execute(
+            """
+            SELECT o.objective_id, o.objective_num, o.content_stmt,
+                   o.command_words, o.skill_type,
+                   (SELECT 1 FROM objective_lessons l
+                     WHERE l.objective_id = o.objective_id LIMIT 1)        AS has_lesson,
+                   (SELECT COUNT(*) FROM mark_points mp
+                     WHERE mp.objective_id = o.objective_id)               AS mark_point_count,
+                   (SELECT MIN(mp.source_rank) FROM mark_points mp
+                     WHERE mp.objective_id = o.objective_id)               AS best_source_rank
+            FROM   objectives o
+            WHERE  o.section_id = ?
+            ORDER  BY o.objective_num
+            """,
+            (s["section_id"],),
+        ).fetchall()
+        sections.append({
+            "section_id": s["section_id"],
+            "section_num": s["section_num"],
+            "title": s["title"],
+            "objectives": [{
+                "objective_id": o["objective_id"],
+                "objective_num": o["objective_num"],
+                "content_stmt": o["content_stmt"],
+                "command_words": _decode_command_words(o["command_words"]),
+                "skill_type": o["skill_type"],
+                "has_lesson": bool(o["has_lesson"]),
+                "mark_point_count": o["mark_point_count"] or 0,
+                "best_source_rank": o["best_source_rank"],
+            } for o in objs],
+        })
+    return {"subject_id": subject_id, "display_name": display_name, "sections": sections}
+
+
+@app.get("/api/progress/{subject_id}")
+def progress(subject_id: str, request: Request) -> dict:
+    """Per-objective progress for the Progress heatmap -- ALL objectives, not just
+    those with a weakness_log row. NULLs where no data exists yet.
+
+    latest_score_pct / last_studied come from the most recent study_sessions row;
+    leitner_box / next_review from weakness_log; feedback counts from user_feedback.
+    """
+    db = request.app.state.db
+    rows = db.execute(
+        """
+        SELECT o.objective_id,
+               o.objective_num,
+               SUBSTR(o.content_stmt, 1, 80)                       AS content_stmt,
+               w.leitner_box                                        AS leitner_box,
+               w.next_review                                        AS next_review,
+               (SELECT ss.score_pct FROM study_sessions ss
+                 WHERE ss.objective_id = o.objective_id
+                 ORDER BY ss.created_at DESC LIMIT 1)               AS latest_score_pct,
+               (SELECT ss.created_at FROM study_sessions ss
+                 WHERE ss.objective_id = o.objective_id
+                 ORDER BY ss.created_at DESC LIMIT 1)               AS last_studied,
+               (SELECT COUNT(*) FROM user_feedback f
+                 WHERE f.objective_id = o.objective_id AND f.sentiment = 'negative') AS feedback_negative,
+               (SELECT COUNT(*) FROM user_feedback f
+                 WHERE f.objective_id = o.objective_id AND f.sentiment = 'confused') AS feedback_confused
+        FROM   objectives o
+        JOIN   syllabus_sections s ON s.section_id = o.section_id
+        LEFT   JOIN weakness_log w ON w.objective_id = o.objective_id
+                                  AND w.subject_id   = o.subject_id
+        WHERE  o.subject_id = ?
+        ORDER  BY CAST(s.section_num AS INTEGER), o.objective_num
+        """,
+        (subject_id,),
+    ).fetchall()
+    return {"objectives": [{
+        "objective_id": r["objective_id"],
+        "objective_num": r["objective_num"],
+        "content_stmt": r["content_stmt"],
+        "leitner_box": r["leitner_box"],
+        "latest_score_pct": r["latest_score_pct"],
+        "last_studied": r["last_studied"],
+        "next_review": r["next_review"],
+        "feedback_negative": r["feedback_negative"] or 0,
+        "feedback_confused": r["feedback_confused"] or 0,
+    } for r in rows]}
+
+
+@app.get("/api/past-papers/{subject_id}")
+def past_papers(subject_id: str, request: Request) -> dict:
+    """Gradeable past papers for the Practice and Exam panels.
+
+    A "paper" is one document carrying solution-derived ('-stem') question chunks --
+    the same gradeable set the quiz page uses. doc_id is included (the Exam/Practice
+    flow loads questions by doc_id + question_num). objectives_covered is the
+    distinct objective_ids those questions resolve to. Sorted by year desc, paper.
+    """
+    db = request.app.state.db
+    docs = db.execute(
+        """
+        SELECT d.doc_id, d.year, d.paper,
+               COUNT(DISTINCT c.question_num) AS question_count
+        FROM   chunks c
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.subject_id = ?
+          AND  c.question_num IS NOT NULL
+          AND  c.chunk_id LIKE '%-stem'
+        GROUP  BY d.doc_id
+        HAVING question_count > 0
+        ORDER  BY d.year DESC, d.paper
+        """,
+        (subject_id,),
+    ).fetchall()
+    papers = []
+    for d in docs:
+        objs = db.execute(
+            "SELECT DISTINCT objective_id FROM chunks "
+            "WHERE doc_id = ? AND question_num IS NOT NULL AND chunk_id LIKE '%-stem' "
+            "ORDER BY objective_id",
+            (d["doc_id"],),
+        ).fetchall()
+        papers.append({
+            "doc_id": d["doc_id"],
+            "year": d["year"],
+            "paper": d["paper"],
+            "question_count": d["question_count"],
+            "objectives_covered": [o["objective_id"] for o in objs],
+        })
+    return {"papers": papers}
+
+
+@app.get("/api/practice-question/{doc_id}/{question_num}")
+def practice_question(doc_id: str, question_num: str, request: Request) -> dict:
+    """One gradeable question (its '-stem' chunk) for the Practice and Exam panels.
+
+    question_id (the chunk_id grade keys on) is returned alongside the prose,
+    bound objective, marks_total (mark-point count), and the objective's command
+    words. 404 when no matching '-stem' chunk exists.
+    """
+    db = request.app.state.db
+    row = db.execute(
+        """
+        SELECT c.chunk_id AS question_id, c.question_num, c.chunk_text, c.objective_id,
+               (SELECT COUNT(*) FROM mark_points mp WHERE mp.question_id = c.chunk_id) AS marks_total,
+               o.command_words
+        FROM   chunks c
+        JOIN   objectives o ON o.objective_id = c.objective_id
+        WHERE  c.doc_id = ? AND c.question_num = ? AND c.chunk_id LIKE '%-stem'
+        LIMIT  1
+        """,
+        (doc_id, question_num),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="question not found")
+    return {
+        "question_id": row["question_id"],
+        "question_num": row["question_num"],
+        "question_text": row["chunk_text"],
+        "objective_id": row["objective_id"],
+        "marks_total": row["marks_total"] or 0,
+        "command_words": _decode_command_words(row["command_words"]),
+    }
 
 
 @app.post("/api/chat")
