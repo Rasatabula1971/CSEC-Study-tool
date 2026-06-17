@@ -155,11 +155,13 @@ def test_grade_two_of_three_points(db):
         )
     db.commit()
 
+    # Evidence is >= 20 chars so the Stage 10 thin-evidence gate does not downgrade
+    # the awarded points; the missed point is genuinely missed.
     valid_json = (
         '{"objective_id":"POB-1.1","question_id":"q1","points":['
-        '{"mark_point_id":"mp1","awarded":true,"evidence":"a"},'
-        '{"mark_point_id":"mp2","awarded":true,"evidence":"b"},'
-        '{"mark_point_id":"mp3","awarded":false,"evidence":"missing"}]}'
+        '{"mark_point_id":"mp1","awarded":true,"evidence":"the student named an organisation"},'
+        '{"mark_point_id":"mp2","awarded":true,"evidence":"the answer supplies goods and services"},'
+        '{"mark_point_id":"mp3","awarded":false,"evidence":"no purpose was mentioned at all"}]}'
     )
 
     def fake_chat(messages, system, schema=None):
@@ -180,6 +182,81 @@ def test_grade_no_mark_scheme(db):
 
     result = grade.grade_answer(db, "unknown-q", "answer", chat_fn=fake_chat)
     assert result == {"error": "no_mark_scheme"}
+
+
+# ---------------------------------------------------------------------------
+# Stage 10 — confidence-aware grading
+# ---------------------------------------------------------------------------
+def _seed_mark_point(db, mark_point_id, question_id, marks_value=1):
+    """Insert one mark point under POB-1.1 for a grade_answer test."""
+    db.execute(
+        "INSERT OR IGNORE INTO documents (doc_id, subject_id, content_type, source_file, content_hash) "
+        "VALUES ('ms10', 'Principles_of_Business', 'mark_scheme', 'ms10.pdf', 'h10')",
+    )
+    db.execute(
+        "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+        "point_text, marks_value, point_order) VALUES (?, 'POB-1.1', ?, 'ms10', 'point', ?, 1)",
+        (mark_point_id, question_id, marks_value),
+    )
+    db.commit()
+
+
+def test_A_weighted_scoring_uses_marks_value(db):
+    """compute_score weights by DB marks_value: [1,2,1] missing the 2 -> 50%, not 67%."""
+    grading = {"points": [
+        {"mark_point_id": "m1", "awarded": True},
+        {"mark_point_id": "m2", "awarded": False},   # the 2-mark point is missed
+        {"mark_point_id": "m3", "awarded": True},
+    ]}
+    mark_points_db = [
+        {"mark_point_id": "m1", "marks_value": 1},
+        {"mark_point_id": "m2", "marks_value": 2},
+        {"mark_point_id": "m3", "marks_value": 1},
+    ]
+    score = grade.compute_score(grading, mark_points_db)
+    assert score["awarded"] == 2
+    assert score["total"] == 4
+    assert score["score_pct"] == 50           # weighted, NOT 67
+    assert score["missed_points"] == ["m2"]
+
+
+def test_B_evidence_too_thin_is_downgraded(db):
+    """An awarded point with under-20-char evidence is auto-downgraded to missed."""
+    _seed_mark_point(db, "mpB", "qB")
+    thin_json = (
+        '{"objective_id":"POB-1.1","question_id":"qB","confidence":80,"points":['
+        '{"mark_point_id":"mpB","awarded":true,"evidence":"ok","confidence":80}]}'
+    )
+    result = grade.grade_answer(db, "qB", "a longer student answer here", chat_fn=lambda *a, **k: thin_json)
+    assert result["points"][0]["awarded"] is False
+    assert "mpB" in result["missed_points"]
+    assert result["awarded"] == 0
+    assert "[auto-downgraded" in result["points"][0]["evidence"]
+
+
+def test_C_verbatim_echo_is_flagged_not_downgraded(db):
+    """Evidence that echoes the answer verbatim (no connectors) is flagged, stays awarded."""
+    _seed_mark_point(db, "mpC", "qC")
+    student_answer = "the firm sells products to local customers every single day"
+    # The evidence is a >=20-char substring of the answer with no explanation connector.
+    echo_json = (
+        '{"objective_id":"POB-1.1","question_id":"qC","confidence":90,"points":['
+        '{"mark_point_id":"mpC","awarded":true,'
+        '"evidence":"the firm sells products to local customers","confidence":90}]}'
+    )
+    result = grade.grade_answer(db, "qC", student_answer, chat_fn=lambda *a, **k: echo_json)
+    assert result["points"][0]["awarded"] is True       # award stands
+    assert "mpC" in result["review_flags"]              # but flagged for review
+    assert "mpC" not in result["missed_points"]
+
+
+def test_D_examiner_prompt_has_command_word_gating():
+    """prompts/examiner.txt carries the command-word + confidence + output sections."""
+    text = (ROOT / "prompts" / "examiner.txt").read_text(encoding="utf-8")
+    assert "EXPLAIN" in text       # command-word rules present
+    assert "because" in text       # explanation-connector guidance present
+    assert "CONFIDENCE" in text
+    assert "OUTPUT FORMAT" in text
 
 
 # ---------------------------------------------------------------------------

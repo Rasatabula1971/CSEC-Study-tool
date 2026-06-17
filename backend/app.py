@@ -144,6 +144,32 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
             db.execute(alter)
         except sqlite3.OperationalError:
             pass  # column already present -- re-run is a no-op
+    # Stage 10 (Confidence-Aware Grading): backfill command_word for existing rows.
+    # A point inherits its objective's command word ONLY when the objective has
+    # exactly one (an unambiguous gate -- e.g. an "Explain" objective). Objectives
+    # with several command words leave command_word NULL so the examiner falls back
+    # to the question-level word. Idempotent: only fills rows still NULL, so a re-run
+    # is a no-op once populated. json_extract/json_array_length need the JSON1
+    # extension (bundled in modern SQLite); wrapped so an old build degrades quietly.
+    try:
+        db.execute(
+            """
+            UPDATE mark_points
+            SET command_word = (
+                SELECT json_extract(o.command_words, '$[0]')
+                FROM   objectives o
+                WHERE  o.objective_id = mark_points.objective_id
+            )
+            WHERE command_word IS NULL
+              AND (
+                SELECT json_array_length(o.command_words)
+                FROM   objectives o
+                WHERE  o.objective_id = mark_points.objective_id
+              ) = 1
+            """
+        )
+    except sqlite3.OperationalError:
+        pass  # JSON1 unavailable or malformed command_words -- leave command_word NULL
     # Stage 9 (Canonical Lessons groundwork): a queue of objectives whose canonical
     # lesson still needs generating. Created here so the live SSD DB gains it without
     # a re-init. CREATE TABLE IF NOT EXISTS is a no-op when it already exists.

@@ -24,6 +24,7 @@ Run: pytest tests/test_pilot_pob.py -v
 """
 
 import json
+import sqlite3
 import struct
 import sys
 from datetime import date
@@ -31,6 +32,7 @@ from pathlib import Path
 
 import pytest
 from unittest.mock import patch, MagicMock
+from starlette.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -242,10 +244,11 @@ def test_group2_grading_loop_python_scoring_and_leitner(db):
         "objective_id": "POB-1.1",
         "question_id": "q1",
         "score_pct": 999,          # bogus — must be overwritten by compute_score()
+        # Evidence >= 20 chars so the Stage 10 thin-evidence gate keeps these awarded.
         "points": [
-            {"mark_point_id": "mp1", "awarded": True,  "evidence": "said organisation"},
-            {"mark_point_id": "mp2", "awarded": True,  "evidence": "said goods/services"},
-            {"mark_point_id": "mp3", "awarded": True,  "evidence": "said to satisfy wants"},
+            {"mark_point_id": "mp1", "awarded": True,  "evidence": "the answer said an organisation"},
+            {"mark_point_id": "mp2", "awarded": True,  "evidence": "the answer said goods and services"},
+            {"mark_point_id": "mp3", "awarded": True,  "evidence": "the answer said to satisfy wants"},
         ],
     })
 
@@ -283,10 +286,11 @@ def test_group2_grading_loop_fail_resets_box_to_one(db):
     grading_json = json.dumps({
         "objective_id": "POB-1.1",
         "question_id": "q1",
+        # mp1 evidence >= 20 chars so the thin-evidence gate keeps it awarded (1/3).
         "points": [
-            {"mark_point_id": "mp1", "awarded": True,  "evidence": "organisation"},
-            {"mark_point_id": "mp2", "awarded": False, "evidence": "no goods mentioned"},
-            {"mark_point_id": "mp3", "awarded": False, "evidence": "no purpose mentioned"},
+            {"mark_point_id": "mp1", "awarded": True,  "evidence": "the answer said an organisation"},
+            {"mark_point_id": "mp2", "awarded": False, "evidence": "no goods were mentioned at all"},
+            {"mark_point_id": "mp3", "awarded": False, "evidence": "no purpose was mentioned at all"},
         ],
     })
 
@@ -557,10 +561,11 @@ class TestPOBStudyLoop:
         grading_json = json.dumps({
             "objective_id": "POB-1.1",
             "question_id": "POB-1.1-q1-stem",
+            # Evidence >= 20 chars so the thin-evidence gate keeps the two awarded (2/3).
             "points": [
-                {"mark_point_id": "POB-1.1-q1-stem-mp1", "awarded": True,  "evidence": "organisation"},
-                {"mark_point_id": "POB-1.1-q1-stem-mp2", "awarded": True,  "evidence": "goods/services"},
-                {"mark_point_id": "POB-1.1-q1-stem-mp3", "awarded": False, "evidence": "purpose not stated"},
+                {"mark_point_id": "POB-1.1-q1-stem-mp1", "awarded": True,  "evidence": "the answer named an organisation"},
+                {"mark_point_id": "POB-1.1-q1-stem-mp2", "awarded": True,  "evidence": "the answer gave goods and services"},
+                {"mark_point_id": "POB-1.1-q1-stem-mp3", "awarded": False, "evidence": "the purpose was not stated"},
             ],
         })
 
@@ -643,3 +648,126 @@ class TestPOBStudyLoop:
         # No controller / no Ollama: a malformed grading_result must be rejected.
         with pytest.raises(ValueError):
             log_weakness(loop_db, {"subject_id": SUBJECT, "score_pct": 50}, session_id=0)  # no objective_id
+
+
+# ===========================================================================
+# Stage 10 — confidence-aware grading: verify-with-teacher payload fields
+# ===========================================================================
+def open_stage10_db():
+    """Real :memory: DB with check_same_thread=False so the TestClient worker thread
+    can use it (Starlette runs the sync endpoint off-thread). Schema + migrations."""
+    try:
+        import sqlite_vec
+    except ImportError:
+        pytest.skip("sqlite-vec not installed -- skipping Stage 10 API tests")
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.enable_load_extension(False)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.row_factory = sqlite3.Row
+    for stmt in SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+        if stmt.strip():
+            db.execute(stmt)
+    db.commit()
+    app_module.apply_runtime_migrations(db)
+    return db
+
+
+def _seed_stage10_subject(db) -> None:
+    """Locked POB subject + one objective (POB-1.1) for the Stage 10 API tests."""
+    db.execute(
+        "INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, ?, 1)",
+        (SUBJECT, "Principles of Business"),
+    )
+    db.execute(
+        "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
+        "VALUES ('POB-SEC-1', ?, 'Nature of Business', '1')",
+        (SUBJECT,),
+    )
+    db.execute(
+        "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt) "
+        "VALUES ('POB-1.1', 'POB-SEC-1', ?, '1.1', 'Define the term business.')",
+        (SUBJECT,),
+    )
+    db.execute(
+        "INSERT INTO documents (doc_id, subject_id, content_type, source_file, content_hash) "
+        "VALUES ('doc_s10', ?, 'mark_scheme', 's10.pdf', 'hash_s10')",
+        (SUBJECT,),
+    )
+
+
+def _grade_via_api(db, question_id):
+    """POST /api/chat route='grade' against `db`, mocking the examiner LLM.
+
+    The examiner returns one awarded point with thick evidence + confidence, so the
+    score and provenance fields are exercised without touching real Ollama/Gemini.
+    """
+    graded_json = json.dumps({
+        "objective_id": "POB-1.1",
+        "question_id": question_id,
+        "confidence": 75,
+        "points": [
+            {"mark_point_id": f"{question_id}-mp1", "awarded": True,
+             "evidence": "the answer clearly defined a business as an organisation",
+             "confidence": 75},
+        ],
+    })
+    app_module.app.state.db = db
+    with patch("controller.ollama_chat", lambda *a, **k: graded_json):
+        client = TestClient(app_module.app)
+        res = client.post("/api/chat", json={
+            "message": "A business is an organisation that supplies goods and services.",
+            "subject_id": SUBJECT,
+            "route": "grade",
+            "question_id": question_id,
+        })
+    return res
+
+
+def test_E_syllabus_derived_triggers_verify_with_teacher():
+    """syllabus_derived mark points + an open review-queue row -> badge fields set."""
+    db = open_stage10_db()
+    try:
+        _seed_stage10_subject(db)
+        qid = "POB-1.1-qE-stem"   # ends in '-stem' so the startup migration leaves it
+        db.execute(
+            "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+            "point_text, marks_value, point_order, source_type) "
+            "VALUES (?, 'POB-1.1', ?, 'doc_s10', 'define a business', 1, 1, 'syllabus_derived')",
+            (f"{qid}-mp1", qid),
+        )
+        # An OPEN review-queue row for this objective -> pending_review must be True.
+        db.execute(
+            "INSERT INTO ingest_review_queue (source_file, chunk_text, reason, objective_id) "
+            "VALUES ('s10.pdf', 'define a business', 'syllabus_derived_first_run', 'POB-1.1')",
+        )
+        db.commit()
+
+        body = _grade_via_api(db, qid).json()
+        assert body["grading_basis"] == "syllabus_derived"
+        assert body["pending_review"] is True
+        assert isinstance(body["overall_confidence"], int)
+    finally:
+        db.close()
+
+
+def test_F_past_paper_basis_does_not_trigger_badge():
+    """past_paper mark points + no review-queue row -> grading_basis past_paper, no pending."""
+    db = open_stage10_db()
+    try:
+        _seed_stage10_subject(db)
+        qid = "POB-1.1-qF-stem"
+        db.execute(
+            "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+            "point_text, marks_value, point_order, source_type) "
+            "VALUES (?, 'POB-1.1', ?, 'doc_s10', 'define a business', 1, 1, 'past_paper')",
+            (f"{qid}-mp1", qid),
+        )
+        db.commit()
+
+        body = _grade_via_api(db, qid).json()
+        assert body["grading_basis"] == "past_paper"
+        assert body["pending_review"] is False
+    finally:
+        db.close()

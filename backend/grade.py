@@ -29,7 +29,7 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 
 GRADING_SCHEMA = {
     "type": "object",
-    "required": ["objective_id", "question_id", "points"],
+    "required": ["objective_id", "question_id", "points", "confidence"],
     "properties": {
         "objective_id": {"type": "string"},
         "question_id": {"type": "string"},
@@ -37,14 +37,19 @@ GRADING_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["mark_point_id", "awarded", "evidence"],
+                # Stage 10: confidence (0-100) per point lets the UI show a
+                # verify-with-teacher badge when the examiner is unsure.
+                "required": ["mark_point_id", "awarded", "evidence", "confidence"],
                 "properties": {
                     "mark_point_id": {"type": "string"},
                     "awarded": {"type": "boolean"},
                     "evidence": {"type": "string"},
+                    "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
                 },
             },
         },
+        # Overall confidence in the whole grading judgement (0-100).
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
     },
 }
 
@@ -69,17 +74,33 @@ SYLLABUS_GRADING_SCHEMA = {
 }
 
 
-def compute_score(grading: dict) -> dict:
-    """Deterministic scoring. Never delegated to the model."""
-    pts = grading["points"]
-    awarded = sum(1 for p in pts if p["awarded"])
-    total = len(pts)
-    pct = round(100 * awarded / total) if total else 0
-    missed = [p["mark_point_id"] for p in pts if not p["awarded"]]
+def compute_score(grading: dict, mark_points_db: list) -> dict:
+    """Deterministic WEIGHTED scoring (Stage 10). Never delegated to the model.
+
+    Each point's weight is its `marks_value` read from the DB row (never from the
+    model's output -- the model only supplies the awarded boolean). A CSEC question
+    worth [1, 2, 1] marks that misses only the 2-mark point scores 50%, not 67%.
+    Points the model returns that have no matching DB mark point are ignored.
+    """
+    mp_by_id = {mp["mark_point_id"]: mp for mp in mark_points_db}
+    awarded_marks = 0
+    total_marks = 0
+    missed = []
+    for p in grading["points"]:
+        mp = mp_by_id.get(p["mark_point_id"])
+        if not mp:
+            continue
+        weight = mp["marks_value"] if mp["marks_value"] else 1
+        total_marks += weight
+        if p["awarded"]:
+            awarded_marks += weight
+        else:
+            missed.append(p["mark_point_id"])
+    pct = round(100 * awarded_marks / total_marks) if total_marks else 0
     return {
         "score_pct": pct,
-        "awarded": awarded,
-        "total": total,
+        "awarded": awarded_marks,
+        "total": total_marks,
         "missed_points": missed,
     }
 
@@ -127,6 +148,62 @@ def reconcile_grading(result: dict) -> dict:
         elif not evidence.strip():
             point["evidence"] = EMPTY_EVIDENCE_FILL
     return result
+
+
+# Explanation connectors (Stage 10). Evidence that merely echoes the student's
+# words verbatim, with none of these, is a sign the examiner rubber-stamped the
+# point rather than judging it -- flagged for review (not auto-downgraded).
+EXPLANATION_CONNECTORS = (
+    "because", "so", "which means", "therefore",
+    "this causes", "as a result", "since", "thus",
+)
+
+
+def evidence_post_check(points: list[dict], student_answer: str) -> list[str]:
+    """Sanity-check the examiner's evidence against rubber-stamping (Stage 10).
+
+    Mutates each awarded point in place and returns the list of mark_point_ids
+    flagged for review. Two gates run on awarded points only:
+
+    Gate 1 (auto-downgrade) -- evidence under 20 chars is too thin to justify a
+    mark, so the point is flipped to awarded=False and tagged in its evidence.
+
+    Gate 2 (flag only) -- evidence that is a verbatim substring of the student's
+    answer AND contains no explanation connector suggests the examiner echoed the
+    text without judging it. The mark_point_id is flagged; the award STANDS (the
+    model's call is trusted, the human is merely alerted).
+    """
+    review_flags: list[str] = []
+    for p in points:
+        if not p.get("awarded"):
+            continue
+        evidence = p.get("evidence", "")
+        # Gate 1: evidence too thin -> downgrade.
+        if len(evidence.strip()) < 20:
+            p["awarded"] = False
+            p["evidence"] = evidence + " [auto-downgraded: evidence too thin]"
+        # Gate 2: verbatim echo without an explanation connector -> flag only.
+        elif evidence.strip() in student_answer:
+            if not any(c in evidence.lower() for c in EXPLANATION_CONNECTORS):
+                review_flags.append(p["mark_point_id"])
+    return review_flags
+
+
+def overall_confidence(grading: dict, default: int = 50) -> int:
+    """Lowest per-point confidence, else the top-level confidence, else `default`.
+
+    The grade is only as trustworthy as its weakest judged point, so the floor
+    (min) drives the verify-with-teacher badge. Models/stubs that omit per-point
+    confidence fall back to the overall value, then to `default` (Stage 10)."""
+    per_point = [
+        p["confidence"] for p in grading.get("points", [])
+        if isinstance(p.get("confidence"), int)
+    ]
+    if per_point:
+        return min(per_point)
+    if isinstance(grading.get("confidence"), int):
+        return grading["confidence"]
+    return default
 
 
 def _grading_provenance(db: sqlite3.Connection, question_id: str,
@@ -250,8 +327,16 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
     raw = chat_fn(messages, system=_load_examiner_prompt(), schema=GRADING_SCHEMA)
     grading = json.loads(raw)
 
-    score = compute_score(grading)
+    # Stage 10 evidence quality post-check: thin evidence is auto-downgraded (so it
+    # flows into missed_points below); verbatim-echo evidence is flagged for review
+    # without changing the award. Runs BEFORE compute_score so downgrades count.
+    review_flags = evidence_post_check(grading.get("points", []), student_answer)
+
+    # Weighted score: marks_value comes from the DB rows, never the model output.
+    score = compute_score(grading, mark_points)
     grading.update(score)
+    grading["overall_confidence"] = overall_confidence(grading)
+    grading["review_flags"] = review_flags
 
     # Attach each mark point's scheme text for display (read-only join on the
     # mark_points already read for this question, keyed by mark_point_id). A point
@@ -352,7 +437,14 @@ def grade_against_syllabus(db: sqlite3.Connection, objective_id: str,
     # Fix self-contradictory / blank-evidence 3B output before scoring.
     grading = reconcile_grading(grading)
 
-    score = compute_score(grading)
+    # No DB mark scheme here -- the model GENERATED these points, so each is worth
+    # one mark. A synthetic weight-1 list lets the weighted compute_score (Stage 10)
+    # produce the same /N score this fallback grader always returned.
+    synthetic_mps = [
+        {"mark_point_id": p.get("mark_point_id"), "marks_value": 1}
+        for p in grading.get("points", [])
+    ]
+    score = compute_score(grading, synthetic_mps)
     grading.update(score)
     return grading
 
@@ -443,7 +535,13 @@ def grade_synthesis(db: sqlite3.Connection, batch_id: int, student_answer: str,
     # the per-objective weakness loop below, so corrected awards flow into both.
     grading = reconcile_grading(grading)
 
-    score = compute_score(grading)
+    # One generated point per objective, each worth one mark -> synthetic weight-1
+    # list for the weighted compute_score (Stage 10), preserving the /N synthesis score.
+    synthetic_mps = [
+        {"mark_point_id": p.get("mark_point_id"), "marks_value": 1}
+        for p in grading.get("points", [])
+    ]
+    score = compute_score(grading, synthetic_mps)
     grading.update(score)
 
     # Update each objective's weakness_log independently. Match points back to

@@ -219,6 +219,58 @@
     .grade-header { padding: var(--space-4); border-bottom: var(--border); display: flex; align-items: center; justify-content: space-between; }
     .grade-header-label { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--paper); }
 
+    /* ===== Stage 10: confidence-aware grading display ===== */
+    /* Weighted score line: "X / Y marks (Z%)" */
+    .grade-score-line { font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.01em; }
+    .grade-score-line.pass { color: var(--tick); }
+    .grade-score-line.warn { color: var(--color-warn); }
+    .grade-score-line.fail { color: var(--red-pen); }
+
+    /* Verify-with-teacher badge — amber bg, dark text, clearly visible (not a footnote) */
+    .verify-badge {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--highlighter); color: #1A2017;
+      border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600;
+    }
+
+    /* Grading-basis label — plain-language source of the mark scheme */
+    .grading-basis { margin-top: var(--space-2); font-size: var(--text-xs); line-height: 1.5; }
+    .grading-basis.basis-pass { color: var(--tick); }
+    .grading-basis.basis-warn { color: var(--color-warn); }
+
+    /* Per-mark-point breakdown */
+    .mark-point-line {
+      display: flex; gap: var(--space-2); padding: var(--space-2) 0;
+      font-size: var(--text-sm); line-height: 1.5;
+      opacity: 0; transform: translateX(-6px);
+      animation: mark-reveal 200ms var(--ease-spring) forwards;
+    }
+    .mark-point-line + .mark-point-line { border-top: 1px solid var(--color-border-soft); }
+    .mp-mark { flex-shrink: 0; font-weight: 700; }
+    .mark-point-line.awarded .mp-mark { color: var(--tick); }
+    .mark-point-line.missed  .mp-mark { color: var(--red-pen); }
+    .mark-point-line.awarded .mp-text { color: var(--paper); }
+    .mark-point-line.missed  .mp-text { color: var(--paper-dim); }
+    .mp-evidence { color: var(--paper-dim); }
+    .mp-downgrade-note { color: var(--color-text-faint); font-style: italic; }
+
+    /* Feedback buttons (👍 👎 🤔) */
+    .feedback-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-3) var(--space-4); border-top: var(--border); }
+    .feedback-label { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: var(--space-1); }
+    .feedback-btn {
+      width: 36px; height: 36px; border-radius: var(--radius-md);
+      background: var(--ink-3); border: var(--border); font-size: var(--text-base);
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms var(--ease-spring);
+    }
+    .feedback-btn:hover:not(:disabled) { border-color: var(--booklet); background: var(--ink-4); }
+    .feedback-btn:active:not(:disabled) { transform: scale(0.92); }
+    .feedback-btn:focus-visible { outline: 2px solid var(--booklet-bright); outline-offset: 2px; }
+    .feedback-btn.chosen { border-color: var(--booklet-bright); background: var(--color-accent-glow); }
+    .feedback-btn:disabled { opacity: 0.5; cursor: default; }
+    .feedback-thanks { font-size: var(--text-xs); color: var(--tick); margin-left: var(--space-1); }
+
     /* Input states */
     .input-wrap.disabled { opacity: 0.6; pointer-events: none; }
     .input-textarea.clearing { opacity: 0; transition: opacity 100ms ease; }
@@ -611,6 +663,13 @@
     appendModeDivider('Lesson mode — ask your next topic');
   }
 
+  // Plain-language label for how the answer was graded (Stage 10 honesty signal).
+  const GRADING_BASIS_LABEL = {
+    past_paper:       { text: '✓ Graded against the official mark scheme',    cls: 'basis-pass' },
+    recovered:        { text: '~ Graded against extracted mark points',           cls: 'basis-warn' },
+    syllabus_derived: { text: '⚠ Graded against syllabus-derived criteria',  cls: 'basis-warn' },
+  };
+
   function appendGradeCard(gradeResult) {
     hideEmptyState();
 
@@ -622,6 +681,41 @@
     const scoreClass = pct >= 70 ? 'pass' : pct >= 50 ? 'warn' : 'fail';
     const box        = gradeResult.leitner_box ?? 1;
     const nextReview = gradeResult.next_review ?? 'tomorrow';
+
+    // Stage 10 honesty signals.
+    const basis     = gradeResult.grading_basis || 'past_paper';
+    const conf      = gradeResult.overall_confidence ?? 50;
+    const flags     = gradeResult.review_flags || [];
+    const pending   = gradeResult.pending_review === true;
+    const showBadge = conf < 70 || basis !== 'past_paper' || flags.length > 0 || pending;
+    const basisInfo = GRADING_BASIS_LABEL[basis] || GRADING_BASIS_LABEL.past_paper;
+
+    // Per-mark-point breakdown: ✓ point — evidence (green) / ✗ point (red).
+    // Auto-downgraded points (awarded flipped to false) surface their note in grey italic.
+    const pointsHtml = points.map((pt, i) => {
+      const isAwarded   = !!pt.awarded;
+      const stmt        = escapeHtml(pt.point_text ?? pt.mark_point_id ?? '');
+      const evidenceRaw = pt.evidence || '';
+      const noteMatch   = evidenceRaw.match(/\[auto-downgraded[^\]]*\]/);
+      const note        = noteMatch ? noteMatch[0] : '';
+      const delay       = `animation-delay: ${i * 60}ms`;
+      if (isAwarded) {
+        const ev = evidenceRaw
+          ? ` — <span class="mp-evidence">${escapeHtml(evidenceRaw)}</span>` : '';
+        return `<div class="mark-point-line awarded" style="${delay}">
+          <span class="mp-mark">✓</span>
+          <span class="mp-text">${stmt}${ev}</span>
+        </div>`;
+      }
+      const noteHtml = note ? ` <span class="mp-downgrade-note">${escapeHtml(note)}</span>` : '';
+      return `<div class="mark-point-line missed" style="${delay}">
+        <span class="mp-mark">✗</span>
+        <span class="mp-text">${stmt}${noteHtml}</span>
+      </div>`;
+    }).join('');
+
+    const badgeHtml = showBadge
+      ? `<div class="verify-badge">⚠ Verify with your teacher</div>` : '';
 
     const card = document.createElement('div');
     card.className = 'message ai';
@@ -636,35 +730,43 @@
       </div>
       <div class="grade-card">
         <div class="grade-header">
-          <span class="grade-header-label">Mark scheme</span>
-          <div class="grade-score ${scoreClass}">
-            <span class="grade-fraction">${awarded} / ${total}</span>
-            <span class="grade-pct">${pct}%</span>
-          </div>
+          <span class="grade-header-label">Marked</span>
+          <span class="grade-score-line ${scoreClass}">${awarded} / ${total} marks (${pct}%)</span>
         </div>
-        <div class="grade-points" id="gradePoints_${Date.now()}">
-          ${points.map((pt, i) => `
-            <div class="mark-point ${pt.awarded ? 'awarded' : 'missed'}" style="animation-delay: ${i * 60}ms">
-              <div class="mark-point-icon">
-                ${pt.awarded
-                  ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
-                  : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
-                }
-              </div>
-              <div class="mark-point-text">
-                <div class="mark-point-stmt">${escapeHtml(pt.point_text ?? pt.mark_point_id ?? '')}</div>
-                ${pt.evidence ? `<div class="mark-point-evidence">${escapeHtml(pt.evidence)}</div>` : ''}
-              </div>
-            </div>
-          `).join('')}
+        <div style="padding: var(--space-3) var(--space-4) 0;">
+          ${badgeHtml}
+          <div class="grading-basis ${basisInfo.cls}">${basisInfo.text}</div>
         </div>
+        <div class="grade-points">${pointsHtml}</div>
         <div class="grade-footer">
           <div class="grade-leitner">
-            Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(nextReview)}</strong>
+            Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(String(nextReview))}</strong>
           </div>
+        </div>
+        <div class="feedback-row">
+          <span class="feedback-label">Was this helpful?</span>
+          <button type="button" class="feedback-btn" data-sentiment="positive" aria-label="Helpful">👍</button>
+          <button type="button" class="feedback-btn" data-sentiment="negative" aria-label="Not helpful">👎</button>
+          <button type="button" class="feedback-btn" data-sentiment="confused" aria-label="Confused me">🤔</button>
         </div>
       </div>
     `;
+
+    // Feedback buttons (👍 👎 🤔): one tap logs grading feedback, then locks the row.
+    const fbRow = card.querySelector('.feedback-row');
+    fbRow.addEventListener('click', (e) => {
+      const btn = e.target.closest('.feedback-btn');
+      if (!btn || btn.disabled) return;
+      sendFeedback(gradeResult.objective_id, 'grading', btn.dataset.sentiment);
+      fbRow.querySelectorAll('.feedback-btn').forEach(b => {
+        b.disabled = true;
+        b.classList.toggle('chosen', b === btn);
+      });
+      const thanks = document.createElement('span');
+      thanks.className = 'feedback-thanks';
+      thanks.textContent = 'Thanks, logged.';
+      fbRow.appendChild(thanks);
+    });
 
     chatInner.insertBefore(card, thinkingIndicator);
 
@@ -679,6 +781,26 @@
   /* ============================================================
      7. API FUNCTIONS
      ============================================================ */
+
+  // Log one-tap feedback on a grading result (Stage 10/12). Best-effort: the
+  // /api/feedback endpoint may not exist yet on older backends, so a failure must
+  // never block the study flow — the button still locks locally.
+  async function sendFeedback(objectiveId, feedbackType, sentiment) {
+    try {
+      await fetch(`${API_BASE}/api/feedback`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          objective_id:  objectiveId,
+          subject_id:    state.subjectId,
+          feedback_type: feedbackType,
+          sentiment:     sentiment,
+        }),
+      });
+    } catch {
+      // Feedback is optional telemetry — swallow network/endpoint errors.
+    }
+  }
 
   async function fetchSubjects() {
     try {
