@@ -1,45 +1,83 @@
+# PHASE: dual
+# ROUTING POLICY (v3.0 PDR)
+# CLOUD_MODE=0 (default): all inference is Ollama-only. No cloud call, no fallback.
+# CLOUD_MODE=1: grading uses Gemini. If Gemini is unreachable the request fails
+#   loudly (RuntimeError) -- it must NEVER silently fall back to Ollama.
+# The mode is explicit and user-controlled; it is read fresh from the environment
+# on every grading call, so it can never be silently violated.
 """
 backend/llm_router.py
 =====================
-Chooses which model serves a call (CLAUDE.md "Deterministic vs LLM" + the v3.x
-cloud-grading upgrade):
+Chooses which model serves a grading call (CLAUDE.md "Deterministic vs LLM" +
+"Optional Cloud Mode"). Cloud Mode is an explicit, opt-in upgrade -- never a
+silent fallback in either direction.
 
-  * chat_for_grading -- grading calls where quality matters (the syllabus and
-    synthesis graders, explain_missed). Prefers Gemini Flash when a key is
-    configured; on ANY Gemini failure (no key, network, rate limit, bad key) it
-    falls back to local Ollama SILENTLY -- a warning is logged, the student never
-    sees an error.
-  * chat_local -- always Ollama. For teach lessons, question generation,
-    classify_notes, and every other non-grading call (quality matters less and
-    staying local avoids burning API quota).
+  * chat_for_grading -- grading calls (the syllabus and synthesis graders,
+    explain_missed). CLOUD_MODE=0 -> Ollama only. CLOUD_MODE=1 -> Gemini, or a
+    loud RuntimeError if Gemini is unreachable (no silent Ollama fallback).
+  * chat_local -- ALWAYS Ollama, regardless of CLOUD_MODE. For teach lessons,
+    question generation, classify_notes, and every other non-grading call.
 
 Both mirror ollama_chat(messages, system, schema) so callers swap freely.
 """
 
-import logging
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gemini_client import is_gemini_available, gemini_chat  # noqa: E402
 from ollama_client import ollama_chat  # noqa: E402
-
-logger = logging.getLogger(__name__)
+from gemini_client import gemini_chat, is_gemini_available  # noqa: E402
+# Also keep a module handle so the build-phase functions below resolve gemini_chat
+# / is_gemini_available at call time -- this is what lets ingestion-script tests
+# patch gemini_client.* and have build routing honour it.
+import gemini_client  # noqa: E402
 
 
 def chat_for_grading(messages: list, system: str, schema: dict | None = None) -> str:
-    """Route a grading call to Gemini (preferred) or Ollama (silent fallback)."""
-    if is_gemini_available():
-        try:
-            result = gemini_chat(messages, system, schema)
-            logger.info("Grading call routed to Gemini")
-            return result
-        except Exception as exc:  # noqa: BLE001 -- any failure must fall back
-            logger.warning("Gemini call failed (%s), falling back to Ollama", exc)
+    """Route a grading call by CLOUD_MODE (read at call time).
 
+    CLOUD_MODE=0 (default): Ollama only. No cloud call, no fallback.
+    CLOUD_MODE=1: Gemini if available. If Gemini is unreachable, raise an explicit
+    error -- never silently fall back to Ollama.
+    """
+    if os.getenv("CLOUD_MODE", "0") == "1":
+        if not is_gemini_available():
+            raise RuntimeError(
+                "CLOUD_MODE=1 but Gemini is unreachable. "
+                "Check GEMINI_API_KEY or set CLOUD_MODE=0."
+            )
+        return gemini_chat(messages, system, schema)
     return ollama_chat(messages, system, schema)
 
 
 def chat_local(messages: list, system: str, schema: dict | None = None) -> str:
     """Always Ollama. For non-grading calls (teach, classify, question gen)."""
+    return ollama_chat(messages, system, schema)
+
+
+# ---------------------------------------------------------------------------
+# Build-phase routing (PDR v3.1 Section 2.5)
+# ---------------------------------------------------------------------------
+# These are called ONLY by ingestion scripts (PHASE: build), never on a runtime
+# student path. Cloud may be used at build time to fill gaps the local model
+# cannot; the engine used is recorded as mark_points.source_model and every
+# generated point is queued in ingest_review_queue for sign-off before going live.
+def build_engine() -> str:
+    """Which engine build-time generation uses: 'gemini' when CLOUD_MODE=1 and a
+    Gemini key is configured, otherwise 'ollama'. Read fresh from the environment.
+
+    Runtime never calls this -- so Gemini is reached at build time only, exactly as
+    the offline-first guarantee requires.
+    """
+    if os.getenv("CLOUD_MODE", "0") == "1" and gemini_client.is_gemini_available():
+        return "gemini"
+    return "ollama"
+
+
+def chat_for_build(messages: list, system: str, schema: dict | None = None) -> str:
+    """Build-time generation call. Gemini when build_engine() is 'gemini', else
+    Ollama. Mirrors ollama_chat(messages, system, schema) so callers swap freely."""
+    if build_engine() == "gemini":
+        return gemini_client.gemini_chat(messages, system, schema)
     return ollama_chat(messages, system, schema)

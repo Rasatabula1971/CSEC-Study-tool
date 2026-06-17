@@ -1,3 +1,4 @@
+# PHASE: build
 """
 backend/ram_check.py
 ====================

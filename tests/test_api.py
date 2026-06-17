@@ -48,49 +48,53 @@ def test_health_returns_200(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# /api/status  (grading-engine indicator)
+# /api/status  (grading-engine indicator -- driven by CLOUD_MODE)
 # ---------------------------------------------------------------------------
-def test_status_returns_engine_fields(client, monkeypatch):
-    """ollama up, Gemini key invalid/absent -> grading_engine 'ollama'.
+def test_status_offline_mode_reports_ollama_no_ping(client, monkeypatch):
+    """CLOUD_MODE=0: grading_engine 'ollama', gemini_available False, NO Gemini ping.
 
-    `gemini` reflects validity (app.state.gemini_ok), set at startup. The test
-    sets it directly since TestClient (no `with`) does not run lifespan.
+    is_gemini_available must not even be called in offline mode -- the status must
+    report the truth without touching the cloud.
     """
+    monkeypatch.setenv("CLOUD_MODE", "0")
     monkeypatch.setattr(app_module, "ollama_health", lambda: True)
-    app_module.app.state.gemini_ok = False
+    ping = MagicMock()
+    monkeypatch.setattr(app_module, "is_gemini_available", ping)
     res = client.get("/api/status")
     assert res.status_code == 200
     body = res.json()
-    assert isinstance(body["ollama"], bool) and isinstance(body["gemini"], bool)
-    assert body["ollama"] is True and body["gemini"] is False
+    assert body["cloud_mode"] is False
+    assert body["gemini_available"] is False
     assert body["grading_engine"] == "ollama"
+    assert body["ollama"] is True and body["db"] is True
+    ping.assert_not_called()  # no cloud reachability call in offline mode
 
 
-def test_status_prefers_gemini_when_key_valid(client, monkeypatch):
+def test_status_cloud_mode_reachable_reports_gemini(client, monkeypatch):
+    """CLOUD_MODE=1 and Gemini reachable -> grading_engine 'gemini', available True."""
+    monkeypatch.setenv("CLOUD_MODE", "1")
     monkeypatch.setattr(app_module, "ollama_health", lambda: True)
-    app_module.app.state.gemini_ok = True
+    monkeypatch.setattr(app_module, "is_gemini_available", lambda: True)
     res = client.get("/api/status")
     assert res.status_code == 200
     body = res.json()
-    assert body["gemini"] is True
+    assert body["cloud_mode"] is True
+    assert body["gemini_available"] is True
     assert body["grading_engine"] == "gemini"
 
 
-def test_status_invalid_key_shows_local_not_cloud(client, monkeypatch):
-    """A present-but-invalid key (gemini_ok False) must NOT claim cloud grading."""
+def test_status_cloud_mode_unreachable_reports_truth(client, monkeypatch):
+    """CLOUD_MODE=1 but Gemini unreachable -> 200, grading_engine 'gemini',
+    gemini_available False (honestly: configured for cloud, currently down)."""
+    monkeypatch.setenv("CLOUD_MODE", "1")
     monkeypatch.setattr(app_module, "ollama_health", lambda: True)
-    app_module.app.state.gemini_ok = False
+    monkeypatch.setattr(app_module, "is_gemini_available", lambda: False)
     res = client.get("/api/status")
     assert res.status_code == 200
-    assert res.json()["grading_engine"] == "ollama"
-
-
-def test_status_unavailable_when_both_down(client, monkeypatch):
-    monkeypatch.setattr(app_module, "ollama_health", lambda: False)
-    app_module.app.state.gemini_ok = False
-    res = client.get("/api/status")
-    assert res.status_code == 200
-    assert res.json()["grading_engine"] == "unavailable"
+    body = res.json()
+    assert body["cloud_mode"] is True
+    assert body["gemini_available"] is False
+    assert body["grading_engine"] == "gemini"
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +663,89 @@ def test_notes_upload_file_creates_chunks(client, monkeypatch):
     assert body["objective_id"] == "POB-2.1"
     assert body["chunks_created"] > 0
     assert body["doc_id"].startswith("notes-")
+
+
+# ---------------------------------------------------------------------------
+# Offline-first routing (v3.0 PDR): grading must never reach the cloud.
+# ---------------------------------------------------------------------------
+def test_grade_route_uses_ollama_only_never_gemini(monkeypatch):
+    """POST /api/chat route='grade' calls ollama_chat once and NO gemini_client fn.
+
+    Drives the REAL controller against a real in-memory DB, seeded so the grade
+    falls to the syllabus grader -- the exact path that used to prefer Gemini
+    (controller grade_fn -> chat_for_grading). The fix routes it to Ollama only,
+    so:
+      * llm_router.ollama_chat (what chat_for_grading now calls) fires exactly once,
+      * gemini_client.is_gemini_available and gemini_client.gemini_chat are never
+        called (asserted via unittest.mock.patch).
+    """
+    from unittest.mock import patch
+
+    import gemini_client  # noqa: E402  -- patched, must not be called
+    import llm_router  # noqa: E402  -- chat_for_grading looks up ollama_chat here
+
+    monkeypatch.setenv("CLOUD_MODE", "0")  # offline mode: grading is Ollama-only
+
+    conn = _real_db()
+    try:
+        conn.execute(
+            "INSERT INTO subjects (subject_id, display_name, syllabus_locked) "
+            "VALUES ('Principles_of_Business', 'Principles of Business', 1)"
+        )
+        conn.execute(
+            "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
+            "VALUES ('POB-SEC-1', 'Principles_of_Business', 'Nature of Business', '1')"
+        )
+        conn.execute(
+            "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, "
+            "content_stmt, command_words) VALUES ('POB-1.1', 'POB-SEC-1', "
+            "'Principles_of_Business', '1.1', 'Define the term business.', '[\"Define\"]')"
+        )
+        conn.execute(
+            "INSERT INTO documents (doc_id, subject_id, content_type, paper, year, "
+            "source_file, content_hash) VALUES ('pp-1', 'Principles_of_Business', "
+            "'past_paper', 'Paper 2 - June 2024', 2024, 'june2024.txt', 'hash-grade-1')"
+        )
+        # A question chunk with NO mark_points -> grade falls to grade_against_syllabus,
+        # which routes through grade_fn (chat_for_grading) -- the path under test.
+        conn.execute(
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, "
+            "question_num, chunk_id) VALUES ('pp-1', 'POB-1.1', 'Principles_of_Business', "
+            "'Define the term business.', '1', 'POB-1.1-grade-q1')"
+        )
+        conn.commit()
+        app_module.apply_runtime_migrations(conn)
+        app_module.app.state.db = conn
+
+        graded_json = (
+            '{"objective_id": "POB-1.1", "question_id": "POB-1.1-grade-q1", '
+            '"points": [{"mark_point_id": "POB-1.1-syn-1", "awarded": true, '
+            '"evidence": "Student stated a business supplies goods and services."}]}'
+        )
+
+        with patch.object(llm_router, "ollama_chat",
+                          return_value=graded_json) as mock_ollama, \
+             patch.object(gemini_client, "is_gemini_available") as mock_is_avail, \
+             patch.object(gemini_client, "gemini_chat") as mock_gemini_chat:
+            res = TestClient(app_module.app).post("/api/chat", json={
+                "message": "A business supplies goods and services to customers.",
+                "subject_id": "Principles_of_Business",
+                "route": "grade",
+                "question_id": "POB-1.1-grade-q1",
+            })
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["score_pct"] == 100            # Python scored it, not the model
+        assert body["objective_id"] == "POB-1.1"
+
+        # The grading call went to Ollama exactly once...
+        assert mock_ollama.call_count == 1
+        # ...and the cloud path was never touched.
+        mock_is_avail.assert_not_called()
+        mock_gemini_chat.assert_not_called()
+    finally:
+        conn.close()
 
 
 def test_plan_grade_batch_routes_synthesis_question(client, monkeypatch):

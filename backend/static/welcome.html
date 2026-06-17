@@ -853,19 +853,17 @@
     if (!el) return;
     try {
       const res = await fetch(`${API_BASE}/api/status`);
-      if (!res.ok) return;
+      if (!res.ok) { el.textContent = ''; return; }
       const s = await res.json();
-      if (s.gemini) {
-        el.textContent = 'Cloud grading: active';
-        el.style.color = 'var(--tick)';
-      } else if (s.ollama) {
-        el.textContent = 'Local grading: active';
-        el.style.color = 'var(--paper-dim)';
+      // Badge mirrors grading_engine (what chat_for_grading will actually use).
+      if (s.grading_engine === 'gemini') {
+        el.textContent = 'Grading: Cloud (Gemini)';
+        el.style.color = '#2563eb';
       } else {
-        el.textContent = 'Grading offline';
-        el.style.color = 'var(--red-pen)';
+        el.textContent = 'Grading: Local (Ollama)';
+        el.style.color = 'var(--paper-dim)';
       }
-    } catch { /* API down — leave the indicator blank */ }
+    } catch { el.textContent = ''; /* API down — show nothing, never a stale badge */ }
   }
 
   /* ============================================================

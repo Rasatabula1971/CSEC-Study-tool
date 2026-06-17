@@ -33,6 +33,38 @@ Everything else lives inside one SQLite file or deterministic Python.
 
 ---
 
+## Offline-First: What It Means and What It Does Not Mean
+
+PDR v3.1 distinguishes two phases of the system.
+
+**Build-time** — the builder runs ingestion scripts (`ingest.py`,
+`ingest_lessons.py`, `recover_mark_points.py`, `derive_syllabus_mark_points.py`)
+to populate the database. This is not student-facing. Cloud APIs (Gemini)
+may be used here when `CLOUD_MODE=1` to fill gaps where the local model
+cannot produce adequate content. All cloud-generated content is stored
+in SQLite, flagged with `source_model='gemini'`, and queued in
+`ingest_review_queue` for review before going live.
+
+**Runtime** — the student's live session. Lessons, grading, revision plans,
+feedback. Ollama only. SQLite only. `CLOUD_MODE` has no effect on runtime
+paths regardless of value. The acceptance test (VAL-01) is: with Wi-Fi
+off, every student-facing endpoint returns a valid response.
+
+**Module phase markers** — every `backend/*.py` file carries a phase tag at
+the top:
+
+```
+# PHASE: runtime — called during a student session
+# PHASE: build   — called only during ingestion scripts
+# PHASE: dual    — used by both, with internal phase gating
+```
+
+`llm_router.py` is the only `PHASE: dual` module. Its `CLOUD_MODE` check
+ensures Gemini is never reached at runtime, only at build time.
+`tests/test_pdr_v3_1_compliance.py` enforces this.
+
+---
+
 ## Seven Subjects
 
 ```
@@ -130,6 +162,20 @@ EMBED_DIM=768
 
 `MODEL_CHAT` is used for **all roles** (Archivist, Tutor, Examiner).
 Roles differ by system prompt only — never by loading a different model.
+
+---
+
+## Optional Cloud Mode
+
+When `CLOUD_MODE=1` and `GEMINI_API_KEY` is set, the grading path uses
+Gemini for point-matching judgements. When `CLOUD_MODE=0` (the default),
+all inference is Ollama-only. The system is fully functional in either
+mode. `CLOUD_MODE` must never silently fall back — if it is `1` and Gemini
+is unreachable, the request fails with a clear error, not a silent
+retry to Ollama.
+
+`CLOUD_MODE` affects build-time ingestion scripts only. It has no effect
+on runtime paths. See PDR v3.1 Section 2.5.
 
 ---
 
@@ -567,5 +613,13 @@ The current stage is the first unchecked box.
 - [x] **Stage 5** — Deterministic Core: scope.py, retrieval.py, grade.py, schedule.py, weakness.py, controller.py + four prompt files + full test suite ✓ 2026-06-13 (scope gate + subject_is_locked; structured-first/semantic-fallback retrieval w/ injectable embed_fn; GRADING_SCHEMA+compute_score grader w/ injectable chat_fn; Leitner + get_due_objectives; Pydantic weakness upsert (raises ValueError, never silent); controller teach/grade/plan — subject-lock gate BEFORE any embedding, plan fully deterministic/no-LLM; archivist/tutor/examiner/planner prompts; test_core.py 16 tests, suite 67/67. NOTE: manual controller smoke test still pending Ollama + ingested data; playbook's smoke snippet calls init_db.open_db() w/o its required db_path arg)
 - [x] **Stage 6** — FastAPI + UI + Launcher: app.py, routes, lightweight chat page, start.bat
 - [x] **Stage 7** — Pilot: end-to-end Principles_of_Business test suite, manual validation ✓ 2026-06-13 (quiz Submit-Answer perceived-latency polish — disable+"Grading…", faint status line cycling the grading steps every 3s, 30s reassurance, plain text no spinners; perf: ollama_chat keep_alive=30m holds the 3B chat model resident + lifespan pre-warm after Ollama health check so first Submit skips cold-load (embed still keep_alive=0); syllabus-fallback grader grade_against_syllabus() judges against objective content_stmt when no mark_points exist (same GRADING_SCHEMA, Python scores); objective practice mode — practice_questions table via idempotent runtime migration, route="practice", /api/sections endpoint; quiz /api/questions+/api/filters restricted to solution-derived '-stem' chunks; 115/115 tests pass. Full-loop integration class TestPOBStudyLoop added (teach / grading 2-of-3→67% Leitner box-1 / scope gate / revision-plan box-order / VAL-08 traceability / weakness validation), real :memory: DB w/ apply_runtime_migrations, Ollama patched via unittest.mock — suite now 211/211. NOTE: live LLM grade still pending Ollama + nomic-embed-text)
-- [ ] **Stage 8** — Rollout: remaining six subjects through the lock gate
-- [ ] **Stage 9** — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
+**Build Playbook v3.1 (Stages 8–13) — harden POB before multi-subject rollout. Original Stage 8 → Stage 14, original Stage 9 → Stage 15.**
+
+- [x] **Stage 8** — Mark Point Recovery: second-pass LLM-assisted extractor to close the 13-objective POB mark-point gap ✓ 2026-06-16 (mark_points widened with source_type/source_chunk_id/extraction_confidence via app.apply_runtime_migrations, each ALTER try/except sqlite3.OperationalError — applied to live E: DB, 2447 existing rows defaulted source_type='past_paper'; backend/recover_mark_points.py — offline ollama_chat only (never Gemini/cloud), per zero-mark-point objective gathers mark_scheme chunks (direct tag + vec_mark_schemes k=5 semantic on content_stmt), inline 4-field JSON schema (point_text/marks_value/confidence/evidence_quote), conf≥min→mark_points source_type='recovered_extraction', conf<min→ingest_review_queue reason='low_confidence_extraction', idempotent on (source_chunk_id,point_text) + deterministic mark_point_id, --subject/--dry-run/--min-confidence, summary table; backend/review_queue.py — Y promote→mark_points / N delete / Q quit, format-only judgement (no subject expertise); tests/test_recover_mark_points.py 5 tests (high-conf write, low-conf queue, re-run no-dup, dedup guard on shared chunk, dry-run no-write); suite 229/229. NOTE: live extraction run still pending Ollama — schema migration done, 13 POB objectives still empty until recover_mark_points.py runs against Ollama (manual --dry-run-first verify step))
+- [x] **Stage 9** — Syllabus-Derived Mark Points: derive fallback mark points from content_stmt + notes for objectives with no past-paper coverage ✓ 2026-06-16 (apply_runtime_migrations widened with `ALTER TABLE mark_points ADD COLUMN command_word TEXT` (try/except OperationalError) + `CREATE TABLE IF NOT EXISTS lesson_generation_queue` — applied to live E: DB; backend/derive_syllabus_mark_points.py — offline ollama_chat only, for each locked-subject objective with ZERO mark_points of any source_type: top-5 vec_notes on content_stmt, falls back to vec_past_papers when <2 notes chunks; constrained 3–5-point schema (point_text/marks_value/confidence/evidence_quote); writes source_type='syllabus_derived' + source_chunk_id(primary chunk)+extraction_confidence+command_word, and ALWAYS queues every point to ingest_review_queue reason='syllabus_derived_first_run' (confidence never skips the queue); idempotent on (objective_id, point_text); --subject/--dry-run + per-objective summary table; review_queue.py extended — _split_candidate handles both evidence markers, promote_row stamps source_type by reason (syllabus_derived_first_run→syllabus_derived, else recovered_extraction); tests/test_derive_syllabus_mark_points.py (8) + tests/test_review_queue.py (6); suite 243/243. NOTE: live --dry-run verified against Ollama — 13 POB objectives, 49 points would be written, but model confidence on derived points is very LOW (1–10/100) given the thin notes corpus; live apply (run without --dry-run) + human review pass deferred to a manual decision. grade.py source_type priority + grading_basis is NOT yet done — belongs with Stage 10 confidence-aware grading.)
+- [ ] **Stage 10** — Confidence-Aware Grading: weighted marks_value scoring, command-word gating, evidence post-check, verify-with-teacher UI badge
+- [ ] **Stage 11** — Canonical Lessons: pre-generate one lesson per objective at ingestion (objective_lessons), serve deterministically; tutor.txt becomes follow-up Q&A only
+- [ ] **Stage 12** — Feedback Loop: per-message 👍/👎/🤔 user_feedback log + targeted teacher-review report
+- [ ] **Stage 13** — Panel UX Shell: rebuild chat.html as Learn/Practice/Review/Progress/Library panels with deep-link URL state
+- [ ] **Stage 14** (was Stage 8) — Rollout: remaining six subjects through the lock gate
+- [ ] **Stage 15** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1

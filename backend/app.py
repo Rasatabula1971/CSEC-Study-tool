@@ -1,3 +1,4 @@
+# PHASE: runtime
 """
 backend/app.py
 ==============
@@ -36,7 +37,10 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # is launched as `backend.app:app` or imported directly in tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ollama_client import ollama_health, ollama_chat, ollama_embed  # noqa: E402
-from gemini_client import is_gemini_available, gemini_key_valid  # noqa: E402
+# is_gemini_available is reached through the PHASE: dual router, never imported
+# from gemini_client directly: app.py is PHASE: runtime, and runtime modules must
+# not import a cloud client (PDR v3.1 VAL-01, enforced by tests/test_pdr_v3_1_compliance).
+from llm_router import is_gemini_available  # noqa: E402
 from controller import handle_request  # noqa: E402
 from schedule import get_due_objectives  # noqa: E402
 from study_plan import get_plan_progress  # noqa: E402
@@ -120,6 +124,39 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
     EXISTS) plus a data-normalisation pass. Safe to run on every startup."""
     for stmt in RUNTIME_MIGRATIONS:
         db.execute(stmt)
+    # Stage 8 (Mark Point Recovery): widen mark_points with provenance columns for
+    # the second-pass extractor (backend/recover_mark_points.py). SQLite has no
+    # "ADD COLUMN IF NOT EXISTS", so each ALTER is wrapped individually -- a column
+    # that already exists raises OperationalError, which we swallow to stay idempotent.
+    for alter in (
+        "ALTER TABLE mark_points ADD COLUMN source_type TEXT DEFAULT 'past_paper'",
+        "ALTER TABLE mark_points ADD COLUMN source_chunk_id TEXT",
+        "ALTER TABLE mark_points ADD COLUMN extraction_confidence INTEGER DEFAULT 100",
+        # Stage 9 (Syllabus-Derived Mark Points): records the command word a derived
+        # point is gated on (e.g. "Explain"); NULL for points predating this column.
+        "ALTER TABLE mark_points ADD COLUMN command_word TEXT",
+        # PDR v3.1 (build/runtime split): which model authored a generated point.
+        # 'gemini' for cloud-filled build-time content, 'ollama' otherwise; NULL for
+        # corpus-extracted points predating this column. Queued for review either way.
+        "ALTER TABLE mark_points ADD COLUMN source_model TEXT",
+    ):
+        try:
+            db.execute(alter)
+        except sqlite3.OperationalError:
+            pass  # column already present -- re-run is a no-op
+    # Stage 9 (Canonical Lessons groundwork): a queue of objectives whose canonical
+    # lesson still needs generating. Created here so the live SSD DB gains it without
+    # a re-init. CREATE TABLE IF NOT EXISTS is a no-op when it already exists.
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lesson_generation_queue (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id  TEXT NOT NULL,
+            reason        TEXT,
+            created_at    TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
     # Data migration: normalise question_id to the -stem convention used by
     # ingest_solutions.py. Old PDF-ingester rows stored question_id without
     # the suffix; this makes the grade-picker join work for all rows.
@@ -152,21 +189,19 @@ async def lifespan(app: FastAPI):
         logger.warning("Ollama is not reachable at %s -- study mode will surface the "
                         "error. Starting the app anyway.", os.getenv("OLLAMA_BASE"))
 
-    # Validate the key once, here, with a single live ping -- not on every
-    # /api/status request. The result drives the UI's grading indicator so it
-    # reflects whether grading will REALLY reach Gemini, not just that a key exists.
-    if is_gemini_available():
-        if gemini_key_valid():
-            app.state.gemini_ok = True
-            logger.info("Gemini API key valid -- grading calls will use Gemini Flash "
-                        "with Ollama fallback")
-        else:
-            app.state.gemini_ok = False
-            logger.warning("Gemini API key present but REJECTED by Google (invalid or "
-                           "expired) -- grading falls back to local Ollama")
+    # Optional Cloud Mode (CLAUDE.md): grading uses Gemini ONLY when CLOUD_MODE=1.
+    # In offline mode (CLOUD_MODE=0, the default) we make NO Gemini call at all --
+    # not even a reachability ping. The mode is explicit; there is no silent
+    # fallback in either direction (see llm_router.chat_for_grading).
+    cloud_mode = os.getenv("CLOUD_MODE", "0") == "1"
+    if cloud_mode:
+        reachable = is_gemini_available()
+        logger.info("Cloud mode enabled -- Gemini reachable: %s", reachable)
+        if not reachable:
+            logger.warning("CLOUD_MODE=1 but Gemini unreachable. Grading requests will "
+                           "fail until Gemini is reachable or CLOUD_MODE is set to 0.")
     else:
-        app.state.gemini_ok = False
-        logger.info("No Gemini API key -- all calls use local Ollama")
+        logger.info("Offline mode -- all inference via Ollama.")
 
     db_path = os.getenv("DB_PATH")
     if not db_path or not os.path.exists(db_path):
@@ -315,22 +350,30 @@ def health(request: Request) -> dict:
 
 @app.get("/api/status")
 def status(request: Request) -> dict:
-    """Which engine grading will really use, for the UI's status indicator.
+    """Honest reflection of what grading WILL actually do (CLAUDE.md Cloud Mode).
 
-    `gemini` reflects key VALIDITY (verified once at startup, stored on
-    app.state.gemini_ok), not mere presence -- so an invalid key honestly shows
-    local grading instead of falsely claiming the cloud. grading_engine: 'gemini'
-    if the key works, else 'ollama' if Ollama is up, else 'unavailable'.
+    grading_engine matches llm_router.chat_for_grading exactly: it is driven by
+    CLOUD_MODE, not by live health. When CLOUD_MODE=0 we make NO Gemini call at
+    all -- gemini_available is reported False without a ping. When CLOUD_MODE=1 we
+    check is_gemini_available() (the same predicate the router gates on); a True
+    grading_engine with gemini_available=False honestly says "configured for cloud,
+    but currently unreachable -- grading will error until it recovers".
     """
+    cloud_mode = os.getenv("CLOUD_MODE", "0") == "1"
     ollama_up = ollama_health()
-    gemini_ok = bool(getattr(request.app.state, "gemini_ok", False))
-    if gemini_ok:
-        engine = "gemini"
-    elif ollama_up:
-        engine = "ollama"
-    else:
-        engine = "unavailable"
-    return {"ollama": ollama_up, "gemini": gemini_ok, "grading_engine": engine}
+    db_ok = getattr(request.app.state, "db", None) is not None
+    # No ping in offline mode: gemini_available stays False and is_gemini_available
+    # is never called when CLOUD_MODE=0.
+    gemini_available = is_gemini_available() if cloud_mode else False
+    grading_engine = "gemini" if cloud_mode else "ollama"
+    return {
+        "status": "ok",
+        "ollama": ollama_up,
+        "db": db_ok,
+        "cloud_mode": cloud_mode,
+        "gemini_available": gemini_available,
+        "grading_engine": grading_engine,
+    }
 
 
 @app.get("/api/subjects")

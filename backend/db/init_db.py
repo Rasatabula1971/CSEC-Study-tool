@@ -1,3 +1,4 @@
+# PHASE: build
 """
 backend/db/init_db.py
 =====================

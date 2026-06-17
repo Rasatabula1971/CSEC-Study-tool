@@ -1,3 +1,4 @@
+# PHASE: runtime
 """
 backend/grade.py
 ================
@@ -128,6 +129,48 @@ def reconcile_grading(result: dict) -> dict:
     return result
 
 
+def _grading_provenance(db: sqlite3.Connection, question_id: str,
+                        mark_points: list[dict]) -> tuple[str, bool]:
+    """grading_basis + pending_review for a graded answer (PDR v3.1 VAL-10).
+
+    grading_basis reflects the strongest source_type among the mark points used,
+    in priority order: past_paper > recovered_extraction > syllabus_derived. The
+    source_type column is added by a runtime migration; on a DB that predates it
+    we degrade to 'past_paper' (the historical default) rather than raise.
+
+    pending_review is True when any graded objective still has content awaiting
+    sign-off in ingest_review_queue (e.g. build-time syllabus-derived points). The
+    UI shows a verify-with-teacher badge until that queue entry is cleared.
+    """
+    try:
+        rows = db.execute(
+            "SELECT DISTINCT source_type FROM mark_points WHERE question_id = ?",
+            (question_id,),
+        ).fetchall()
+        types = {r["source_type"] for r in rows}
+    except sqlite3.OperationalError:
+        types = set()  # pre-migration DB: no source_type column
+
+    if "past_paper" in types or not types or types == {None}:
+        basis = "past_paper"
+    elif "recovered_extraction" in types:
+        basis = "recovered"
+    elif "syllabus_derived" in types:
+        basis = "syllabus_derived"
+    else:
+        basis = "past_paper"
+
+    pending = False
+    for oid in {mp["objective_id"] for mp in mark_points}:
+        if db.execute(
+            "SELECT 1 FROM ingest_review_queue WHERE objective_id = ? LIMIT 1",
+            (oid,),
+        ).fetchone():
+            pending = True
+            break
+    return basis, pending
+
+
 def fetch_mark_points(db: sqlite3.Connection, question_id: str) -> list[dict]:
     rows = db.execute(
         """
@@ -218,6 +261,13 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
         text = point_text_by_id.get(point.get("mark_point_id"))
         if text is not None:
             point["point_text"] = text
+
+    # Provenance for the UI's verify-with-teacher signal (PDR v3.1 VAL-10): which
+    # kind of mark scheme graded this, and whether those points are still pending
+    # human review in ingest_review_queue.
+    basis, pending = _grading_provenance(db, question_id, mark_points)
+    grading["grading_basis"] = basis
+    grading["pending_review"] = pending
 
     return grading
 
