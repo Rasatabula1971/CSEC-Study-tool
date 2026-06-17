@@ -113,6 +113,30 @@
       font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
       text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
     }
+    /* Stage 11: canonical lesson active-recall questions, rendered as tappable pills. */
+    .recall-pills {
+      white-space: normal; margin-top: var(--space-4);
+      padding-top: var(--space-4); border-top: 1px solid var(--color-border-soft);
+      display: flex; flex-direction: column; gap: var(--space-2);
+    }
+    .recall-pills-label {
+      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-1);
+    }
+    .recall-pill {
+      text-align: left; width: 100%; cursor: pointer;
+      padding: var(--space-3) var(--space-4); min-height: 44px;
+      background: var(--ink-3); border: var(--border); border-radius: var(--radius-md);
+      color: var(--paper); font-size: var(--text-sm); line-height: 1.5;
+      transition: background-color 120ms ease, border-color 120ms ease, transform 80ms var(--ease-spring);
+    }
+    .recall-pill:hover { background: var(--ink-4); border-color: var(--booklet); }
+    .recall-pill:active { transform: scale(0.99); }
+    .recall-pill.active {
+      border-color: var(--booklet); background: var(--ink-4);
+      box-shadow: inset 3px 0 0 var(--booklet);
+    }
+    @media (prefers-reduced-motion: reduce) { .recall-pill { transition: none; } }
 
     .plan-summary-rows { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-4) 0; }
     .plan-summary-row {
@@ -269,6 +293,8 @@
     // Per-objective grading sends these instead of a stored question_id: the
     // question text extracted from the lesson, and the objective it belongs to.
     questionText:'',questionFromLesson:false,currentObjectiveId:null,
+    // Stage 11: the canonical lesson's active-recall questions (rendered as pills).
+    recallQuestions:[],currentObjective:null,
     plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
       currentIsSynthesis:false,results:[],synthScore:null,progress:null}};
 
@@ -588,11 +614,46 @@
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
   }
 
-  // Fetches the lesson for an objective (ONE LLM call), splits its embedded
-  // active-recall question out, renders the clean lesson, and shows that question as
-  // the gradeable card. Returns the extracted questionText ('' if the lesson failed
-  // to load or had no detectable question), so loadBatchStep falls back to generating
-  // a question only when there is genuinely nothing to extract.
+  // Sets one recall question as the gradeable card. Grading goes by objective_id +
+  // question_text (no stored question_id) — see submitBatchAnswer.
+  function setActiveRecallQuestion(objective,questionText,idx){
+    state.questionText=questionText;
+    state.questionFromLesson=true;
+    state.currentObjectiveId=objective.objective_id;
+    state.currentObjective=objective;
+    document.querySelectorAll('.recall-pill').forEach((el,i)=>el.classList.toggle('active',i===idx));
+    showQuestion({questionId:`lesson-${state.plan.batchId}-${objective.objective_id}`,
+      stem:questionText,paper:`Objective ${objective.objective_num||state.plan.step}`,qnum:'',marks:0});
+  }
+
+  // Renders the active-recall questions as tappable pills below the lesson. Tapping
+  // a pill loads that question into the gradeable card so the student answers it.
+  function renderRecallPills(questions){
+    state.recallQuestions=questions;
+    if(!questions.length)return '';
+    const pills=questions.map((q,i)=>
+      `<button type="button" class="recall-pill" data-idx="${i}">${escapeHtml(q)}</button>`).join('');
+    return `<div class="recall-pills"><div class="recall-pills-label">Active-recall questions — tap one to answer it</div>${pills}</div>`;
+  }
+  function wireRecallPills(objective){
+    document.querySelectorAll('.recall-pill').forEach(el=>{
+      el.addEventListener('click',()=>{
+        const idx=Number(el.dataset.idx);
+        setActiveRecallQuestion(objective,state.recallQuestions[idx]||'',idx);
+        answerTextarea.focus();
+      });
+    });
+  }
+
+  // Fetches the lesson for an objective (ONE LLM call, or instant for a stored
+  // canonical lesson). Renders the lesson and its active-recall questions as pills.
+  // The first pill is auto-selected as the gradeable card. Returns the first recall
+  // question ('' if none), so loadBatchStep only falls back to generating a question
+  // when there is genuinely nothing to answer.
+  //
+  // Stage 11: canonical lessons return {lesson_text, recall_questions:[...]}. The
+  // regex extractor (extractQuestionFromLesson) is now a SAFETY NET only — used when
+  // a runtime lesson comes back with no recall_questions field.
   async function loadLesson(objective){
     if(!objective)return '';
     const host=document.getElementById('planLessonHost');if(!host)return '';
@@ -600,25 +661,32 @@
     try{
       const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Teach me this objective',subject_id:state.subjectId,route:'teach',objective_id:objective.objective_id})});
       const data=res.ok?await res.json():{};
-      console.log('[study-plan] raw lesson from /api/chat:', JSON.stringify(data&&data.lesson));
-      if(data&&data.lesson){
-        const {lessonClean,questionText}=extractQuestionFromLesson(data.lesson);
-        console.log('[study-plan] lessonClean:', JSON.stringify(lessonClean));
-        console.log('[study-plan] extracted questionText:', JSON.stringify(questionText));
-        host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonClean)}</div>`;
-        if(questionText){
-          // The extracted question IS the gradeable card. Grading goes by objective_id
-          // + question_text (no stored question_id) — see submitBatchAnswer.
-          state.questionText=questionText;
-          state.questionFromLesson=true;
-          state.currentObjectiveId=objective.objective_id;
-          showQuestion({questionId:`lesson-${state.plan.batchId}-${objective.objective_id}`,
-            stem:questionText,paper:`Objective ${objective.objective_num||state.plan.step}`,qnum:'',marks:0});
+      const lessonBody=data&&(data.lesson_text||data.lesson);
+      if(!lessonBody){host.innerHTML='';return '';}
+
+      let lessonClean,recallQuestions;
+      if(Array.isArray(data.recall_questions)&&data.recall_questions.length){
+        // Canonical lesson (or any lesson carrying structured recall questions).
+        lessonClean=data.lesson_text||data.lesson||'';
+        recallQuestions=data.recall_questions.filter(q=>q&&q.trim());
+      }else{
+        // Safety net: a runtime lesson with no recall_questions. Fall back to the
+        // regex extractor that splits the embedded question out of the prose.
+        if(data.lesson_source==='runtime'){
+          console.warn('Stage 11: runtime lesson without recall_questions, '+
+                       'falling back to regex extraction. Run ingest_lessons.py.');
         }
-        return questionText;
+        const ex=extractQuestionFromLesson(data.lesson||data.lesson_text||'');
+        lessonClean=ex.lessonClean;
+        recallQuestions=ex.questionText?[ex.questionText]:[];
       }
-      host.innerHTML='';
-      return '';
+
+      host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonClean)}${renderRecallPills(recallQuestions)}</div>`;
+      wireRecallPills(objective);
+
+      const first=recallQuestions[0]||'';
+      if(first)setActiveRecallQuestion(objective,first,0);
+      return first;
     }catch{host.innerHTML='';return '';}
   }
 

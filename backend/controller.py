@@ -191,6 +191,69 @@ def _pick_practice_objective(db, subject_id: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Canonical lessons (Stage 11)
+# ---------------------------------------------------------------------------
+def _fetch_canonical_lesson(db, objective_id: str) -> dict | None:
+    """Return the stored canonical lesson for an objective, or None.
+
+    The teach route serves this WITHOUT any Ollama call (Stage 11). JSON columns
+    are decoded back into lists/objects so the UI gets structured recall_questions,
+    key_terms, and worked_examples rather than strings. Returns None when no lesson
+    exists OR when the objective_lessons table is absent (a DB that predates the
+    Stage 11 migration -- the caller then falls back to runtime generation).
+    """
+    try:
+        row = db.execute(
+            "SELECT * FROM objective_lessons WHERE objective_id = ?",
+            (objective_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None  # table not migrated in -- treat as "no canonical lesson"
+    if row is None:
+        return None
+
+    def _loads(col, default):
+        try:
+            return json.loads(row[col]) if row[col] else default
+        except (json.JSONDecodeError, TypeError):
+            return default
+
+    return {
+        "route": "teach",
+        "objective_id": objective_id,
+        "lesson_text": row["lesson_text"],
+        # Lists, not a single joined string -- the UI renders one pill per question.
+        "recall_questions": _loads("recall_questions", []),
+        "key_terms": _loads("key_terms", []),
+        "worked_examples": _loads("worked_examples", []),
+        "common_mistakes": row["common_mistakes"],
+        "source_chunk_ids": _loads("source_chunk_ids", []),
+        "confidence": row["confidence"],
+        "lesson_source": "canonical",
+    }
+
+
+def _queue_lesson_generation(db, objective_id: str, reason: str) -> None:
+    """Best-effort: flag an objective for the offline ingest_lessons pass.
+
+    INSERT OR IGNORE keyed on (objective_id, reason) so the same objective is not
+    queued twice for the same reason. Swallows OperationalError so a DB predating
+    the Stage 11 migration (no lesson_generation_queue) still serves the lesson.
+    """
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO lesson_generation_queue (objective_id, reason) "
+            "SELECT ?, ? WHERE NOT EXISTS ("
+            "  SELECT 1 FROM lesson_generation_queue WHERE objective_id = ? AND reason = ?"
+            ")",
+            (objective_id, reason, objective_id, reason),
+        )
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # queue table not migrated in -- nothing to record against
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
@@ -207,6 +270,11 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
     if explicit:
         if not is_in_scope(db, subject_id, explicit):
             return OUT_OF_SCOPE
+        # Stage 11: a stored canonical lesson is served deterministically -- no
+        # retrieval, no Ollama call. Checked here, once the named objective is gated.
+        canonical = _fetch_canonical_lesson(db, explicit)
+        if canonical is not None:
+            return canonical
         ctx = _objective_context(db, explicit)
     else:
         ctx = get_context(db, request, embed_fn=embed_fn)
@@ -217,6 +285,15 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
     if not is_in_scope(db, subject_id, objective_id):
         return OUT_OF_SCOPE
 
+    # Free-text path resolves the objective only after retrieval, so the canonical
+    # lookup happens here for it -- still before any LLM call.
+    if not explicit:
+        canonical = _fetch_canonical_lesson(db, objective_id)
+        if canonical is not None:
+            return canonical
+
+    # Runtime fallback: no stored lesson. Generate live AND queue this objective so
+    # the offline ingest_lessons pass writes a canonical lesson for it next run.
     user_msg = (
         f"OBJECTIVE: {objective_id}\n"
         f"STUDENT REQUEST: {request.get('query', '')}\n\n"
@@ -224,6 +301,7 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
         f"{ctx['chunk_text']}"
     )
     lesson = chat_fn([{"role": "user", "content": user_msg}], system=_load_prompt("tutor.txt"))
+    _queue_lesson_generation(db, objective_id, "served_runtime")
     return {
         "route": "teach",
         "objective_id": objective_id,
@@ -234,6 +312,7 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
         # None for the free-text semantic path (get_context returns no tag).
         "context_source": ctx.get("context_source"),
         "lesson": lesson,
+        "lesson_source": "runtime",
     }
 
 

@@ -183,6 +183,12 @@ def test_teach_response_carries_context_source(monkeypatch):
         "page": None,
         "context_source": "syllabus_only",
     })
+    # Stage 11: this test exercises the runtime fallback path -- stub the canonical
+    # lookup (no stored lesson) and the queue side-effect, just as the retrieval
+    # boundary above is stubbed, so db=None stays unused here.
+    monkeypatch.setattr(controller, "_fetch_canonical_lesson", lambda db, oid: None)
+    monkeypatch.setattr(controller, "_queue_lesson_generation",
+                        lambda db, oid, reason: None)
 
     out = controller._handle_teach(
         db=None,
@@ -194,3 +200,4 @@ def test_teach_response_carries_context_source(monkeypatch):
     assert out["route"] == "teach"
     assert out["context_source"] == "syllabus_only"
     assert out["lesson"] == "A lesson."
+    assert out["lesson_source"] == "runtime"

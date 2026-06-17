@@ -183,6 +183,33 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
         """
     )
+    # Stage 11 (Canonical Lessons): one pre-generated, source-grounded lesson per
+    # objective, composed offline by backend/ingest_lessons.py and served
+    # deterministically at runtime (no Ollama call on a teach request). The UNIQUE
+    # constraint on objective_id enforces exactly one canonical lesson per objective.
+    # Wrapped in try/except sqlite3.OperationalError to stay idempotent like the
+    # ALTERs above (CREATE TABLE IF NOT EXISTS is itself a no-op when present).
+    try:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS objective_lessons (
+                lesson_id          TEXT PRIMARY KEY,
+                objective_id       TEXT NOT NULL UNIQUE REFERENCES objectives(objective_id),
+                subject_id         TEXT NOT NULL REFERENCES subjects(subject_id),
+                lesson_text        TEXT NOT NULL,
+                worked_examples    TEXT,
+                key_terms          TEXT,
+                common_mistakes    TEXT,
+                recall_questions   TEXT NOT NULL,
+                source_chunk_ids   TEXT NOT NULL,
+                confidence         INTEGER NOT NULL,
+                generated_at       TEXT DEFAULT (datetime('now')),
+                reviewed           INTEGER DEFAULT 0
+            )
+            """
+        )
+    except sqlite3.OperationalError:
+        pass  # table already present -- re-run is a no-op
     # Data migration: normalise question_id to the -stem convention used by
     # ingest_solutions.py. Old PDF-ingester rows stored question_id without
     # the suffix; this makes the grade-picker join work for all rows.
