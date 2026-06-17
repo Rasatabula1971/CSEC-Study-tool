@@ -45,6 +45,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 from ollama_client import ollama_chat, ollama_embed  # noqa: E402
 from retrieval import serialize_vec  # noqa: E402
+from db.backup import backup_first  # noqa: E402
 
 # The mark-scheme chunks all live in vec_mark_schemes (CLAUDE.md retrieval routing).
 VEC_TABLE = "vec_mark_schemes"
@@ -409,6 +410,7 @@ def _open_live_db() -> sqlite3.Connection:
     return db
 
 
+@backup_first("pre_recover")
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Second-pass LLM-assisted mark-point recovery (offline)."

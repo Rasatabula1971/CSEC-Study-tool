@@ -121,38 +121,199 @@ def open_db(db_path: str) -> sqlite3.Connection:
     return db
 
 
+def _ensure_schema_migrations(db: sqlite3.Connection) -> None:
+    """Bootstrap the migration ledger. This is the one migration that cannot be
+    version-tracked (it would have to record its own creation before the table it
+    records into exists), so it always runs -- CREATE TABLE IF NOT EXISTS makes that
+    a no-op once the table is present."""
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            applied_at  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    db.commit()
+
+
+def _run_migration(db: sqlite3.Connection, version: str, description: str,
+                   sql: str) -> bool:
+    """Apply a versioned schema migration exactly once.
+
+    Returns True if this call applied (or recorded) the migration, False if it was
+    already recorded in schema_migrations. The 'duplicate column name' branch records
+    a migration whose ALTER already ran under the old try/except style as applied
+    [pre-existing], so we stop re-attempting a column add that can never succeed."""
+    row = db.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+    ).fetchone()
+    if row:
+        return False  # already applied
+    try:
+        for statement in sql.split(";"):
+            s = statement.strip()
+            if s:
+                db.execute(s)
+        db.execute(
+            "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
+            (version, description),
+        )
+        db.commit()
+        return True
+    except Exception as e:  # noqa: BLE001 -- inspected below, re-raised if unexpected
+        db.rollback()
+        # Some migrations are inherently idempotent (an ALTER ADD COLUMN that already
+        # ran in the old try/except style). Record those as applied so we do not keep
+        # retrying them on every startup.
+        if "duplicate column name" in str(e).lower():
+            db.execute(
+                "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
+                (version, description + " [pre-existing]"),
+            )
+            db.commit()
+            return True
+        raise
+
+
 def apply_runtime_migrations(db: sqlite3.Connection) -> None:
-    """Run idempotent migrations against the live DB: schema (CREATE TABLE IF NOT
-    EXISTS) plus a data-normalisation pass. Safe to run on every startup."""
-    for stmt in RUNTIME_MIGRATIONS:
-        db.execute(stmt)
-    # Stage 8 (Mark Point Recovery): widen mark_points with provenance columns for
-    # the second-pass extractor (backend/recover_mark_points.py). SQLite has no
-    # "ADD COLUMN IF NOT EXISTS", so each ALTER is wrapped individually -- a column
-    # that already exists raises OperationalError, which we swallow to stay idempotent.
-    for alter in (
-        "ALTER TABLE mark_points ADD COLUMN source_type TEXT DEFAULT 'past_paper'",
-        "ALTER TABLE mark_points ADD COLUMN source_chunk_id TEXT",
-        "ALTER TABLE mark_points ADD COLUMN extraction_confidence INTEGER DEFAULT 100",
-        # Stage 9 (Syllabus-Derived Mark Points): records the command word a derived
-        # point is gated on (e.g. "Explain"); NULL for points predating this column.
-        "ALTER TABLE mark_points ADD COLUMN command_word TEXT",
-        # PDR v3.1 (build/runtime split): which model authored a generated point.
-        # 'gemini' for cloud-filled build-time content, 'ollama' otherwise; NULL for
-        # corpus-extracted points predating this column. Queued for review either way.
-        "ALTER TABLE mark_points ADD COLUMN source_model TEXT",
-    ):
-        try:
-            db.execute(alter)
-        except sqlite3.OperationalError:
-            pass  # column already present -- re-run is a no-op
-    # Stage 10 (Confidence-Aware Grading): backfill command_word for existing rows.
-    # A point inherits its objective's command word ONLY when the objective has
-    # exactly one (an unambiguous gate -- e.g. an "Explain" objective). Objectives
-    # with several command words leave command_word NULL so the examiner falls back
-    # to the question-level word. Idempotent: only fills rows still NULL, so a re-run
-    # is a no-op once populated. json_extract/json_array_length need the JSON1
-    # extension (bundled in modern SQLite); wrapped so an old build degrades quietly.
+    """Bring the live DB up to date. Two layers:
+
+      1. Version-tracked SCHEMA migrations (CREATE TABLE / ALTER ADD COLUMN /
+         CREATE INDEX) recorded in schema_migrations -- each runs exactly once.
+      2. Idempotent DATA-normalisation passes (backfills) that run on EVERY call,
+         because they must also catch rows inserted by later ingestion runs, not
+         just rows present the first time migrations ran. Their WHERE clauses make
+         a re-run a no-op once every row is already normalised.
+
+    Safe to run on every startup and safe to run repeatedly within a process."""
+    _ensure_schema_migrations(db)
+
+    # --- Layer 1: version-tracked schema migrations -------------------------
+    # m001: the three runtime tables added after the canonical schema.sql (the
+    # source of truth) was first written. CREATE TABLE IF NOT EXISTS each, so this
+    # is a no-op on a DB that already has them.
+    _run_migration(
+        db, "m001_runtime_core_tables",
+        "practice_questions + study_plan + study_batches",
+        ";\n".join(RUNTIME_MIGRATIONS),
+    )
+    # m002-m006 (Stage 8/9 + PDR v3.1): widen mark_points with provenance columns.
+    # SQLite has no ADD COLUMN IF NOT EXISTS; on a DB where the column already exists
+    # the ALTER raises 'duplicate column name', which _run_migration records as
+    # [pre-existing] so it is never retried.
+    _run_migration(db, "m002_stage8_source_type",
+                   "mark_points.source_type",
+                   "ALTER TABLE mark_points ADD COLUMN source_type TEXT DEFAULT 'past_paper'")
+    _run_migration(db, "m003_stage8_source_chunk_id",
+                   "mark_points.source_chunk_id",
+                   "ALTER TABLE mark_points ADD COLUMN source_chunk_id TEXT")
+    _run_migration(db, "m004_stage8_extraction_confidence",
+                   "mark_points.extraction_confidence",
+                   "ALTER TABLE mark_points ADD COLUMN extraction_confidence INTEGER DEFAULT 100")
+    _run_migration(db, "m005_stage9_command_word",
+                   "mark_points.command_word",
+                   "ALTER TABLE mark_points ADD COLUMN command_word TEXT")
+    _run_migration(db, "m006_pdrv31_source_model",
+                   "mark_points.source_model",
+                   "ALTER TABLE mark_points ADD COLUMN source_model TEXT")
+    # m007 (Stage 9 groundwork): queue of objectives whose canonical lesson still
+    # needs generating. CREATE TABLE IF NOT EXISTS, so a no-op once present.
+    _run_migration(
+        db, "m007_stage9_lesson_generation_queue",
+        "lesson_generation_queue table",
+        """
+        CREATE TABLE IF NOT EXISTS lesson_generation_queue (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id  TEXT NOT NULL,
+            reason        TEXT,
+            created_at    TEXT DEFAULT (datetime('now'))
+        )
+        """,
+    )
+    # m008 (Stage 11): one pre-generated, source-grounded lesson per objective,
+    # composed offline by ingest_lessons.py and served deterministically at runtime
+    # (no Ollama call on a teach request). UNIQUE(objective_id) enforces exactly one
+    # canonical lesson per objective.
+    _run_migration(
+        db, "m008_stage11_objective_lessons",
+        "objective_lessons table",
+        """
+        CREATE TABLE IF NOT EXISTS objective_lessons (
+            lesson_id          TEXT PRIMARY KEY,
+            objective_id       TEXT NOT NULL UNIQUE REFERENCES objectives(objective_id),
+            subject_id         TEXT NOT NULL REFERENCES subjects(subject_id),
+            lesson_text        TEXT NOT NULL,
+            worked_examples    TEXT,
+            key_terms          TEXT,
+            common_mistakes    TEXT,
+            recall_questions   TEXT NOT NULL,
+            source_chunk_ids   TEXT NOT NULL,
+            confidence         INTEGER NOT NULL,
+            generated_at       TEXT DEFAULT (datetime('now')),
+            reviewed           INTEGER DEFAULT 0
+        )
+        """,
+    )
+    # m009 (Stage 11 fix): UNIQUE index on (objective_id, reason) so requeuing an
+    # objective is an idempotent upsert (ingest_lessons._queue_insufficient uses
+    # ON CONFLICT on this pair) instead of stacking a fresh row every failed run.
+    # The one-off dedup cleanup ran before this index existed, so it now creates
+    # cleanly on the live DB.
+    _run_migration(
+        db, "m009_stage11_lgq_unique_index",
+        "idx_lgq_objective_reason unique index",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_lgq_objective_reason "
+        "ON lesson_generation_queue(objective_id, reason)",
+    )
+    # m010 (Stage 12): one row per 👍/👎/🤔 tap after a lesson or graded answer. The
+    # CHECK constraints make the enum the DB's responsibility; the FKs to
+    # objectives/subjects guarantee every flag resolves to a real objective (CLAUDE.md
+    # Rule 1). The two indexes back feedback_report.py's group-by query.
+    _run_migration(
+        db, "m010_stage12_user_feedback",
+        "user_feedback table + indexes",
+        """
+        CREATE TABLE IF NOT EXISTS user_feedback (
+            feedback_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id     INTEGER,
+            objective_id   TEXT NOT NULL REFERENCES objectives(objective_id),
+            subject_id     TEXT NOT NULL REFERENCES subjects(subject_id),
+            feedback_type  TEXT NOT NULL CHECK (feedback_type IN
+                             ('lesson','grading','recall_question')),
+            sentiment      TEXT NOT NULL CHECK (sentiment IN
+                             ('positive','negative','confused')),
+            notes          TEXT,
+            context_json   TEXT,
+            created_at     TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_feedback_objective
+            ON user_feedback(objective_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_sentiment
+            ON user_feedback(sentiment, subject_id)
+        """,
+    )
+    # m011 (Stage 13): source_rank ranks the trustworthiness of a mark point's
+    # source, 2 (best) .. 4 (generated). Rank 1 is reserved for content_stmt-level
+    # content; rank 5 ("generated, unreviewed") is a RUNTIME overlay, never stored.
+    # The backfill lives in Layer 2 below so it also reaches newly ingested rows.
+    _run_migration(
+        db, "m011_stage13_source_rank_column",
+        "mark_points.source_rank",
+        "ALTER TABLE mark_points ADD COLUMN source_rank INTEGER",
+    )
+
+    # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
+    # NOT version-tracked: a later ingestion run inserts fresh rows that still need
+    # normalising, so each pass runs every startup. The WHERE clauses make a re-run a
+    # no-op once every row is already normalised. (Tests rely on this: they insert
+    # mark_points then call apply_runtime_migrations again to backfill the new rows.)
+
+    # Stage 10: backfill command_word where the objective has exactly one command
+    # word (an unambiguous gate). Rows under multi-word objectives stay NULL so the
+    # examiner falls back to the question-level word. json_extract/json_array_length
+    # need JSON1 (bundled in modern SQLite); wrapped so an old build degrades quietly.
     try:
         db.execute(
             """
@@ -172,101 +333,10 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # JSON1 unavailable or malformed command_words -- leave command_word NULL
-    # Stage 9 (Canonical Lessons groundwork): a queue of objectives whose canonical
-    # lesson still needs generating. Created here so the live SSD DB gains it without
-    # a re-init. CREATE TABLE IF NOT EXISTS is a no-op when it already exists.
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS lesson_generation_queue (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            objective_id  TEXT NOT NULL,
-            reason        TEXT,
-            created_at    TEXT DEFAULT (datetime('now'))
-        )
-        """
-    )
-    # Stage 11 (Canonical Lessons): one pre-generated, source-grounded lesson per
-    # objective, composed offline by backend/ingest_lessons.py and served
-    # deterministically at runtime (no Ollama call on a teach request). The UNIQUE
-    # constraint on objective_id enforces exactly one canonical lesson per objective.
-    # Wrapped in try/except sqlite3.OperationalError to stay idempotent like the
-    # ALTERs above (CREATE TABLE IF NOT EXISTS is itself a no-op when present).
-    try:
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS objective_lessons (
-                lesson_id          TEXT PRIMARY KEY,
-                objective_id       TEXT NOT NULL UNIQUE REFERENCES objectives(objective_id),
-                subject_id         TEXT NOT NULL REFERENCES subjects(subject_id),
-                lesson_text        TEXT NOT NULL,
-                worked_examples    TEXT,
-                key_terms          TEXT,
-                common_mistakes    TEXT,
-                recall_questions   TEXT NOT NULL,
-                source_chunk_ids   TEXT NOT NULL,
-                confidence         INTEGER NOT NULL,
-                generated_at       TEXT DEFAULT (datetime('now')),
-                reviewed           INTEGER DEFAULT 0
-            )
-            """
-        )
-    except sqlite3.OperationalError:
-        pass  # table already present -- re-run is a no-op
-    # Stage 11 fix: a UNIQUE index on (objective_id, reason) so requeuing an
-    # objective is an idempotent upsert (ingest_lessons._queue_insufficient uses
-    # ON CONFLICT on this pair) instead of stacking a fresh row every failed run.
-    # Wrapped in try/except: on a DB that still holds duplicate (objective_id,
-    # reason) pairs the CREATE fails -- the one-off cleanup must dedupe first, after
-    # which a later startup creates the index cleanly.
-    try:
-        db.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_lgq_objective_reason "
-            "ON lesson_generation_queue(objective_id, reason)"
-        )
-    except sqlite3.OperationalError:
-        pass  # duplicates still present (pre-cleanup) -- skip until deduped
-    # Stage 12 (Feedback Loop): one row per 👍/👎/🤔 tap after a lesson or graded
-    # answer. The CHECK constraints make the enum the DB's responsibility; the FKs
-    # to objectives/subjects guarantee every flag resolves to a real objective
-    # (CLAUDE.md Rule 1). The two indexes back feedback_report.py's group-by query.
-    try:
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_feedback (
-                feedback_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id     INTEGER,
-                objective_id   TEXT NOT NULL REFERENCES objectives(objective_id),
-                subject_id     TEXT NOT NULL REFERENCES subjects(subject_id),
-                feedback_type  TEXT NOT NULL CHECK (feedback_type IN
-                                 ('lesson','grading','recall_question')),
-                sentiment      TEXT NOT NULL CHECK (sentiment IN
-                                 ('positive','negative','confused')),
-                notes          TEXT,
-                context_json   TEXT,
-                created_at     TEXT DEFAULT (datetime('now'))
-            )
-            """
-        )
-        db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_feedback_objective "
-            "ON user_feedback(objective_id)"
-        )
-        db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_feedback_sentiment "
-            "ON user_feedback(sentiment, subject_id)"
-        )
-    except sqlite3.OperationalError:
-        pass  # table/indexes already present -- re-run is a no-op
-    # Stage 13 (roadmap #3): source_rank ranks the trustworthiness of a mark point's
-    # source, 1 (best) .. 4 (generated). Rank 1 is reserved for content loaded from
-    # objectives.content_stmt directly; mark_points are point-level, so they earn 2-4.
-    # Rank 5 ("generated, unreviewed") is a RUNTIME overlay (an unreviewed
-    # ingest_review_queue row), never stored. content_type lives on documents, joined
-    # via doc_id. Backfill only NULL rows so a re-run is idempotent.
-    try:
-        db.execute("ALTER TABLE mark_points ADD COLUMN source_rank INTEGER")
-    except sqlite3.OperationalError:
-        pass  # column already present
+
+    # Stage 13: backfill source_rank from source_type + the document content_type.
+    # Only NULL rows are touched, so a re-run is a no-op. Wrapped so a very old DB
+    # without source_type degrades quietly (leaves source_rank NULL).
     try:
         db.execute(
             """
@@ -286,9 +356,10 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # source_type column absent on a very old DB -- leave source_rank NULL
-    # Data migration: normalise question_id to the -stem convention used by
-    # ingest_solutions.py. Old PDF-ingester rows stored question_id without
-    # the suffix; this makes the grade-picker join work for all rows.
+
+    # Normalise question_id to the -stem convention used by ingest_solutions.py. Old
+    # PDF-ingester rows stored question_id without the suffix; this makes the
+    # grade-picker join work for all rows. Idempotent via the NOT LIKE guard.
     db.execute(
         """
         UPDATE mark_points

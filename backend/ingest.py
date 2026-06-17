@@ -40,6 +40,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # backend/ on sys.path so `from ollama_client import ...` works from any cwd.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ollama_client import ollama_embed  # noqa: E402
+from db.backup import backup_first  # noqa: E402
 
 # --- Chunking ---------------------------------------------------------------
 CHUNK_SIZE = 500
@@ -514,6 +515,7 @@ def print_summary(counts: dict) -> None:
     print(f"  past_paper chunks with question_num : {counts['pp_with_qnum']}")
 
 
+@backup_first("pre_ingest")
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ingest a subject's PDFs into the vec index.")
     ap.add_argument("--subject", help="e.g. Principles_of_Business")

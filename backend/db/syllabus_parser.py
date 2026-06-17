@@ -48,6 +48,11 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
+# backend/db on sys.path so `from backup import backup_first` resolves whether this
+# is run as `python backend/db/syllabus_parser.py` or imported in tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from backup import backup_first  # noqa: E402
+
 REQUIRED_COLUMNS = {
     "section_id", "section_num", "section_title", "objective_id",
     "objective_num", "content_stmt",
@@ -260,6 +265,7 @@ def insert_syllabus(db: sqlite3.Connection, subject_id: str,
     return subjects_inserted, sections_inserted, objectives_inserted
 
 
+@backup_first("pre_syllabus_parse")
 def main() -> None:
     ap = argparse.ArgumentParser(description="Load a verified syllabus (CSV or JSON) into the DB.")
     ap.add_argument("--subject", required=True, help="e.g. Principles_of_Business")

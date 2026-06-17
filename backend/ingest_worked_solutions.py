@@ -77,6 +77,7 @@ from ingest import (  # noqa: E402
     assert_subject_locked,
 )
 from ingest_solutions import ensure_queue_columns  # noqa: E402
+from db.backup import backup_first  # noqa: E402
 
 # --- Constants verified by Stage-0 recon on the real book ------------------
 # Paper 02 year sections, 1-based PDF page numbers, inclusive (from the
@@ -645,6 +646,7 @@ def print_summary(counts: dict, elapsed: float, dry_run: bool) -> None:
     print("\nRun python check_mark_points_coverage.py to see updated objective coverage.")
 
 
+@backup_first("pre_ingest_solutions")
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Ingest the Macmillan POB Worked Solutions book as a mark scheme.")

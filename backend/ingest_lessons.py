@@ -45,6 +45,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 from ollama_client import ollama_chat, ollama_embed  # noqa: E402
 from retrieval import serialize_vec  # noqa: E402
+from db.backup import backup_first  # noqa: E402
 
 # Notes are the primary source. When fewer than MIN_NOTES_CHUNKS come back the
 # composer also pulls past papers and mark schemes so the lesson still has
@@ -522,6 +523,7 @@ def _open_live_db() -> sqlite3.Connection:
     return db
 
 
+@backup_first("pre_ingest_lessons")
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Pre-generate one canonical lesson per objective (offline)."

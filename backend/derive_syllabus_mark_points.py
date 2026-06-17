@@ -48,6 +48,7 @@ from retrieval import serialize_vec  # noqa: E402
 # the engine used, stored as mark_points.source_model. Both are build-only -- this
 # script is PHASE: build and never runs on a student path.
 from llm_router import chat_for_build, build_engine  # noqa: E402
+from db.backup import backup_first  # noqa: E402
 
 # Notes are the primary fallback source; past papers backfill when notes are thin.
 NOTES_TABLE = "vec_notes"
@@ -415,6 +416,7 @@ def _open_live_db() -> sqlite3.Connection:
     return db
 
 
+@backup_first("pre_derive")
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Derive fallback mark points from syllabus + notes (offline)."

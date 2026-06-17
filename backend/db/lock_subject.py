@@ -25,6 +25,11 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
+# backend/db on sys.path so `from backup import backup_first` resolves whether this
+# is run as `python backend/db/lock_subject.py` or imported in tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from backup import backup_first  # noqa: E402
+
 
 def open_db(db_path: str) -> sqlite3.Connection:
     try:
@@ -40,6 +45,7 @@ def open_db(db_path: str) -> sqlite3.Connection:
     return db
 
 
+@backup_first("pre_lock_subject")
 def main() -> None:
     ap = argparse.ArgumentParser(description="Lock a subject's syllabus after sign-off.")
     ap.add_argument("--subject", required=True, help="e.g. Principles_of_Business")
