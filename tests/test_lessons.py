@@ -291,3 +291,41 @@ def test_teach_route_fallback_queues_runtime(db):
     assert out["lesson_source"] == "runtime"
     assert chat.call_count == 1, "runtime path calls the tutor exactly once"
     assert queue_count(db, reason="served_runtime") == 1
+
+
+def test_successful_write_clears_the_queue(db):
+    """A successful lesson write deletes the objective's stale queue rows."""
+    db.execute(
+        "INSERT INTO lesson_generation_queue (objective_id, reason) VALUES (?, ?)",
+        (OBJECTIVE, "insufficient_sources"),
+    )
+    db.commit()
+    assert queue_count(db) == 1, "precondition: the objective is flagged in the queue"
+
+    chat = make_chat(lesson_json(85))  # 5 notes -> floor 90, min(85,90)=85 -> written
+    summary = il.ingest_lessons_for_subject(
+        db, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
+    )
+
+    assert lesson_count(db) == 1, "the lesson is written"
+    assert queue_count(db) == 0, "the stale queue row is cleared on success"
+    assert summary["written"] == 1 and summary["cleared"] == 1
+
+
+def test_requeuing_is_idempotent():
+    """Zero chunks twice -> the queue holds ONE row, created_at refreshed not stacked."""
+    conn = open_test_db()
+    seed(conn, notes_chunks=0)
+    try:
+        chat = make_chat(lesson_json(80))  # never called -- no chunks short-circuits
+        il.ingest_lessons_for_subject(
+            conn, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
+        )
+        il.ingest_lessons_for_subject(
+            conn, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
+        )
+        assert chat.calls == 0, "no source material -> the model is never called"
+        assert queue_count(conn, reason="insufficient_sources") == 1, \
+            "second run upserts (refreshes created_at), it does not add a second row"
+    finally:
+        conn.close()

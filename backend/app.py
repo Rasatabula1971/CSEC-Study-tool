@@ -210,6 +210,19 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # table already present -- re-run is a no-op
+    # Stage 11 fix: a UNIQUE index on (objective_id, reason) so requeuing an
+    # objective is an idempotent upsert (ingest_lessons._queue_insufficient uses
+    # ON CONFLICT on this pair) instead of stacking a fresh row every failed run.
+    # Wrapped in try/except: on a DB that still holds duplicate (objective_id,
+    # reason) pairs the CREATE fails -- the one-off cleanup must dedupe first, after
+    # which a later startup creates the index cleanly.
+    try:
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_lgq_objective_reason "
+            "ON lesson_generation_queue(objective_id, reason)"
+        )
+    except sqlite3.OperationalError:
+        pass  # duplicates still present (pre-cleanup) -- skip until deduped
     # Data migration: normalise question_id to the -stem convention used by
     # ingest_solutions.py. Old PDF-ingester rows stored question_id without
     # the suffix; this makes the grade-picker join work for all rows.

@@ -162,6 +162,16 @@ def ensure_lesson_tables(db: sqlite3.Connection) -> None:
         )
         """
     )
+    # UNIQUE(objective_id, reason) backs the idempotent upsert in
+    # _queue_insufficient. Try/except: if the live DB still holds duplicate pairs
+    # the CREATE fails -- the one-off cleanup dedupes first, then this succeeds.
+    try:
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_lgq_objective_reason "
+            "ON lesson_generation_queue(objective_id, reason)"
+        )
+    except sqlite3.OperationalError:
+        pass
     db.commit()
 
 
@@ -306,9 +316,17 @@ def _compose_lesson(objective: dict, chunks: list[dict], chat_fn) -> dict | None
 
 def _queue_insufficient(db: sqlite3.Connection, objective_id: str,
                         dry_run: bool) -> None:
+    """Idempotently flag an objective as needing sources.
+
+    ON CONFLICT(objective_id, reason) means a re-run REFRESHES created_at on the
+    existing row rather than stacking a duplicate -- so the queue stays one row per
+    objective-per-reason of genuine outstanding work.
+    """
     if not dry_run:
         db.execute(
-            "INSERT INTO lesson_generation_queue (objective_id, reason) VALUES (?, ?)",
+            "INSERT INTO lesson_generation_queue (objective_id, reason) "
+            "VALUES (?, ?) "
+            "ON CONFLICT(objective_id, reason) DO UPDATE SET created_at = datetime('now')",
             (objective_id, QUEUE_REASON),
         )
 
@@ -337,6 +355,7 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
         "queued": 0,
         "skipped": 0,
         "errored": 0,
+        "cleared": 0,  # stale queue rows deleted when a lesson was successfully written
         "rows": [],
     }
 
@@ -345,8 +364,8 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
               f"({len(objectives)} objective(s) in a locked subject)"
               f"{'  [DRY RUN]' if dry_run else ''}\n")
         print(f"  {'objective_id':<16}{'chunks':>7}  {'sources':<18}"
-              f"{'conf':>5}  status")
-        print("  " + "-" * 60)
+              f"{'conf':>4}{'cleared':>8}  status")
+        print("  " + "-" * 68)
 
     for obj in objectives:
         oid = obj["objective_id"]
@@ -407,6 +426,10 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
             # (f) Write the lesson. lesson_id = sha256(objective_id|generated_at)[:16].
             # On --regenerate, delete the old row here -- only now that a good new
             # lesson is in hand -- then insert (UNIQUE(objective_id) is satisfied).
+            # The matching queue rows are deleted in the SAME transaction as the
+            # insert (the per-objective commit is in the finally below), so a failed
+            # insert rolls the queue delete back too -- the objective stays flagged.
+            cleared = 0
             if not dry_run:
                 if regenerate:
                     db.execute("DELETE FROM objective_lessons WHERE objective_id = ?", (oid,))
@@ -433,8 +456,15 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                         final_conf, generated_at,
                     ),
                 )
+                # This objective is now covered -- drop any queue rows flagging it.
+                cur = db.execute(
+                    "DELETE FROM lesson_generation_queue WHERE objective_id = ?", (oid,)
+                )
+                cleared = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
 
-            _record(summary, oid, len(chunks), sources, final_conf, "written", verbose)
+            summary["cleared"] += cleared
+            _record(summary, oid, len(chunks), sources, final_conf, "written", verbose,
+                    cleared=cleared)
             summary["written"] += 1
         finally:
             if not dry_run:
@@ -454,20 +484,21 @@ def _source_label(chunks: list[dict]) -> str:
 
 
 def _record(summary: dict, oid: str, chunks_used: int, sources: str,
-            confidence, status: str, verbose: bool) -> None:
+            confidence, status: str, verbose: bool, cleared: int = 0) -> None:
     summary["rows"].append({
         "objective_id": oid, "chunks_used": chunks_used, "sources": sources,
-        "confidence": confidence, "status": status,
+        "confidence": confidence, "status": status, "cleared": cleared,
     })
     if verbose:
         conf = "  --" if confidence is None else f"{confidence:>4}"
-        print(f"  {oid:<16}{chunks_used:>7}  {sources:<18}{conf}  {status}")
+        print(f"  {oid:<16}{chunks_used:>7}  {sources:<18}{conf}{cleared:>8}  {status}")
 
 
 def _print_totals(summary: dict) -> None:
-    print("  " + "-" * 60)
+    print("  " + "-" * 68)
     print(f"  written: {summary['written']}   queued: {summary['queued']}   "
-          f"skipped: {summary['skipped']}   errored: {summary['errored']}")
+          f"skipped: {summary['skipped']}   errored: {summary['errored']}   "
+          f"cleared: {summary['cleared']}")
     if summary["regenerate"]:
         print("  (--regenerate: existing lessons were replaced)")
     print()
