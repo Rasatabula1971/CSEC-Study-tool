@@ -24,9 +24,10 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -223,6 +224,38 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # duplicates still present (pre-cleanup) -- skip until deduped
+    # Stage 12 (Feedback Loop): one row per 👍/👎/🤔 tap after a lesson or graded
+    # answer. The CHECK constraints make the enum the DB's responsibility; the FKs
+    # to objectives/subjects guarantee every flag resolves to a real objective
+    # (CLAUDE.md Rule 1). The two indexes back feedback_report.py's group-by query.
+    try:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                feedback_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id     INTEGER,
+                objective_id   TEXT NOT NULL REFERENCES objectives(objective_id),
+                subject_id     TEXT NOT NULL REFERENCES subjects(subject_id),
+                feedback_type  TEXT NOT NULL CHECK (feedback_type IN
+                                 ('lesson','grading','recall_question')),
+                sentiment      TEXT NOT NULL CHECK (sentiment IN
+                                 ('positive','negative','confused')),
+                notes          TEXT,
+                context_json   TEXT,
+                created_at     TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_feedback_objective "
+            "ON user_feedback(objective_id)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_feedback_sentiment "
+            "ON user_feedback(sentiment, subject_id)"
+        )
+    except sqlite3.OperationalError:
+        pass  # table/indexes already present -- re-run is a no-op
     # Data migration: normalise question_id to the -stem convention used by
     # ingest_solutions.py. Old PDF-ingester rows stored question_id without
     # the suffix; this makes the grade-picker join work for all rows.
@@ -357,6 +390,22 @@ class ClassifyNotesRequest(BaseModel):
     """Classify pasted/uploaded note text: which subject + objectives it belongs to."""
     text: str = Field(min_length=1, max_length=50000)
     available_subjects: list[str] = []
+
+
+class FeedbackRequest(BaseModel):
+    """One 👍/👎/🤔 tap after a lesson or graded answer (Stage 12).
+
+    feedback_type and sentiment are Literal enums, so an unknown value is rejected
+    by Pydantic with a 422 before the endpoint body runs. objective_id/subject_id
+    are validated against the FK at INSERT time, not pre-checked here.
+    """
+    objective_id: str
+    subject_id: str
+    feedback_type: Literal['lesson', 'grading', 'recall_question']
+    sentiment: Literal['positive', 'negative', 'confused']
+    notes: Optional[str] = None
+    context_json: Optional[str] = None
+    session_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +704,38 @@ def chat(body: ChatRequest, request: Request) -> dict:
     req["student_answer"] = body.message
     result = handle_request(request.app.state.db, req)
     return _shape_for_ui(result)
+
+
+@app.post("/api/feedback")
+def feedback(body: FeedbackRequest, request: Request, response: Response) -> dict:
+    """Log one 👍/👎/🤔 tap after a lesson or graded answer (Stage 12).
+
+    Pydantic has already rejected unknown enum values (422) before this runs. The
+    only existence check is the FK on objective_id/subject_id -- an unknown id
+    raises sqlite3.IntegrityError, which we map to 400. PRAGMA foreign_keys is ON
+    for the app DB (open_db sets it), so the FK is genuinely enforced. Any other
+    DB error is a 500. The body shape is {ok, feedback_id} / {ok, error} either way.
+    """
+    db = request.app.state.db
+    try:
+        cur = db.execute(
+            "INSERT INTO user_feedback "
+            "(session_id, objective_id, subject_id, feedback_type, sentiment, "
+            " notes, context_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (body.session_id, body.objective_id, body.subject_id,
+             body.feedback_type, body.sentiment, body.notes, body.context_json),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # FK violation: objective_id or subject_id does not exist. (IntegrityError
+        # is a subclass of sqlite3.Error, so this branch must precede the 500 one.)
+        response.status_code = 400
+        return {"ok": False, "error": "unknown objective_id or subject_id"}
+    except sqlite3.Error as exc:
+        response.status_code = 500
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "feedback_id": cur.lastrowid}
 
 
 # ---------------------------------------------------------------------------
