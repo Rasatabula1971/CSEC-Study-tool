@@ -250,6 +250,25 @@ def test_C_verbatim_echo_is_flagged_not_downgraded(db):
     assert "mpC" not in result["missed_points"]
 
 
+def test_E_evidence_not_in_answer_is_flagged_not_downgraded(db):
+    """Roadmap #1: awarded evidence absent from the student answer is flagged, not downgraded."""
+    _seed_mark_point(db, "mpE", "qE")
+    student_answer = "The business is owned by one person."
+    # Evidence the student never wrote (>=20 chars, so the thin-evidence gate leaves
+    # it awarded): a loose paraphrase / fabrication, not a substring of the answer.
+    paraphrase_json = (
+        '{"objective_id":"POB-1.1","question_id":"qE","confidence":85,"points":['
+        '{"mark_point_id":"mpE","awarded":true,'
+        '"evidence":"limited liability protects shareholders","confidence":85}]}'
+    )
+    result = grade.grade_answer(db, "qE", student_answer, chat_fn=lambda *a, **k: paraphrase_json)
+    assert result["points"][0]["awarded"] is True       # NOT downgraded -- only flagged
+    assert "mpE" in result["review_flags"]
+    assert "mpE" not in result["missed_points"]
+    assert result["awarded"] == 1                        # still counts in compute_score
+    assert result["score_pct"] == 100
+
+
 def test_D_examiner_prompt_has_command_word_gating():
     """prompts/examiner.txt carries the command-word + confidence + output sections."""
     text = (ROOT / "prompts" / "examiner.txt").read_text(encoding="utf-8")

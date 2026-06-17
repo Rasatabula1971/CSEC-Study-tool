@@ -163,7 +163,7 @@ def evidence_post_check(points: list[dict], student_answer: str) -> list[str]:
     """Sanity-check the examiner's evidence against rubber-stamping (Stage 10).
 
     Mutates each awarded point in place and returns the list of mark_point_ids
-    flagged for review. Two gates run on awarded points only:
+    flagged for review. Three gates run on awarded points only:
 
     Gate 1 (auto-downgrade) -- evidence under 20 chars is too thin to justify a
     mark, so the point is flipped to awarded=False and tagged in its evidence.
@@ -172,6 +172,11 @@ def evidence_post_check(points: list[dict], student_answer: str) -> list[str]:
     answer AND contains no explanation connector suggests the examiner echoed the
     text without judging it. The mark_point_id is flagged; the award STANDS (the
     model's call is trusted, the human is merely alerted).
+
+    Gate 3 (flag only, roadmap #1) -- evidence that does NOT appear in the student
+    answer at all suggests the model paraphrased loosely or fabricated the quote.
+    Flagged, not downgraded: a paraphrase of a longer passage can be legitimate, so
+    the human verifies rather than the system overruling the award.
     """
     review_flags: list[str] = []
     for p in points:
@@ -186,6 +191,13 @@ def evidence_post_check(points: list[dict], student_answer: str) -> list[str]:
         elif evidence.strip() in student_answer:
             if not any(c in evidence.lower() for c in EXPLANATION_CONNECTORS):
                 review_flags.append(p["mark_point_id"])
+        # Roadmap point #1 — evidence must appear in the student answer. Runs after
+        # the gates above (re-reads awarded, so a Gate-1 downgrade is skipped here).
+        if p.get("awarded"):
+            evidence = p.get("evidence", "").strip()
+            if evidence and evidence not in student_answer:
+                if p["mark_point_id"] not in review_flags:
+                    review_flags.append(p["mark_point_id"])
     return review_flags
 
 
