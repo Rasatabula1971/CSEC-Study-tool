@@ -227,6 +227,32 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .modal-body { padding: var(--space-4); overflow: auto; font-family: var(--font-mono);
     font-size: var(--text-xs); line-height: 1.7; color: var(--paper); white-space: pre-wrap; word-break: break-word; }
+  .modal-actions { padding: var(--space-3) var(--space-4); border-top: var(--border);
+    display: flex; gap: var(--space-2); justify-content: flex-end; }
+  .modal-text { padding: var(--space-4); color: var(--paper); font-size: var(--text-sm); line-height: 1.6; }
+
+  /* ----- Ingestion (session 4) ----- */
+  .ingest-summary { font-size: var(--text-sm); color: var(--paper-dim); margin: var(--space-2) 0 var(--space-3); line-height: 1.7; }
+  .ingest-summary .num { font-weight: 700; color: var(--paper); font-family: var(--font-mono); }
+  .ingest-badge { display: inline-flex; align-items: center; padding: 2px var(--space-2);
+    border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: var(--text-xs);
+    font-weight: 700; flex-shrink: 0; }
+  .ingest-badge.queued    { background: var(--color-warn-bg); color: var(--color-warn); }
+  .ingest-badge.ingesting { background: rgba(74,130,196,0.16); color: var(--booklet-bright); }
+  .ingest-badge.ingested  { background: var(--color-pass-bg); color: var(--tick); }
+  .ingest-badge.failed    { background: var(--color-fail-bg); color: var(--red-pen); cursor: help; }
+  .ingest-meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--paper-faint); }
+
+  /* ----- Stale Lessons (session 4) ----- */
+  .stale-subtitle { font-size: var(--text-xs); color: var(--paper-faint); margin-bottom: var(--space-3); }
+  .stale-card { display: flex; align-items: flex-start; gap: var(--space-3);
+    padding: var(--space-3) var(--space-4); background: var(--ink-2);
+    border: var(--border); border-left: 3px solid var(--color-warn);
+    border-radius: var(--radius-md); margin-bottom: var(--space-2); }
+  .stale-main { flex: 1; min-width: 0; }
+  .stale-oid { font-family: var(--font-mono); font-weight: 700; color: var(--booklet-bright); }
+  .stale-content { font-size: var(--text-sm); color: var(--paper); margin: 2px 0; }
+  .stale-meta { font-size: var(--text-xs); color: var(--paper-faint); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -308,10 +334,35 @@
         <div id="classifyArea"></div>
       </section>
 
+      <!-- Ingestion (session 4) -->
+      <section>
+        <div class="classify-header">
+          <div class="section-label">Ingestion</div>
+          <button class="btn btn-primary btn-sm" id="ingestAllBtn">
+            Ingest all accepted files
+          </button>
+        </div>
+        <div class="ingest-summary" id="ingestSummary"></div>
+        <div class="classify-status" id="ingestStatus" aria-live="polite"></div>
+      </section>
+
+      <!-- Stale Lessons (session 4) -->
+      <section>
+        <div class="classify-header">
+          <div class="section-label">Stale Lessons</div>
+          <button class="btn btn-secondary btn-sm" id="regenAllBtn">
+            Regenerate all stale lessons
+          </button>
+        </div>
+        <div class="stale-subtitle">Lessons flagged for regeneration due to new source material</div>
+        <div class="classify-status" id="staleStatus" aria-live="polite"></div>
+        <div id="staleArea"></div>
+      </section>
+
     </div>
   </main>
 
-  <!-- View-text modal host -->
+  <!-- View-text / confirmation modal host -->
   <div id="modalHost"></div>
 
 <script>
@@ -346,7 +397,14 @@ const state = {
   overrideOpenId: null,    // staging_id whose override panel is open
   overrideSel: new Set(),  // objective_ids currently selected in the override panel
   overrideFolder: null,    // folder chosen in the override panel
+  // --- session 4: ingestion & stale lessons ---
+  ingestionTotals: null,   // {not_started, queued, ingesting, ingested, failed}
+  ingestionMap: {},        // staging_id -> ingestion item
+  ingestPollTimer: null,
+  staleLessons: [],
 };
+
+const INGEST_POLL_MS = 5000;
 
 // folder -> {cls, label} for the badge; UNCERTAIN/unknown fall through to grey.
 const FOLDER_BADGE = {
@@ -419,6 +477,8 @@ async function loadSubjects() {
   await loadList();
   await loadObjectives();
   await loadClassifications();
+  await loadIngestionStatus();
+  await loadStaleLessons();
 }
 
 function updateSubjectName() {
@@ -448,9 +508,12 @@ async function onSubjectChange() {
   document.getElementById("classifyStatus").textContent = "";
   updateSubjectName();
   document.getElementById("previewArea").innerHTML = "";
+  stopIngestPolling();
   await loadList();
   await loadObjectives();
   await loadClassifications();
+  await loadIngestionStatus();
+  await loadStaleLessons();
 }
 
 // --------------------------------------------------------------------------
@@ -905,6 +968,7 @@ function renderClassCard(c) {
       ${folderBadge(cl.recommended_folder)}
       ${confBadge(cl.folder_confidence)}
       ${reviewBadge}
+      ${ingestionBadge(sid)}
     </div>`;
 
   if (!open) {
@@ -943,10 +1007,18 @@ function renderObjList(c) {
 
 function renderClassActions(c) {
   const sid = c.staging_id;
+  const dec = c.classification && c.classification.review_decision;
+  const ing = state.ingestionMap[sid];
+  const ingStatus = ing ? ing.ingestion_status : "not_started";
+  // The Ingest button shows only once a file is accepted/overridden and not yet queued.
+  const canIngest = (dec === "accepted" || dec === "overridden") && ingStatus === "not_started";
+  const ingestBtn = canIngest
+    ? `<button class="btn btn-primary btn-sm ingest-one-btn" data-sid="${sid}">Ingest</button>` : "";
   return `<div class="class-actions">
     <button class="btn btn-accept btn-sm accept-btn" data-sid="${sid}">Accept</button>
     <button class="btn btn-secondary btn-sm override-btn" data-sid="${sid}">Override</button>
     <button class="btn btn-reject btn-sm reject-btn" data-sid="${sid}">Reject</button>
+    ${ingestBtn}
     <button class="btn btn-secondary btn-sm viewtext-btn" data-sid="${sid}">View text</button>
   </div>`;
 }
@@ -1013,6 +1085,8 @@ function wireClassCards() {
     b.addEventListener("click", () => { state.overrideOpenId = null; renderClassifications(); }));
   area.querySelectorAll(".save-override-btn").forEach(b =>
     b.addEventListener("click", () => saveOverride(Number(b.dataset.sid))));
+  area.querySelectorAll(".ingest-one-btn").forEach(b =>
+    b.addEventListener("click", () => ingestOne(Number(b.dataset.sid))));
   area.querySelectorAll(".unskip-btn").forEach(b =>
     b.addEventListener("click", () => unskipFile(Number(b.dataset.sid))));
   area.querySelectorAll(".classify-one-btn").forEach(b =>
@@ -1093,6 +1167,7 @@ async function reviewFile(sid, decision) {
   if (await postReview(sid, { decision })) {
     document.getElementById("classifyStatus").textContent = `Marked ${decision}.`;
     await loadClassifications();
+    await loadIngestionStatus();   // refresh the ready-to-ingest summary + Ingest buttons
   }
 }
 
@@ -1111,6 +1186,7 @@ async function saveOverride(sid) {
     state.overrideOpenId = null;
     document.getElementById("classifyStatus").textContent = "Override saved.";
     await loadClassifications();
+    await loadIngestionStatus();
   }
 }
 
@@ -1257,6 +1333,259 @@ function closeModal() {
   document.getElementById("modalHost").innerHTML = "";
 }
 
+// Generic confirmation modal: renders into modalHost and calls onConfirm if accepted.
+function confirmModal(message, confirmLabel, onConfirm) {
+  document.getElementById("modalHost").innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head"><div class="modal-title">Confirm</div></div>
+        <div class="modal-text">${esc(message)}</div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary btn-sm" id="confirmCancel">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="confirmOk">${esc(confirmLabel)}</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById("confirmCancel").addEventListener("click", closeModal);
+  document.getElementById("confirmOk").addEventListener("click", () => { closeModal(); onConfirm(); });
+  document.getElementById("modalOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "modalOverlay") closeModal();
+  });
+}
+
+// --------------------------------------------------------------------------
+// Ingestion (session 4)
+// --------------------------------------------------------------------------
+function ingestionBadge(sid) {
+  const ing = state.ingestionMap[sid];
+  if (!ing) return "";
+  const st = ing.ingestion_status;
+  if (st === "queued") return `<span class="ingest-badge queued">Queued</span>`;
+  if (st === "ingesting") return `<span class="ingest-badge ingesting">Ingesting…</span>`;
+  if (st === "ingested") {
+    const n = ing.chunks_created != null ? ing.chunks_created : "?";
+    const m = Array.isArray(ing.objectives_hit) ? ing.objectives_hit.length : "?";
+    return `<span class="ingest-badge ingested" title="${n} chunks, ${m} objectives">Ingested ✓</span>`;
+  }
+  if (st === "failed") {
+    return `<span class="ingest-badge failed" title="${esc(ing.ingestion_error || "ingestion failed")}">Ingestion failed</span>`;
+  }
+  return "";  // not_started -> no badge
+}
+
+async function loadIngestionStatus() {
+  if (!state.subjectId) return;
+  let data;
+  try {
+    const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/ingestion-status`);
+    data = await res.json();
+  } catch (e) { return; }
+  if (!data || data.ok === false) return;
+  state.ingestionTotals = data.totals || null;
+  state.ingestionMap = {};
+  for (const it of (data.items || [])) state.ingestionMap[it.staging_id] = it;
+  renderIngestSummary();
+  renderClassifications();   // badges + Ingest buttons depend on ingestionMap
+  manageIngestPolling();
+}
+
+function countDecisions() {
+  let accepted = 0, overridden = 0, rejected = 0, unreviewed = 0, classified = 0;
+  for (const c of state.classifications) {
+    if (c.classification_status !== "classified" || !c.classification) continue;
+    classified++;
+    const d = c.classification.review_decision;
+    if (d === "accepted") accepted++;
+    else if (d === "overridden") overridden++;
+    else if (d === "rejected") rejected++;
+    else unreviewed++;
+  }
+  return { accepted, overridden, rejected, unreviewed, classified };
+}
+
+function renderIngestSummary() {
+  const d = countDecisions();
+  const t = state.ingestionTotals || {};
+  // "ready to ingest" = accepted/overridden files still not_started.
+  let ready = 0;
+  for (const c of state.classifications) {
+    const dec = c.classification && c.classification.review_decision;
+    if (dec !== "accepted" && dec !== "overridden") continue;
+    const ing = state.ingestionMap[c.staging_id];
+    if (!ing || ing.ingestion_status === "not_started") ready++;
+  }
+  const el = document.getElementById("ingestSummary");
+  el.innerHTML =
+    `<div><span class="num">${d.classified}</span> classified · ` +
+    `<span class="num">${d.accepted}</span> accepted · ` +
+    `<span class="num">${d.overridden}</span> overridden · ` +
+    `<span class="num">${d.rejected}</span> rejected</div>` +
+    `<div><span class="num">${t.ingested || 0}</span> ingested · ` +
+    `<span class="num">${ready}</span> ready to ingest · ` +
+    `<span class="num">${t.failed || 0}</span> failed</div>`;
+  // Disable bulk ingest while any classified file is still unreviewed.
+  const btn = document.getElementById("ingestAllBtn");
+  if (btn) btn.disabled = d.unreviewed > 0;
+}
+
+async function ingestAll() {
+  if (!state.subjectId) return;
+  const ready = (() => {
+    let n = 0;
+    for (const c of state.classifications) {
+      const dec = c.classification && c.classification.review_decision;
+      if (dec !== "accepted" && dec !== "overridden") continue;
+      const ing = state.ingestionMap[c.staging_id];
+      if (!ing || ing.ingestion_status === "not_started") n++;
+    }
+    return n;
+  })();
+  if (ready === 0) {
+    document.getElementById("ingestStatus").textContent = "No accepted files are waiting to ingest.";
+    return;
+  }
+  confirmModal(
+    `This will move ${ready} file(s) into the KB folders and run ingestion. ` +
+    `Estimated time: 15–30 minutes. Affected lessons will be marked stale but NOT ` +
+    `regenerated automatically. Continue?`,
+    "Ingest all", async () => {
+      const statusEl = document.getElementById("ingestStatus");
+      try {
+        const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/ingest-all`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dry_run: false }),
+        });
+        const body = await res.json();
+        if (!res.ok || body.ok === false) {
+          statusEl.textContent = (body && body.error) ? body.error : `Ingest failed (HTTP ${res.status}).`;
+          return;
+        }
+        statusEl.textContent = `Ingesting ${body.queued} file(s)…`;
+      } catch (e) {
+        statusEl.textContent = "Couldn't reach the server. Is it running?";
+        return;
+      }
+      await loadIngestionStatus();
+    });
+}
+
+async function ingestOne(sid) {
+  const statusEl = document.getElementById("ingestStatus");
+  try {
+    const res = await fetch(`/api/staging/${sid}/ingest`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      statusEl.textContent = (body && body.error) ? body.error : `Ingest failed (HTTP ${res.status}).`;
+      return;
+    }
+    statusEl.textContent = "Ingesting 1 file…";
+  } catch (e) {
+    statusEl.textContent = "Couldn't reach the server. Is it running?";
+    return;
+  }
+  await loadIngestionStatus();
+}
+
+function manageIngestPolling() {
+  const busy = Object.values(state.ingestionMap).some(it =>
+    it.ingestion_status === "queued" || it.ingestion_status === "ingesting");
+  if (busy && !state.ingestPollTimer) {
+    state.ingestPollTimer = setInterval(ingestPollTick, INGEST_POLL_MS);
+  } else if (!busy) {
+    stopIngestPolling();
+  }
+}
+
+async function ingestPollTick() {
+  await loadIngestionStatus();
+  await loadStaleLessons();   // ingestion creates stale lessons -- keep that list live
+}
+
+function stopIngestPolling() {
+  if (state.ingestPollTimer) { clearInterval(state.ingestPollTimer); state.ingestPollTimer = null; }
+}
+
+// --------------------------------------------------------------------------
+// Stale Lessons (session 4)
+// --------------------------------------------------------------------------
+async function loadStaleLessons() {
+  if (!state.subjectId) return;
+  let data;
+  try {
+    const res = await fetch(`/api/lessons/stale/${encodeURIComponent(state.subjectId)}`);
+    data = await res.json();
+  } catch (e) { return; }
+  state.staleLessons = (data && data.stale_lessons) || [];
+  renderStaleLessons();
+}
+
+function renderStaleLessons() {
+  const area = document.getElementById("staleArea");
+  const regenBtn = document.getElementById("regenAllBtn");
+  if (regenBtn) regenBtn.disabled = state.staleLessons.length === 0;
+  if (state.staleLessons.length === 0) {
+    area.innerHTML = `<div class="empty-note">No stale lessons. All lessons are current.</div>`;
+    return;
+  }
+  area.innerHTML = state.staleLessons.map(l => {
+    const cause = (l.caused_by_files || []).join(", ");
+    return `
+      <div class="stale-card">
+        <div class="stale-main">
+          <div><span class="stale-oid">${esc(l.objective_id)}</span></div>
+          <div class="stale-content">${esc(l.content_stmt || "")}</div>
+          <div class="stale-meta">Staled: ${esc(l.staled_at || "—")}${
+            cause ? " · Cause: " + esc(cause) : ""}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm regen-one-btn" data-oid="${esc(l.objective_id)}">Regenerate</button>
+      </div>`;
+  }).join("");
+  area.querySelectorAll(".regen-one-btn").forEach(b =>
+    b.addEventListener("click", () => regenerateLesson(b.dataset.oid)));
+}
+
+async function regenerateLesson(objectiveId) {
+  const statusEl = document.getElementById("staleStatus");
+  try {
+    const res = await fetch(`/api/lessons/${encodeURIComponent(objectiveId)}/regenerate`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      statusEl.textContent = (body && body.error) ? body.error : `Regenerate failed (HTTP ${res.status}).`;
+      return;
+    }
+    statusEl.textContent = `Regenerating ${objectiveId}… (~30s)`;
+  } catch (e) {
+    statusEl.textContent = "Couldn't reach the server. Is it running?";
+    return;
+  }
+  // Give the background task a moment, then refresh the list.
+  setTimeout(loadStaleLessons, 4000);
+}
+
+async function regenerateAllStale() {
+  if (!state.subjectId || state.staleLessons.length === 0) return;
+  const n = state.staleLessons.length;
+  confirmModal(
+    `Regenerate ${n} stale lesson(s)? Estimated time: ~${Math.ceil(n * 30 / 60)} minute(s) ` +
+    `(~30s each). Continue?`,
+    "Regenerate all", async () => {
+      const statusEl = document.getElementById("staleStatus");
+      try {
+        const res = await fetch(`/api/lessons/regenerate-stale/${encodeURIComponent(state.subjectId)}`, { method: "POST" });
+        const body = await res.json();
+        if (!res.ok || body.ok === false) {
+          statusEl.textContent = (body && body.error) ? body.error : `Regenerate failed (HTTP ${res.status}).`;
+          return;
+        }
+        statusEl.textContent = `Regenerating ${body.queued} lesson(s)…`;
+      } catch (e) {
+        statusEl.textContent = "Couldn't reach the server. Is it running?";
+        return;
+      }
+      setTimeout(loadStaleLessons, 5000);
+    });
+}
+
 // --------------------------------------------------------------------------
 // Wiring
 // --------------------------------------------------------------------------
@@ -1292,7 +1621,11 @@ document.getElementById("subjectSelect").addEventListener("change", onSubjectCha
 document.getElementById("reextractAllBtn").addEventListener("click", reextractAll);
 document.getElementById("classifyAllBtn").addEventListener("click", classifyAll);
 document.getElementById("classifyFilter").addEventListener("change", onClassifyFilterChange);
-window.addEventListener("beforeunload", () => { stopPolling(); stopClassifyPolling(); });
+document.getElementById("ingestAllBtn").addEventListener("click", ingestAll);
+document.getElementById("regenAllBtn").addEventListener("click", regenerateAllStale);
+window.addEventListener("beforeunload", () => {
+  stopPolling(); stopClassifyPolling(); stopIngestPolling();
+});
 
 wireDropzone();
 loadSubjects();

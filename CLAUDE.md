@@ -774,4 +774,50 @@ embeds immediately; this one stages for human review first).
     2–15 objectives/file avg 10.5), 30 skipped.** Folders: 46 past_papers, 28 notes,
     1 syllabus. All 75 unreviewed (the UI review pass is the user's next step). 3 new
     gemini tests; suite 342/342.
-- [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)
+- [x] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected) ✓ 2026-06-18
+  - **m016** (`apply_runtime_migrations`, Layer 1 version-tracked) adds `ingested_at` /
+    `ingestion_status` (not_started→queued→ingesting→ingested|failed) / `ingestion_error`
+    / `ingested_doc_id`→documents to `upload_staging`; `is_stale` / `stale_reason` /
+    `staled_at` to `objective_lessons`; and the `ingestion_log` audit table
+    (staging_id, success, chunks_created, objectives_hit JSON, lessons_staled JSON).
+    No backfill — column defaults are the right initial state.
+  - `ingest.py` gained a single-file entry `ingest_document(db, *, path, subject_id,
+    content_type, objectives, embed_fn, preferred_objectives, full_text, source_file)`
+    (mints hash doc_id, inserts documents row, splits text into pages on `[Page N]`
+    markers — so DOCX/image OCR text from sessions 1–2 ingests too — chunks/embeds/
+    indexes, returns doc_id+chunks_created+objectives_hit). `best_objective` +
+    `ingest_page` gained `preferred_objectives`: a chunk binds to one of the
+    classification's objectives first, falling back to the full syllabus only if none
+    clear the keyword threshold — so Gemini's session-3 binding actually steers
+    ingestion. `ingest_lessons_for_subject` gained an `objective_ids` filter for
+    single-lesson regeneration.
+  - `backend/upload_ingest.py` (`PHASE: build`): `ingest_staged_file` validates the
+    decision (accepted/overridden, not already ingested), copies the file from
+    06_UPLOAD_STAGING into `{KB}/{subject}/{folder}` (override folder wins; collision →
+    `_N`; non-ingestable folders 00_SYLLABUS/05/UNCERTAIN are archived, not chunked),
+    runs `ingest_document` with the binding hint + the staged extracted text, stales
+    every matching `objective_lessons` row, records ingestion_log + staging status, and
+    removes the staged original ONLY on success (failure: rollback, remove the KB copy,
+    keep the staged file, mark failed, log — never a half-move). `ingest_all_accepted`
+    (dry_run reports `would_ingest` without touching anything), `get_stale_lessons`
+    (joins ingestion_log.lessons_staled → caused_by_files), `regenerate_lessons`
+    (delegates to ingest_lessons, clears is_stale on written objectives).
+  - Endpoints in `app.py`: `POST /api/staging/{id}/ingest` (400 unless accepted/
+    overridden & not ingested), `POST /api/staging/{subject}/ingest-all`
+    (`{dry_run}`; returns queued), `GET /api/staging/{subject}/ingestion-status`
+    (declared before `/{staging_id}`; totals + per-file latest ingestion_log data),
+    `GET /api/lessons/stale/{subject}`, `POST /api/lessons/{objective}/regenerate`,
+    `POST /api/lessons/regenerate-stale/{subject}` — all build work lazy-imports
+    upload_ingest in the background task so the runtime server never loads it at startup.
+  - `upload.html`: an Ingestion section (status summary "N classified · N accepted · …"
+    + "N ingested · N ready · N failed", "Ingest all" disabled while any file is
+    unreviewed, confirm modal, per-card ingestion badges + per-file Ingest button, 5s
+    polling) and a Stale Lessons section (list with cause files, per-lesson + bulk
+    Regenerate, confirm modals, empty state).
+  - Tests: `tests/test_upload_ingest.py` (8) + `tests/test_upload_ingest_api.py` (6);
+    suite 356/356. No lesson auto-regenerates and no file auto-ingests — both are
+    user-triggered. Live (build-only, dry-run): m016 applied to E: DB; ingestion-status
+    105 not_started; ingest-all dry_run eligible=0 (all 75 still unreviewed — acceptance
+    is the user's next step); stale lessons empty. Full Upload Material feature
+    (sessions 1–4) complete: upload → extract → classify (Gemini) → review (human) →
+    ingest → regenerate stale lessons (human-triggered).

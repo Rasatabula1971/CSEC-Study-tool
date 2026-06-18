@@ -456,6 +456,40 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
             ON upload_classifications(review_decision)
         """,
     )
+    # m016 (Upload session 4): ingestion tracking on upload_staging, stale-lesson
+    # flags on objective_lessons, and the ingestion_log audit table. All ALTER columns
+    # are brand-new under m016, so the bundled ALTERs never hit a duplicate-column
+    # abort (and _run_migration records any as [pre-existing] if a partial run added
+    # one already). No data backfill -- defaults ('not_started' / is_stale 0) are the
+    # correct initial state for every existing row.
+    _run_migration(
+        db, "m016_upload_session_4",
+        "Ingestion tracking and stale lesson flags",
+        """
+        ALTER TABLE upload_staging ADD COLUMN ingested_at TEXT;
+        ALTER TABLE upload_staging ADD COLUMN ingestion_status TEXT
+            DEFAULT 'not_started';
+        ALTER TABLE upload_staging ADD COLUMN ingestion_error TEXT;
+        ALTER TABLE upload_staging ADD COLUMN ingested_doc_id TEXT
+            REFERENCES documents(doc_id);
+        ALTER TABLE objective_lessons ADD COLUMN is_stale INTEGER DEFAULT 0;
+        ALTER TABLE objective_lessons ADD COLUMN stale_reason TEXT;
+        ALTER TABLE objective_lessons ADD COLUMN staled_at TEXT;
+        CREATE TABLE IF NOT EXISTS ingestion_log (
+            log_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            staging_id       INTEGER NOT NULL REFERENCES upload_staging(staging_id),
+            started_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at      TEXT,
+            success          INTEGER,
+            chunks_created   INTEGER,
+            objectives_hit   TEXT,
+            lessons_staled   TEXT,
+            error_message    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_ingestion_log_staging
+            ON ingestion_log(staging_id, started_at DESC)
+        """,
+    )
 
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
@@ -767,6 +801,12 @@ class ClassifyNotesRequest(BaseModel):
 class ClassifyAllRequest(BaseModel):
     """Trigger a bulk classification run for a subject (upload session 3)."""
     force: bool = False
+
+
+class IngestAllRequest(BaseModel):
+    """Trigger ingestion of every accepted file for a subject (upload session 4).
+    dry_run reports what would happen without moving files or touching the DB."""
+    dry_run: bool = False
 
 
 class ReviewObjective(BaseModel):
@@ -1723,6 +1763,50 @@ def staging_classifications(subject_id: str, request: Request) -> dict:
     return {"ok": True, "items": items}
 
 
+@app.get("/api/staging/{subject_id}/ingestion-status")
+def staging_ingestion_status(subject_id: str, request: Request) -> dict:
+    """Aggregate ingestion counts + per-file status (upload session 4). Declared BEFORE
+    /{staging_id} so the literal 'ingestion-status' is not swallowed by the int param.
+
+    Per-file chunks_created/objectives_hit/lessons_staled come from the most recent
+    ingestion_log row for that file."""
+    db = request.app.state.db
+    rows = db.execute(
+        """
+        SELECT s.staging_id, s.original_name, s.ingestion_status, s.ingested_at,
+               s.ingestion_error,
+               l.chunks_created, l.objectives_hit, l.lessons_staled
+        FROM   upload_staging s
+        LEFT   JOIN ingestion_log l ON l.log_id = (
+                 SELECT log_id FROM ingestion_log
+                 WHERE staging_id = s.staging_id
+                 ORDER BY started_at DESC, log_id DESC LIMIT 1
+               )
+        WHERE  s.subject_id = ?
+        ORDER  BY s.created_at DESC, s.staging_id DESC
+        """,
+        (subject_id,),
+    ).fetchall()
+
+    totals = {"not_started": 0, "queued": 0, "ingesting": 0, "ingested": 0, "failed": 0}
+    items = []
+    for r in rows:
+        st = r["ingestion_status"] or "not_started"
+        if st in totals:
+            totals[st] += 1
+        items.append({
+            "staging_id": r["staging_id"],
+            "original_name": r["original_name"],
+            "ingestion_status": st,
+            "ingested_at": r["ingested_at"],
+            "chunks_created": r["chunks_created"],
+            "objectives_hit": _safe_json(r["objectives_hit"], None),
+            "lessons_staled": _safe_json(r["lessons_staled"], None),
+            "ingestion_error": r["ingestion_error"],
+        })
+    return {"ok": True, "totals": totals, "items": items}
+
+
 @app.get("/api/staging/{subject_id}/{staging_id}")
 def staging_detail(subject_id: str, staging_id: int,
                    request: Request, response: Response) -> dict:
@@ -1976,3 +2060,164 @@ def staging_unskip(staging_id: int, request: Request, response: Response) -> dic
     )
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Upload Material (session 4: ingestion + stale-lesson tracking)
+# ---------------------------------------------------------------------------
+# upload_ingest and ingest_lessons are PHASE: build (they pull the ingest pipeline
+# in). Lazy-imported inside the background-task wrappers so the runtime server never
+# loads them at startup -- only when a build-time ingestion/regeneration is triggered.
+def _run_ingest_one(db: sqlite3.Connection, staging_id: int) -> None:
+    """Background wrapper around upload_ingest.ingest_staged_file (one file). Errors are
+    already recorded on the staging row + ingestion_log; this just logs anything that
+    escapes."""
+    try:
+        import upload_ingest
+        upload_ingest.ingest_staged_file(db, staging_id)
+    except Exception:  # noqa: BLE001 -- background task; the failure is already recorded
+        logger.exception("Background ingestion failed for staging_id=%s", staging_id)
+
+
+def _run_ingest_all(db: sqlite3.Connection, subject_id: str) -> None:
+    """Background wrapper around upload_ingest.ingest_all_accepted (whole subject)."""
+    try:
+        import upload_ingest
+        upload_ingest.ingest_all_accepted(db, subject_id, dry_run=False)
+    except Exception:  # noqa: BLE001 -- background task; just log
+        logger.exception("Background bulk ingestion failed for subject=%s", subject_id)
+
+
+def _run_regenerate(db: sqlite3.Connection, subject_id: str,
+                    objective_ids: list) -> None:
+    """Background wrapper around upload_ingest.regenerate_lessons (offline Ollama)."""
+    try:
+        import upload_ingest
+        upload_ingest.regenerate_lessons(db, subject_id, objective_ids)
+    except Exception:  # noqa: BLE001 -- background task; just log
+        logger.exception("Background lesson regeneration failed (subject=%s, objectives=%s)",
+                         subject_id, objective_ids)
+
+
+def _classification_decision(db: sqlite3.Connection, staging_id: int):
+    """(review_decision, ingestion_status) for a staged file, or (None, None) if the
+    staging row is absent. review_decision is None when the file has no classification."""
+    row = db.execute(
+        "SELECT s.ingestion_status, c.review_decision "
+        "FROM upload_staging s "
+        "LEFT JOIN upload_classifications c ON c.staging_id = s.staging_id "
+        "WHERE s.staging_id = ?",
+        (staging_id,),
+    ).fetchone()
+    if row is None:
+        return None, None
+    return row["review_decision"], row["ingestion_status"]
+
+
+@app.post("/api/staging/{staging_id}/ingest")
+def staging_ingest_one(staging_id: int, request: Request,
+                       response: Response, background_tasks: BackgroundTasks) -> dict:
+    """Ingest one accepted/overridden staged file (background). 404 if absent; 400 if the
+    classification is not accepted/overridden or the file is already ingested."""
+    db = request.app.state.db
+    decision, ing_status = _classification_decision(db, staging_id)
+    if decision is None and ing_status is None:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+    if decision not in ("accepted", "overridden"):
+        response.status_code = 400
+        return {"ok": False,
+                "error": "File classification must be accepted or overridden before ingestion."}
+    if ing_status == "ingested":
+        response.status_code = 400
+        return {"ok": False, "error": "File is already ingested."}
+
+    db.execute(
+        "UPDATE upload_staging SET ingestion_status = 'queued' WHERE staging_id = ?",
+        (staging_id,),
+    )
+    db.commit()
+    background_tasks.add_task(_run_ingest_one, db, staging_id)
+    return {"ok": True, "staging_id": staging_id, "ingestion_status": "queued"}
+
+
+@app.post("/api/staging/{subject_id}/ingest-all")
+async def staging_ingest_all(subject_id: str, request: Request,
+                             background_tasks: BackgroundTasks) -> dict:
+    """Ingest every accepted/overridden, not-yet-ingested file for a subject (background).
+    Body (optional): {"dry_run": false}. Returns the count queued; with dry_run=true it
+    reports what would be ingested without touching anything."""
+    db = request.app.state.db
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- empty/non-JSON body is fine
+        body = {}
+    dry_run = bool(body.get("dry_run")) if isinstance(body, dict) else False
+
+    eligible = db.execute(
+        """
+        SELECT s.staging_id FROM upload_staging s
+        JOIN upload_classifications c ON c.staging_id = s.staging_id
+        WHERE s.subject_id = ?
+          AND c.review_decision IN ('accepted', 'overridden')
+          AND s.ingestion_status = 'not_started'
+        """,
+        (subject_id,),
+    ).fetchall()
+    queued = len(eligible)
+
+    if dry_run:
+        import upload_ingest
+        return {"ok": True, "dry_run": True,
+                "result": upload_ingest.ingest_all_accepted(db, subject_id, dry_run=True)}
+
+    if queued:
+        db.execute(
+            "UPDATE upload_staging SET ingestion_status = 'queued' "
+            "WHERE staging_id IN (%s)" % ",".join("?" * queued),
+            [r[0] for r in eligible],
+        )
+        db.commit()
+        background_tasks.add_task(_run_ingest_all, db, subject_id)
+    return {"ok": True, "queued": queued}
+
+
+@app.get("/api/lessons/stale/{subject_id}")
+def lessons_stale(subject_id: str, request: Request) -> dict:
+    """Lessons flagged for regeneration, each with the file(s) that caused staleness."""
+    import upload_ingest
+    return {"ok": True,
+            "stale_lessons": upload_ingest.get_stale_lessons(request.app.state.db, subject_id)}
+
+
+@app.post("/api/lessons/{objective_id}/regenerate")
+def lessons_regenerate_one(objective_id: str, request: Request,
+                           response: Response, background_tasks: BackgroundTasks) -> dict:
+    """Regenerate one objective's canonical lesson (background). 404 if the objective is
+    unknown. Clears is_stale on success."""
+    db = request.app.state.db
+    row = db.execute(
+        "SELECT subject_id FROM objectives WHERE objective_id = ?", (objective_id,)
+    ).fetchone()
+    if row is None:
+        response.status_code = 404
+        return {"ok": False, "error": "Unknown objective_id."}
+    background_tasks.add_task(_run_regenerate, db, row["subject_id"], [objective_id])
+    return {"ok": True, "queued_for": objective_id}
+
+
+@app.post("/api/lessons/regenerate-stale/{subject_id}")
+def lessons_regenerate_stale(subject_id: str, request: Request,
+                             background_tasks: BackgroundTasks) -> dict:
+    """Regenerate every stale lesson for a subject (background). Returns the count
+    queued."""
+    db = request.app.state.db
+    rows = db.execute(
+        "SELECT objective_id FROM objective_lessons "
+        "WHERE subject_id = ? AND is_stale = 1",
+        (subject_id,),
+    ).fetchall()
+    objective_ids = [r["objective_id"] for r in rows]
+    if objective_ids:
+        background_tasks.add_task(_run_regenerate, db, subject_id, objective_ids)
+    return {"ok": True, "queued": len(objective_ids)}
