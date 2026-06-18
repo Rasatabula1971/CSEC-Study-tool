@@ -821,3 +821,29 @@ embeds immediately; this one stages for human review first).
     is the user's next step); stale lessons empty. Full Upload Material feature
     (sessions 1–4) complete: upload → extract → classify (Gemini) → review (human) →
     ingest → regenerate stale lessons (human-triggered).
+  - **Follow-up — auto-accept (source authority), branch `upload-auto-accept`, 2026-06-18:**
+    the review gate assumes a subject-expert builder; this user is a parent building for
+    his daughter from official CSEC POB sources, so source authority replaces subject
+    expertise. `POST /api/staging/{subject}/auto-accept-and-ingest`
+    (`{min_folder_confidence: 70}`) bulk-sets every eligible-but-unreviewed
+    classification (not skipped, conf ≥ threshold) to review_decision='accepted',
+    review_notes='auto_accepted_source_authority', then triggers ingest_all_accepted —
+    returns {auto_accepted, skipped_low_confidence, already_decided, queued_for_ingestion}.
+    `POST /api/backup {label}` exposes Stage-14 backup_database to the UI. upload.html
+    gains a distinct primary `Auto-accept and ingest all` button + confirm modal stating
+    the source-authority assumption; on confirm it POSTs /api/backup
+    (label=pre_auto_accept_ingest) then auto-accept-and-ingest. **Bugfix:**
+    `ingest_all_accepted` filtered `ingestion_status='not_started'` but both ingest-all
+    paths pre-set rows to 'queued' first → the worker found nothing; widened to
+    `IN ('not_started','queued')`. tests/test_auto_accept.py (3); suite 359.
+    LIVE RUN (2026-06-18): auto-accepted 75, ingested **75/75 (0 failed)**, 2592 new
+    chunks (file 56 = a 500k-char/669-chunk past-paper compilation), 158 POB docs /
+    4587 chunks, all 75 staged files moved into KB, all **20 canonical lessons flagged
+    is_stale=1** for user-triggered regeneration. CAVEAT learned: the
+    /api/staging/{s}/ingestion-status poll reads the SHARED app.state.db connection, so
+    during a large file's long uncommitted transaction it returns a STALE snapshot
+    (looked frozen at 45/75 for ~25 min) even though the background worker kept
+    committing — verify bulk-ingest completion from a SEPARATE connection, not the poll.
+    Per-chunk embedding is slow (ollama_embed keep_alive=0 reloads nomic-embed-text each
+    call): ~75 large OCR'd files took ~80 min. The 30 skipped files correctly stay
+    not_started.

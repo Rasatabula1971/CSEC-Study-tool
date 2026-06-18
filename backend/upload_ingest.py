@@ -281,7 +281,7 @@ def ingest_all_accepted(db, subject_id: str, dry_run: bool = False) -> dict:
         JOIN   upload_classifications c ON c.staging_id = s.staging_id
         WHERE  s.subject_id = ?
           AND  c.review_decision IN ('accepted', 'overridden')
-          AND  s.ingestion_status = 'not_started'
+          AND  s.ingestion_status IN ('not_started', 'queued')
         ORDER  BY s.staging_id
         """,
         (subject_id,),

@@ -809,6 +809,11 @@ class IngestAllRequest(BaseModel):
     dry_run: bool = False
 
 
+class BackupRequest(BaseModel):
+    """Take a labelled DB backup (build-time safety net, triggerable from the UI)."""
+    label: str = "manual"
+
+
 class ReviewObjective(BaseModel):
     """One objective in an override decision -- only the id is needed."""
     objective_id: str
@@ -2221,3 +2226,104 @@ def lessons_regenerate_stale(subject_id: str, request: Request,
     if objective_ids:
         background_tasks.add_task(_run_regenerate, db, subject_id, objective_ids)
     return {"ok": True, "queued": len(objective_ids)}
+
+
+@app.post("/api/staging/{subject_id}/auto-accept-and-ingest")
+async def staging_auto_accept_and_ingest(subject_id: str, request: Request,
+                                         background_tasks: BackgroundTasks) -> dict:
+    """Source-authority shortcut (no subject expert in the loop): bulk-accept every
+    unreviewed classification at/above a folder-confidence threshold, then ingest the
+    lot in one background task.
+
+    Body (optional): {"min_folder_confidence": 70}. Skipped staging rows stay skipped
+    and already-decided classifications are left untouched -- this only acts on
+    eligible-but-unreviewed classifications. Use this when the uploaded material came
+    from authoritative sources (e.g. official CSEC documents) and the builder is
+    trusting the source rather than reviewing each classification by subject.
+    """
+    db = request.app.state.db
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- empty/non-JSON body is fine
+        body = {}
+    try:
+        min_conf = int(body.get("min_folder_confidence", 70)) if isinstance(body, dict) else 70
+    except (TypeError, ValueError):
+        min_conf = 70
+
+    rows = db.execute(
+        """
+        SELECT c.staging_id, c.folder_confidence, c.review_decision, s.skip_classification
+        FROM   upload_classifications c
+        JOIN   upload_staging s ON s.staging_id = c.staging_id
+        WHERE  s.subject_id = ?
+        """,
+        (subject_id,),
+    ).fetchall()
+
+    to_accept, skipped_low, already_decided = [], 0, 0
+    for r in rows:
+        if r["review_decision"] is not None:
+            already_decided += 1
+            continue
+        if r["skip_classification"]:
+            continue  # skipped staging stays skipped -- not a review candidate
+        if (r["folder_confidence"] or 0) < min_conf:
+            skipped_low += 1
+            continue
+        to_accept.append(r["staging_id"])
+
+    for sid in to_accept:
+        db.execute(
+            "UPDATE upload_classifications SET review_decision = 'accepted', "
+            "reviewed_at = datetime('now'), "
+            "review_notes = 'auto_accepted_source_authority' WHERE staging_id = ?",
+            (sid,),
+        )
+    db.commit()
+
+    # Everything now accepted/overridden and not yet ingested -- the exact set the
+    # background ingest will process (a previously-accepted-but-uningested file counts
+    # too). Mark them 'queued' for immediate UI feedback, then kick off ingestion.
+    eligible = db.execute(
+        """
+        SELECT s.staging_id FROM upload_staging s
+        JOIN upload_classifications c ON c.staging_id = s.staging_id
+        WHERE s.subject_id = ?
+          AND c.review_decision IN ('accepted', 'overridden')
+          AND s.ingestion_status = 'not_started'
+        """,
+        (subject_id,),
+    ).fetchall()
+    queued_for_ingestion = len(eligible)
+    if queued_for_ingestion:
+        db.execute(
+            "UPDATE upload_staging SET ingestion_status = 'queued' "
+            "WHERE staging_id IN (%s)" % ",".join("?" * queued_for_ingestion),
+            [r[0] for r in eligible],
+        )
+        db.commit()
+        background_tasks.add_task(_run_ingest_all, db, subject_id)
+
+    return {
+        "ok": True,
+        "auto_accepted": len(to_accept),
+        "skipped_low_confidence": skipped_low,
+        "already_decided": already_decided,
+        "queued_for_ingestion": queued_for_ingestion,
+    }
+
+
+@app.post("/api/backup")
+def take_backup(body: BackupRequest, response: Response) -> dict:
+    """Copy the live DB to a timestamped, labelled backup on the SSD (Stage 14
+    backup.py). Build-time safety net, exposed so the UI can take one before a
+    destructive bulk action (e.g. auto-accept-and-ingest). 500 if the SSD/DB is
+    unavailable -- the caller should not proceed with the destructive action."""
+    try:
+        from db.backup import backup_database
+        path = backup_database(body.label)
+        return {"ok": True, "path": path}
+    except Exception as exc:  # noqa: BLE001 -- surfaced so the UI can halt
+        response.status_code = 500
+        return {"ok": False, "error": str(exc)}
