@@ -847,3 +847,31 @@ embeds immediately; this one stages for human review first).
     Per-chunk embedding is slow (ollama_embed keep_alive=0 reloads nomic-embed-text each
     call): ~75 large OCR'd files took ~80 min. The 30 skipped files correctly stay
     not_started.
+
+---
+
+## State as of PDR v3.2 (18 June 2026)
+
+Build status: structurally complete for pilot subject (POB).
+
+- v3.1 playbook Stages 1-13 complete (Stage 13 reverted to v1 UI;
+  panel shell preserved at chat_panel_shell.html.bak)
+- Stage 14 backup hardening complete
+- Upload feature sessions 1-4 complete + auto-accept-and-ingest
+  endpoint (PR #14)
+- 359 tests passing
+- 16 schema migrations applied (m001-m016)
+- 20 canonical lessons written, 96 queued (corpus-bound, not
+  architecture-bound; upload feature exists to close this gap)
+- 105 POB files staged, 75 Gemini-classified, 0 yet ingested
+
+Per PDR v3.2 Section 8: no further architectural change until real
+student use generates real feedback. The next legitimate input is
+reality, not engineering review.
+
+Next actions in order:
+  1. Run POST /api/staging/Principles_of_Business/auto-accept-and-ingest
+  2. Regenerate stale lessons (if any) via /api/lessons/regenerate-stale
+  3. Re-run python backend/ingest_lessons.py --subject Principles_of_Business
+     (96 queued objectives may now produce lessons against enlarged corpus)
+  4. First real session with Rylee on three POB objectives
