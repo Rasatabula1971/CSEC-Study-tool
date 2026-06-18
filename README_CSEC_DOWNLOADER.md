@@ -63,7 +63,7 @@ resources/raw/2027/
   Information_Technology/
   _logs/
     downloads.jsonl
-    source_index.json
+    seed_pages.jsonl
     review_needed.jsonl
     summary.json
 ```
@@ -78,7 +78,7 @@ resources/raw/2027/
 - Google Drive files from third-party sites.
 - Scribd/PDFCoffee/Z-Library/LibGen/Anna’s Archive style files.
 - Login-only resources.
-- HTML notes as copied webpages. The script records links in `resources/raw/2027/_logs/source_index.json` instead.
+- HTML notes as copied webpages. The script records scanned seed-page counts in `resources/raw/2027/_logs/seed_pages.jsonl` instead.
 
 ## Add new approved sources
 
