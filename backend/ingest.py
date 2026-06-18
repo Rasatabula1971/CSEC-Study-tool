@@ -143,21 +143,41 @@ def tokenize(s: str) -> set[str]:
     }
 
 
-def best_objective(chunk: str, objectives: list[dict],
-                   min_overlap: int = MIN_KEYWORD_OVERLAP) -> tuple[str | None, int]:
-    """Return (objective_id, score) for the best keyword-overlap match.
-
-    score = number of shared content words. Returns (None, best_score) when the
-    best score is below `min_overlap` -- i.e. no confident match.
-    """
-    ctoks = tokenize(chunk)
-    if not ctoks:
-        return None, 0
+def _match_objective(ctoks: set, objectives: list[dict]) -> tuple[str | None, int]:
+    """(objective_id, score) for the highest keyword-overlap objective, no threshold."""
     best_id, best_score = None, 0
     for obj in objectives:
         shared = len(ctoks & tokenize(obj["content_stmt"]))
         if shared > best_score:
             best_id, best_score = obj["objective_id"], shared
+    return best_id, best_score
+
+
+def best_objective(chunk: str, objectives: list[dict],
+                   min_overlap: int = MIN_KEYWORD_OVERLAP,
+                   preferred_objectives: list[str] | None = None) -> tuple[str | None, int]:
+    """Return (objective_id, score) for the best keyword-overlap match.
+
+    score = number of shared content words. Returns (None, best_score) when the
+    best score is below `min_overlap` -- i.e. no confident match.
+
+    When `preferred_objectives` is given (session 4: the objectives a Gemini
+    classification bound the file to), the chunk is matched against ONLY those
+    objectives first; a confident hit there wins. The full-syllabus search runs only
+    when no preferred objective clears the threshold -- so the classification steers
+    binding without ever forcing a weak match.
+    """
+    ctoks = tokenize(chunk)
+    if not ctoks:
+        return None, 0
+    if preferred_objectives:
+        pref_set = set(preferred_objectives)
+        pref = [o for o in objectives if o["objective_id"] in pref_set]
+        if pref:
+            pid, pscore = _match_objective(ctoks, pref)
+            if pscore >= min_overlap:
+                return pid, pscore
+    best_id, best_score = _match_objective(ctoks, objectives)
     if best_score >= min_overlap:
         return best_id, best_score
     return None, best_score
@@ -268,12 +288,14 @@ def new_counts() -> dict:
 def ingest_page(db: sqlite3.Connection, *, doc_id: str, subject_id: str,
                 content_type: str, source_file: str, page: int, text: str,
                 objectives: list[dict], counts: dict, embed_fn=ollama_embed,
-                min_overlap: int = MIN_KEYWORD_OVERLAP) -> None:
+                min_overlap: int = MIN_KEYWORD_OVERLAP,
+                preferred_objectives: list[str] | None = None) -> None:
     """Chunk one page, match each chunk to an objective, then index or queue it.
 
     Indexed chunks always have a real objective_id FK. Unmatched chunks go to
     ingest_review_queue and are NOT indexed. The document row (doc_id) must
-    already exist. Caller commits.
+    already exist. Caller commits. `preferred_objectives` steers each chunk toward
+    the classification-bound objectives first (session 4).
     """
     table = VEC_TABLE[content_type]
     for idx, ctext in enumerate(chunk_page(text)):
@@ -281,7 +303,8 @@ def ingest_page(db: sqlite3.Connection, *, doc_id: str, subject_id: str,
         if not ctext:
             continue
 
-        obj_id, _score = best_objective(ctext, objectives, min_overlap)
+        obj_id, _score = best_objective(ctext, objectives, min_overlap,
+                                        preferred_objectives=preferred_objectives)
         if obj_id is None:
             db.execute(
                 "INSERT INTO ingest_review_queue (source_file, chunk_text, reason) "
@@ -434,6 +457,89 @@ def ingest_subject(db: sqlite3.Connection, subject_id: str, kb_root: str,
                 )
             db.commit()
     return counts
+
+
+# ---------------------------------------------------------------------------
+# Single-file entry point (Upload session 4)
+# ---------------------------------------------------------------------------
+# A staged upload arrives as already-extracted text (PDF/DOCX/image OCR done in the
+# upload feature). These markers came from uploads.py; we split on them to recover
+# page numbers so past-paper question-number detection still works.
+_PAGE_MARKER_NUM_RE = re.compile(r"\[Page\s+(\d+)[^\]]*\]")
+
+
+def _split_marked_pages(full_text: str):
+    """Yield (page_number, text) from text carrying '[Page N]' markers. A body with no
+    markers (e.g. a DOCX) is a single page 1."""
+    markers = list(_PAGE_MARKER_NUM_RE.finditer(full_text or ""))
+    if not markers:
+        if (full_text or "").strip():
+            yield 1, full_text
+        return
+    for i, m in enumerate(markers):
+        start = m.end()
+        end = markers[i + 1].start() if i + 1 < len(markers) else len(full_text)
+        page_text = full_text[start:end]
+        if page_text.strip():
+            yield int(m.group(1)), page_text
+
+
+def _document_pages(path: Path, full_text: str | None):
+    """(page, text) pairs to ingest: from supplied full_text (preferred -- covers DOCX/
+    images), else extracted from a PDF at `path` via PyMuPDF."""
+    if full_text is not None:
+        return list(_split_marked_pages(full_text))
+    return list(extract_pdf_pages(Path(path)))
+
+
+def ingest_document(db: sqlite3.Connection, *, path, subject_id: str,
+                    content_type: str, objectives: list[dict],
+                    embed_fn=ollama_embed, preferred_objectives: list[str] | None = None,
+                    full_text: str | None = None, source_file: str | None = None,
+                    min_overlap: int = MIN_KEYWORD_OVERLAP) -> dict:
+    """Ingest ONE file into the corpus. Single-file entry point for the upload
+    pipeline (session 4); mirrors what ingest_subject does per file.
+
+    Mints a hash-based doc_id, inserts the documents row, then chunks the text
+    (supplied via full_text -- the upload feature's already-extracted body, which
+    also covers DOCX/images -- or extracted from a PDF at `path`), matching each chunk
+    to an objective (preferring `preferred_objectives`), embedding, and indexing it.
+    The caller commits. Returns {doc_id, chunks_created, objectives_hit,
+    skipped_duplicate}; on a content-hash duplicate it writes nothing and returns
+    skipped_duplicate=True.
+    """
+    path = Path(path)
+    source_file = source_file or str(path)
+    chash = file_hash(path)
+    if already_ingested(db, chash):
+        return {"doc_id": None, "chunks_created": 0, "objectives_hit": [],
+                "skipped_duplicate": True}
+
+    doc_id = f"{content_type}-{chash[:12]}"
+    paper_str, year_int = (None, None)
+    if content_type == "past_paper":
+        paper_str, year_int = parse_past_paper_filename(path.name)
+    db.execute(
+        "INSERT INTO documents (doc_id, subject_id, content_type, paper, year, "
+        "source_file, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (doc_id, subject_id, content_type, paper_str, year_int, source_file, chash),
+    )
+
+    counts = new_counts()
+    for page, text in _document_pages(path, full_text):
+        ingest_page(
+            db, doc_id=doc_id, subject_id=subject_id, content_type=content_type,
+            source_file=source_file, page=page, text=text, objectives=objectives,
+            counts=counts, embed_fn=embed_fn, min_overlap=min_overlap,
+            preferred_objectives=preferred_objectives,
+        )
+    objectives_hit = [
+        r[0] for r in db.execute(
+            "SELECT DISTINCT objective_id FROM chunks WHERE doc_id = ?", (doc_id,)
+        ).fetchall()
+    ]
+    return {"doc_id": doc_id, "chunks_created": counts["chunks_indexed"],
+            "objectives_hit": objectives_hit, "skipped_duplicate": False}
 
 
 # ---------------------------------------------------------------------------

@@ -336,17 +336,23 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                                regenerate: bool = False,
                                confidence_floor: int = DEFAULT_CONFIDENCE_FLOOR,
                                chat_fn=None, embed_fn=ollama_embed,
-                               dry_run: bool = False, verbose: bool = True) -> dict:
+                               dry_run: bool = False, verbose: bool = True,
+                               objective_ids: list[str] | None = None) -> dict:
     """Compose canonical lessons for every objective in a locked subject.
 
     chat_fn defaults to local Ollama (offline build composition). Tests inject it.
-    Returns a summary dict. Side-effect free under dry_run.
+    `objective_ids`, when given, restricts the run to those objectives (session 4:
+    regenerate only the stale lessons the user asked for). Returns a summary dict.
+    Side-effect free under dry_run.
     """
     ensure_lesson_tables(db)
     if chat_fn is None:
         chat_fn = ollama_chat
 
     objectives = locked_subject_objectives(db, subject_id)
+    if objective_ids is not None:
+        wanted = set(objective_ids)
+        objectives = [o for o in objectives if o["objective_id"] in wanted]
     summary = {
         "subject_id": subject_id,
         "regenerate": regenerate,
