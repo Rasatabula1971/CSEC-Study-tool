@@ -123,6 +123,110 @@
   .preview-footer { padding: var(--space-3) var(--space-4); border-top: var(--border); background: var(--ink-3); }
   .preview-error { padding: var(--space-4); color: var(--red-pen); font-size: var(--text-sm); }
   .preview-pending { padding: var(--space-6) var(--space-5); text-align: center; color: var(--paper-dim); font-size: var(--text-sm); }
+
+  /* ----- Classification & Review (session 3) ----- */
+  .classify-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .classify-status { font-size: var(--text-sm); color: var(--booklet-bright); min-height: 1.2em; margin: var(--space-2) 0; }
+  .classify-toolbar { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; flex-wrap: wrap; }
+  .classify-toolbar label { font-size: var(--text-xs); color: var(--paper-faint); }
+  .classify-filter {
+    background: var(--ink-2); border: var(--border); color: var(--paper);
+    border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
+  }
+
+  .class-card {
+    background: var(--ink-2); border: var(--border); border-radius: var(--radius-lg);
+    margin-bottom: var(--space-3); overflow: hidden;
+    animation: card-arrive 220ms var(--ease-spring) both;
+  }
+  .class-card-head {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-3) var(--space-4); cursor: pointer;
+  }
+  .class-card-name { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 600; color: var(--paper);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .class-card-body { padding: 0 var(--space-4) var(--space-4); border-top: var(--border); }
+  .class-status-line { font-size: var(--text-xs); color: var(--paper-faint); margin: var(--space-3) 0 var(--space-2); }
+  .class-rationale { font-size: var(--text-sm); color: var(--paper-dim); font-style: italic; margin-bottom: var(--space-3); }
+  .caret { color: var(--paper-faint); font-size: var(--text-xs); width: 1em; flex-shrink: 0; transition: transform 120ms ease; }
+  .class-card.open .caret { transform: rotate(90deg); }
+
+  /* Folder badges */
+  .folder-badge { display: inline-flex; align-items: center; padding: 2px var(--space-2);
+    border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: var(--text-xs);
+    font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; }
+  .folder-badge.syllabus  { background: rgba(74,130,196,0.16);  color: var(--booklet-bright); }
+  .folder-badge.specimen  { background: var(--color-pass-bg);   color: var(--tick); }
+  .folder-badge.past      { background: rgba(63,167,160,0.16);  color: #4FC4BC; }
+  .folder-badge.marks     { background: rgba(155,123,212,0.16); color: #B49BE0; }
+  .folder-badge.notes     { background: var(--color-warn-bg);   color: var(--color-warn); }
+  .folder-badge.uncertain { background: var(--ink-3);           color: var(--paper-faint); }
+
+  /* Confidence badges */
+  .conf-badge { display: inline-flex; align-items: center; padding: 2px var(--space-2);
+    border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: var(--text-xs);
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
+  .conf-badge.high      { background: var(--color-pass-bg); color: var(--tick); }
+  .conf-badge.medium    { background: rgba(74,130,196,0.16); color: var(--booklet-bright); }
+  .conf-badge.low       { background: var(--color-warn-bg); color: var(--color-warn); }
+  .conf-badge.uncertain { background: var(--color-fail-bg); color: var(--red-pen); }
+  .review-badge { display: inline-flex; align-items: center; padding: 2px var(--space-2);
+    border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; flex-shrink: 0; }
+  .review-badge.accepted   { background: var(--color-pass-bg); color: var(--tick); }
+  .review-badge.overridden { background: var(--color-warn-bg); color: var(--color-warn); }
+  .review-badge.rejected   { background: var(--color-fail-bg); color: var(--red-pen); }
+
+  .obj-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .obj-list li { font-size: var(--text-sm); color: var(--paper); }
+  .obj-list .oid { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--booklet-bright); font-weight: 700; }
+  .obj-list .oconf { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--paper-faint); }
+  .obj-more { font-size: var(--text-xs); color: var(--booklet-bright); cursor: pointer; background: none; border: none; padding: 0; }
+
+  .class-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .btn-accept { background: var(--color-pass-bg); border: 1px solid rgba(91,191,123,0.4); color: var(--tick); }
+  .btn-accept:hover:not(:disabled) { background: rgba(91,191,123,0.2); }
+  .btn-reject { background: var(--ink-3); border: 1px solid rgba(224,106,90,0.35); color: var(--red-pen); }
+  .btn-reject:hover:not(:disabled) { background: var(--color-fail-bg); }
+
+  /* Override panel */
+  .override-panel { margin-top: var(--space-3); padding: var(--space-3); background: var(--ink-3);
+    border: var(--border); border-radius: var(--radius-md); }
+  .override-field { margin-bottom: var(--space-3); }
+  .override-field > label { display: block; font-size: var(--text-xs); color: var(--paper-faint); margin-bottom: 4px; }
+  .override-select, .override-search, .override-notes {
+    width: 100%; background: var(--ink-2); border: var(--border); color: var(--paper);
+    border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
+    font-family: inherit; box-sizing: border-box;
+  }
+  .override-notes { resize: vertical; min-height: 56px; }
+  .obj-options { max-height: 220px; overflow: auto; margin-top: var(--space-2);
+    border: var(--border); border-radius: var(--radius-md); background: var(--ink-2); }
+  .obj-option { display: flex; align-items: flex-start; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule-soft); cursor: pointer; }
+  .obj-option:last-child { border-bottom: none; }
+  .obj-option:hover { background: var(--ink-3); }
+  .obj-option input { margin-top: 3px; flex-shrink: 0; }
+  .obj-option .otxt { font-size: var(--text-xs); color: var(--paper-dim); }
+  .obj-option .oid { font-family: var(--font-mono); color: var(--booklet-bright); font-weight: 700; }
+  .obj-selected-count { font-size: var(--text-xs); color: var(--paper-faint); margin-top: 4px; }
+
+  .skip-card { display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-3) var(--space-4); background: var(--ink-2);
+    border: 1px dashed var(--rule); border-radius: var(--radius-md); margin-bottom: var(--space-2); }
+  .skip-card .file-main { flex: 1; min-width: 0; }
+
+  /* Modal (View text) */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; padding: var(--space-4); z-index: 50; }
+  .modal-box { background: var(--ink-2); border: var(--border); border-radius: var(--radius-lg);
+    max-width: 760px; width: 100%; max-height: 80vh; display: flex; flex-direction: column;
+    box-shadow: var(--shadow-lg, 0 20px 60px rgba(0,0,0,0.5)); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+    padding: var(--space-3) var(--space-4); border-bottom: var(--border); }
+  .modal-title { font-size: var(--text-sm); font-weight: 600; color: var(--paper); min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-body { padding: var(--space-4); overflow: auto; font-family: var(--font-mono);
+    font-size: var(--text-xs); line-height: 1.7; color: var(--paper); white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -181,8 +285,34 @@
         <div id="previewArea"></div>
       </section>
 
+      <!-- Classification & Review (session 3) -->
+      <section>
+        <div class="classify-header">
+          <div class="section-label">Classification &amp; Review</div>
+          <button class="btn btn-primary btn-sm" id="classifyAllBtn">
+            Classify all unclassified files
+          </button>
+        </div>
+        <div class="classify-status" id="classifyStatus" aria-live="polite"></div>
+        <div class="classify-toolbar">
+          <label for="classifyFilter">Show</label>
+          <select class="classify-filter" id="classifyFilter">
+            <option value="all">All</option>
+            <option value="pending">Pending review</option>
+            <option value="accepted">Accepted</option>
+            <option value="overridden">Overridden</option>
+            <option value="rejected">Rejected</option>
+            <option value="skipped">Skipped</option>
+          </select>
+        </div>
+        <div id="classifyArea"></div>
+      </section>
+
     </div>
   </main>
+
+  <!-- View-text modal host -->
+  <div id="modalHost"></div>
 
 <script>
 "use strict";
@@ -205,7 +335,30 @@ const state = {
   showAll: false,     // preview "Show all" toggled
   pollTimer: null,
   skipSeq: 0,
+  // --- session 3: classification & review ---
+  classifications: [],     // rows from /api/staging/{subj}/classifications
+  objectives: [],          // flat [{objective_id, content_stmt}] for the override picker
+  classifyFilter: "all",
+  classifyPollTimer: null,
+  classifyRun: null,       // {total, baseline} for the active bulk run, else null
+  expanded: {},            // staging_id -> bool (card body open)
+  showAllObjs: {},         // staging_id -> bool (objective list fully shown)
+  overrideOpenId: null,    // staging_id whose override panel is open
+  overrideSel: new Set(),  // objective_ids currently selected in the override panel
+  overrideFolder: null,    // folder chosen in the override panel
 };
+
+// folder -> {cls, label} for the badge; UNCERTAIN/unknown fall through to grey.
+const FOLDER_BADGE = {
+  "00_SYLLABUS":        { cls: "syllabus",  label: "Syllabus" },
+  "01_SPECIMEN_PAPERS": { cls: "specimen",  label: "Specimen" },
+  "02_PAST_PAPERS":     { cls: "past",      label: "Past paper" },
+  "03_MARK_SCHEMES":    { cls: "marks",     label: "Mark scheme" },
+  "04_NOTES":           { cls: "notes",     label: "Notes" },
+  "UNCERTAIN":          { cls: "uncertain", label: "Uncertain" },
+};
+const FOLDER_OPTIONS = ["00_SYLLABUS","01_SPECIMEN_PAPERS","02_PAST_PAPERS",
+                        "03_MARK_SCHEMES","04_NOTES","UNCERTAIN"];
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -264,6 +417,8 @@ async function loadSubjects() {
   sel.value = state.subjectId;
   updateSubjectName();
   await loadList();
+  await loadObjectives();
+  await loadClassifications();
 }
 
 function updateSubjectName() {
@@ -281,14 +436,21 @@ function renderNoSubjects(networkMsg) {
 
 async function onSubjectChange() {
   stopPolling();
+  stopClassifyPolling();
   state.subjectId = document.getElementById("subjectSelect").value;
   state.skipped = [];
   state.selectedId = null;
   state.detail = null;
   state.showAll = false;
+  state.classifyRun = null;
+  state.overrideOpenId = null;
+  state.expanded = {};
+  document.getElementById("classifyStatus").textContent = "";
   updateSubjectName();
   document.getElementById("previewArea").innerHTML = "";
   await loadList();
+  await loadObjectives();
+  await loadClassifications();
 }
 
 // --------------------------------------------------------------------------
@@ -596,6 +758,506 @@ function dismissSkipped(skipId) {
 }
 
 // --------------------------------------------------------------------------
+// Classification & Review (session 3)
+// --------------------------------------------------------------------------
+function folderBadge(folder) {
+  const b = FOLDER_BADGE[folder] || FOLDER_BADGE.UNCERTAIN;
+  return `<span class="folder-badge ${b.cls}">${esc(b.label)}</span>`;
+}
+
+function confBadge(conf) {
+  let cls = "uncertain", label = "uncertain";
+  if (conf >= 85) { cls = "high"; label = "high"; }
+  else if (conf >= 70) { cls = "medium"; label = "medium"; }
+  else if (conf >= 50) { cls = "low"; label = "low"; }
+  return `<span class="conf-badge ${cls}">${label} ${conf == null ? "" : conf + "%"}</span>`;
+}
+
+function objContent(oid) {
+  const o = state.objectives.find(x => x.objective_id === oid);
+  return o ? (o.content_stmt || "") : "";
+}
+
+async function loadObjectives() {
+  state.objectives = [];
+  if (!state.subjectId) return;
+  try {
+    const res = await fetch(`/api/syllabus/${encodeURIComponent(state.subjectId)}`);
+    const data = await res.json();
+    const flat = [];
+    for (const sec of (data.sections || [])) {
+      for (const o of (sec.objectives || [])) {
+        flat.push({ objective_id: o.objective_id, content_stmt: o.content_stmt });
+      }
+    }
+    state.objectives = flat;
+  } catch (e) { /* leave empty -- override picker degrades to id-only */ }
+}
+
+async function loadClassifications() {
+  if (!state.subjectId) return;
+  let data;
+  try {
+    const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/classifications`);
+    data = await res.json();
+  } catch (e) {
+    document.getElementById("classifyArea").innerHTML =
+      `<div class="error-notice">Couldn't reach the server. Is it running?</div>`;
+    return;
+  }
+  state.classifications = (data && data.items) || [];
+  renderClassifications();
+  manageClassifyPolling();
+}
+
+function countClassifyDone() {
+  return state.classifications.filter(c =>
+    c.classification_status === "classified" || c.classification_status === "failed").length;
+}
+
+function isSkipped(c) {
+  return c.skip_classification || c.classification_status === "skipped";
+}
+
+function passesFilter(c) {
+  const f = state.classifyFilter;
+  if (f === "all") return true;
+  if (f === "skipped") return isSkipped(c);
+  if (isSkipped(c)) return false;
+  const dec = c.classification && c.classification.review_decision;
+  if (f === "pending") return c.classification_status === "classified" && !dec;
+  if (f === "accepted") return dec === "accepted";
+  if (f === "overridden") return dec === "overridden";
+  if (f === "rejected") return dec === "rejected";
+  return true;
+}
+
+function renderClassifications() {
+  const area = document.getElementById("classifyArea");
+  const list = state.classifications.filter(passesFilter);
+
+  if (state.classifications.length === 0) {
+    area.innerHTML = `<div class="empty-note">No files classified. Click
+      <strong>Classify all</strong> above to start.</div>`;
+    return;
+  }
+  if (list.length === 0) {
+    area.innerHTML = `<div class="empty-note">No files match this filter.</div>`;
+    return;
+  }
+
+  area.innerHTML = list.map(renderClassCard).join("");
+  wireClassCards();
+}
+
+function renderClassCard(c) {
+  const sid = c.staging_id;
+  if (isSkipped(c)) {
+    return `
+      <div class="skip-card" data-sid="${sid}">
+        <span class="badge skipped">skipped</span>
+        <div class="file-main">
+          <div class="file-name">${esc(c.original_name)}</div>
+          <div class="file-meta">${esc(c.skip_reason || "auto-skipped")}</div>
+        </div>
+        <div class="file-actions">
+          <button class="btn btn-secondary btn-sm unskip-btn" data-sid="${sid}">Unskip</button>
+        </div>
+      </div>`;
+  }
+
+  const cl = c.classification;
+  // Not-yet-classified states (unclassified / classifying / queued / failed-no-row).
+  if (!cl || c.classification_status !== "classified") {
+    const st = c.classification_status;
+    let note = "Not yet classified.";
+    let action = `<button class="btn btn-secondary btn-sm classify-one-btn" data-sid="${sid}">Classify</button>`;
+    if (st === "classifying" || st === "queued") { note = "Classifying…"; action = ""; }
+    if (st === "failed") {
+      note = "Classification failed.";
+      if (cl && cl.rationale) note = esc(cl.rationale);
+      action = `<button class="btn btn-secondary btn-sm classify-one-btn" data-sid="${sid}">Retry</button>`;
+    }
+    return `
+      <div class="class-card" data-sid="${sid}">
+        <div class="class-card-head">
+          <span class="class-card-name">${esc(c.original_name)}</span>
+          <span class="badge ${st === "failed" ? "failed" : "pending"}">${esc(st)}</span>
+        </div>
+        <div class="class-card-body">
+          <div class="class-status-line">${note}</div>
+          <div class="class-actions">
+            ${action}
+            <button class="btn btn-secondary btn-sm viewtext-btn" data-sid="${sid}">View text</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const open = !!state.expanded[sid];
+  const dec = cl.review_decision;
+  const reviewBadge = dec
+    ? `<span class="review-badge ${esc(dec)}">${esc(dec)}</span>` : "";
+  const head = `
+    <div class="class-card-head" data-toggle="${sid}">
+      <span class="caret">▶</span>
+      <span class="class-card-name">${esc(c.original_name)}</span>
+      ${folderBadge(cl.recommended_folder)}
+      ${confBadge(cl.folder_confidence)}
+      ${reviewBadge}
+    </div>`;
+
+  if (!open) {
+    return `<div class="class-card" data-sid="${sid}">${head}</div>`;
+  }
+  return `<div class="class-card open" data-sid="${sid}">${head}
+    <div class="class-card-body">
+      <div class="class-status-line">Status: Classified${dec ? " · " + esc(dec) : " · awaiting review"}
+        · model: ${esc(cl.model_used || "?")}</div>
+      ${cl.rationale ? `<div class="class-rationale">"${esc(cl.rationale)}"</div>` : ""}
+      ${renderObjList(c)}
+      ${renderClassActions(c)}
+      ${state.overrideOpenId === sid ? renderOverridePanel(c) : ""}
+    </div>
+  </div>`;
+}
+
+function renderObjList(c) {
+  const objs = (c.classification && c.classification.objectives) || [];
+  if (objs.length === 0) return `<div class="class-status-line">No objectives identified.</div>`;
+  const sid = c.staging_id;
+  const showAll = !!state.showAllObjs[sid];
+  const shown = showAll ? objs : objs.slice(0, 3);
+  const rows = shown.map(o => {
+    const txt = objContent(o.objective_id);
+    return `<li><span class="oid">${esc(o.objective_id)}</span>
+      <span class="oconf">(${o.confidence}%)</span>
+      ${esc(txt.slice(0, 70))}${txt.length > 70 ? "…" : ""}</li>`;
+  }).join("");
+  const more = (!showAll && objs.length > 3)
+    ? `<button class="obj-more more-btn" data-sid="${sid}">Show all ${objs.length} objectives</button>`
+    : "";
+  return `<div class="class-status-line">Top objectives:</div>
+    <ul class="obj-list">${rows}</ul>${more}`;
+}
+
+function renderClassActions(c) {
+  const sid = c.staging_id;
+  return `<div class="class-actions">
+    <button class="btn btn-accept btn-sm accept-btn" data-sid="${sid}">Accept</button>
+    <button class="btn btn-secondary btn-sm override-btn" data-sid="${sid}">Override</button>
+    <button class="btn btn-reject btn-sm reject-btn" data-sid="${sid}">Reject</button>
+    <button class="btn btn-secondary btn-sm viewtext-btn" data-sid="${sid}">View text</button>
+  </div>`;
+}
+
+function renderOverridePanel(c) {
+  const sid = c.staging_id;
+  const folderOpts = FOLDER_OPTIONS.map(f =>
+    `<option value="${f}"${f === state.overrideFolder ? " selected" : ""}>${esc(f)}</option>`).join("");
+  return `
+    <div class="override-panel" data-sid="${sid}">
+      <div class="override-field">
+        <label for="ovFolder-${sid}">Folder</label>
+        <select class="override-select" id="ovFolder-${sid}">${folderOpts}</select>
+      </div>
+      <div class="override-field">
+        <label>Objectives (${state.overrideSel.size} selected)</label>
+        <input class="override-search" id="ovSearch-${sid}" type="text"
+               placeholder="Search objectives…" autocomplete="off" />
+        <div class="obj-options" id="ovOptions-${sid}">${renderObjOptions("")}</div>
+      </div>
+      <div class="override-field">
+        <label for="ovNotes-${sid}">Notes</label>
+        <textarea class="override-notes" id="ovNotes-${sid}" placeholder="Why this change?"></textarea>
+      </div>
+      <div class="class-actions">
+        <button class="btn btn-primary btn-sm save-override-btn" data-sid="${sid}">Save override</button>
+        <button class="btn btn-secondary btn-sm cancel-override-btn" data-sid="${sid}">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function renderObjOptions(query) {
+  const q = (query || "").toLowerCase();
+  const pool = state.objectives.length
+    ? state.objectives
+    : Array.from(state.overrideSel).map(id => ({ objective_id: id, content_stmt: "" }));
+  const matches = pool.filter(o =>
+    !q || o.objective_id.toLowerCase().includes(q) ||
+    (o.content_stmt || "").toLowerCase().includes(q));
+  if (matches.length === 0) return `<div class="obj-option"><span class="otxt">No matches.</span></div>`;
+  return matches.slice(0, 200).map(o => {
+    const checked = state.overrideSel.has(o.objective_id) ? " checked" : "";
+    return `<label class="obj-option">
+      <input type="checkbox" class="obj-check" value="${esc(o.objective_id)}"${checked} />
+      <span><span class="oid">${esc(o.objective_id)}</span>
+        <span class="otxt">${esc((o.content_stmt || "").slice(0, 80))}</span></span>
+    </label>`;
+  }).join("");
+}
+
+function wireClassCards() {
+  const area = document.getElementById("classifyArea");
+  area.querySelectorAll("[data-toggle]").forEach(h =>
+    h.addEventListener("click", () => toggleCard(Number(h.dataset.toggle))));
+  area.querySelectorAll(".more-btn").forEach(b =>
+    b.addEventListener("click", () => { state.showAllObjs[Number(b.dataset.sid)] = true; renderClassifications(); }));
+  area.querySelectorAll(".accept-btn").forEach(b =>
+    b.addEventListener("click", () => reviewFile(Number(b.dataset.sid), "accepted")));
+  area.querySelectorAll(".reject-btn").forEach(b =>
+    b.addEventListener("click", () => reviewFile(Number(b.dataset.sid), "rejected")));
+  area.querySelectorAll(".override-btn").forEach(b =>
+    b.addEventListener("click", () => openOverride(Number(b.dataset.sid))));
+  area.querySelectorAll(".cancel-override-btn").forEach(b =>
+    b.addEventListener("click", () => { state.overrideOpenId = null; renderClassifications(); }));
+  area.querySelectorAll(".save-override-btn").forEach(b =>
+    b.addEventListener("click", () => saveOverride(Number(b.dataset.sid))));
+  area.querySelectorAll(".unskip-btn").forEach(b =>
+    b.addEventListener("click", () => unskipFile(Number(b.dataset.sid))));
+  area.querySelectorAll(".classify-one-btn").forEach(b =>
+    b.addEventListener("click", () => classifyOne(Number(b.dataset.sid))));
+  area.querySelectorAll(".viewtext-btn").forEach(b =>
+    b.addEventListener("click", () => viewText(Number(b.dataset.sid))));
+  // Override search + checkboxes (only present when a panel is open).
+  const search = area.querySelector(".override-search");
+  if (search) {
+    const sid = state.overrideOpenId;
+    search.addEventListener("input", () => {
+      const box = document.getElementById(`ovOptions-${sid}`);
+      if (box) box.innerHTML = renderObjOptions(search.value);
+      wireObjChecks();
+    });
+  }
+  wireObjChecks();
+}
+
+function wireObjChecks() {
+  document.querySelectorAll(".obj-check").forEach(chk =>
+    chk.addEventListener("change", () => {
+      if (chk.checked) state.overrideSel.add(chk.value);
+      else state.overrideSel.delete(chk.value);
+      // Update the selected-count label without losing the search box focus.
+      const panel = chk.closest(".override-panel");
+      if (panel) {
+        const lbl = panel.querySelector(".override-field label");
+        if (lbl) lbl.textContent = `Objectives (${state.overrideSel.size} selected)`;
+      }
+    }));
+}
+
+function toggleCard(sid) {
+  state.expanded[sid] = !state.expanded[sid];
+  if (!state.expanded[sid] && state.overrideOpenId === sid) state.overrideOpenId = null;
+  renderClassifications();
+}
+
+function findClassification(sid) {
+  return state.classifications.find(c => c.staging_id === sid);
+}
+
+function openOverride(sid) {
+  const c = findClassification(sid);
+  const cl = c && c.classification;
+  state.overrideOpenId = sid;
+  state.overrideFolder = (cl && (cl.review_folder || cl.recommended_folder)) || "UNCERTAIN";
+  state.overrideSel = new Set();
+  const src = (cl && cl.review_objectives) || (cl && cl.objectives) || [];
+  for (const o of src) state.overrideSel.add(o.objective_id);
+  state.expanded[sid] = true;
+  renderClassifications();
+}
+
+async function postReview(sid, payload) {
+  try {
+    const res = await fetch(`/api/staging/${sid}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      document.getElementById("classifyStatus").textContent =
+        (body && body.error) ? body.error : `Review failed (HTTP ${res.status}).`;
+      return false;
+    }
+    return true;
+  } catch (e) {
+    document.getElementById("classifyStatus").textContent =
+      "Couldn't reach the server. Is it running?";
+    return false;
+  }
+}
+
+async function reviewFile(sid, decision) {
+  if (await postReview(sid, { decision })) {
+    document.getElementById("classifyStatus").textContent = `Marked ${decision}.`;
+    await loadClassifications();
+  }
+}
+
+async function saveOverride(sid) {
+  const folder = (document.getElementById(`ovFolder-${sid}`) || {}).value || state.overrideFolder;
+  const notesEl = document.getElementById(`ovNotes-${sid}`);
+  const notes = notesEl ? notesEl.value : null;
+  const objectives = Array.from(state.overrideSel).map(id => ({ objective_id: id }));
+  const ok = await postReview(sid, {
+    decision: "overridden",
+    override_folder: folder,
+    override_objectives: objectives,
+    notes: notes || null,
+  });
+  if (ok) {
+    state.overrideOpenId = null;
+    document.getElementById("classifyStatus").textContent = "Override saved.";
+    await loadClassifications();
+  }
+}
+
+async function unskipFile(sid) {
+  try {
+    const res = await fetch(`/api/staging/${sid}/unskip`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      document.getElementById("classifyStatus").textContent =
+        (body && body.error) ? body.error : `Unskip failed (HTTP ${res.status}).`;
+      return;
+    }
+  } catch (e) {
+    document.getElementById("classifyStatus").textContent =
+      "Couldn't reach the server. Is it running?";
+    return;
+  }
+  // Unskipping makes the file eligible; classify it right away.
+  await classifyOne(sid, /*silent*/ true);
+  await loadClassifications();
+}
+
+async function classifyOne(sid, silent) {
+  try {
+    const res = await fetch(`/api/staging/${sid}/classify`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      document.getElementById("classifyStatus").textContent =
+        (body && body.error) ? body.error : `Classify failed (HTTP ${res.status}).`;
+      return;
+    }
+    if (!silent) document.getElementById("classifyStatus").textContent = "Classifying 1 file…";
+    state.classifyRun = { total: countClassifyDone() + 1, baseline: countClassifyDone() };
+  } catch (e) {
+    document.getElementById("classifyStatus").textContent =
+      "Couldn't reach the server. Is it running?";
+    return;
+  }
+  await loadClassifications();
+}
+
+async function classifyAll() {
+  if (!state.subjectId) return;
+  const statusEl = document.getElementById("classifyStatus");
+  const baseline = countClassifyDone();
+  let body;
+  try {
+    const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/classify-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: false }),
+    });
+    body = await res.json();
+    if (!res.ok || body.ok === false) {
+      statusEl.textContent = (body && body.error) ? body.error : `Classify failed (HTTP ${res.status}).`;
+      return;
+    }
+  } catch (e) {
+    statusEl.textContent = "Couldn't reach the server. Is it running?";
+    return;
+  }
+  if (!body.queued) {
+    statusEl.textContent = "All eligible files are classified or skipped.";
+    return;
+  }
+  state.classifyRun = { total: body.queued, baseline };
+  statusEl.textContent = `Classifying ${body.queued} file(s)… 0/${body.queued} done`;
+  await loadClassifications();
+}
+
+function classifyProgressText() {
+  if (!state.classifyRun) return "";
+  const done = Math.min(state.classifyRun.total,
+    Math.max(0, countClassifyDone() - state.classifyRun.baseline));
+  return `Classifying ${state.classifyRun.total} file(s)… ${done}/${state.classifyRun.total} done`;
+}
+
+function manageClassifyPolling() {
+  const anyBusy = state.classifications.some(c =>
+    c.classification_status === "classifying" || c.classification_status === "queued");
+  let runActive = false;
+  if (state.classifyRun) {
+    const done = Math.max(0, countClassifyDone() - state.classifyRun.baseline);
+    runActive = done < state.classifyRun.total;
+  }
+  const statusEl = document.getElementById("classifyStatus");
+  if (state.classifyRun && (anyBusy || runActive)) statusEl.textContent = classifyProgressText();
+
+  if ((anyBusy || runActive) && !state.classifyPollTimer) {
+    state.classifyPollTimer = setInterval(loadClassifications, POLL_MS);
+  } else if (!anyBusy && !runActive) {
+    stopClassifyPolling();
+    if (state.classifyRun) {
+      statusEl.textContent = `Done. ${state.classifyRun.total} file(s) classified.`;
+      state.classifyRun = null;
+    }
+  }
+}
+
+function stopClassifyPolling() {
+  if (state.classifyPollTimer) { clearInterval(state.classifyPollTimer); state.classifyPollTimer = null; }
+}
+
+function onClassifyFilterChange() {
+  state.classifyFilter = document.getElementById("classifyFilter").value;
+  renderClassifications();
+}
+
+// --------------------------------------------------------------------------
+// View-text modal (reuses the staged-detail endpoint)
+// --------------------------------------------------------------------------
+async function viewText(sid) {
+  let body;
+  try {
+    const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/${sid}`);
+    body = await res.json();
+  } catch (e) {
+    document.getElementById("classifyStatus").textContent = "Couldn't reach the server.";
+    return;
+  }
+  if (!body || body.ok === false) {
+    document.getElementById("classifyStatus").textContent =
+      (body && body.error) || "Could not load this file.";
+    return;
+  }
+  const text = body.extracted_text || "(no extracted text)";
+  document.getElementById("modalHost").innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head">
+          <div class="modal-title">${esc(body.original_name)}</div>
+          <button class="btn btn-secondary btn-sm" id="modalCloseBtn">Close</button>
+        </div>
+        <div class="modal-body">${esc(text)}</div>
+      </div>
+    </div>`;
+  document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+  document.getElementById("modalOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "modalOverlay") closeModal();
+  });
+}
+
+function closeModal() {
+  document.getElementById("modalHost").innerHTML = "";
+}
+
+// --------------------------------------------------------------------------
 // Wiring
 // --------------------------------------------------------------------------
 function wireDropzone() {
@@ -628,7 +1290,9 @@ function wireDropzone() {
 
 document.getElementById("subjectSelect").addEventListener("change", onSubjectChange);
 document.getElementById("reextractAllBtn").addEventListener("click", reextractAll);
-window.addEventListener("beforeunload", stopPolling);
+document.getElementById("classifyAllBtn").addEventListener("click", classifyAll);
+document.getElementById("classifyFilter").addEventListener("change", onClassifyFilterChange);
+window.addEventListener("beforeunload", () => { stopPolling(); stopClassifyPolling(); });
 
 wireDropzone();
 loadSubjects();

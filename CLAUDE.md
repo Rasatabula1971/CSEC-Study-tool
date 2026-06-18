@@ -708,5 +708,57 @@ embeds immediately; this one stages for human review first).
     `upload_staging.ocr_dpi_reduced` column (surfaced in detail+list for a session-3
     "reduced resolution" badge). 3 tests; suite 325. Live: ids 12+27 re-extracted OK
     (ocr_dpi_reduced=1, conf 28/37 — low but extractable); all 105 files now ready.
-- [ ] **Session 3** — Gemini classification (subject + objective) at build time
+- [x] **Session 3** — Gemini classification (subject + objective) at build time ✓ 2026-06-17
+  - **m015** (`apply_runtime_migrations`, Layer 1 version-tracked) adds
+    `skip_classification` / `skip_reason` / `classification_status`
+    (unclassified→queued→classifying→classified|failed|skipped) to `upload_staging`,
+    plus the `upload_classifications` table (one row per staged file, UNIQUE
+    staging_id, ON DELETE CASCADE; CHECK on recommended_folder; objectives_json +
+    rationale + model_used + raw_response audit + review_decision/review_folder/
+    review_objectives_json). The auto-skip backfill lives in **Layer 2**
+    (UNCONDITIONAL, idempotent — so the seed-then-migrate test pattern flags rows and
+    new uploads get caught): low-OCR-confidence (<70), reduced-DPI, truncated,
+    duplicate-content (same text length >1000, keep lowest staging_id), and format
+    twins (PDF/DOCX same stem → DOCX preferred). A later `/unskip` survives until the
+    next startup re-asserts a genuine quality skip (intentional — the signal is
+    intrinsic). Live E: DB: 105 staged → 75 eligible, 30 skipped (18 format_twin,
+    9 low_ocr_confidence, 3 duplicate_content).
+  - `backend/classify_uploads.py` (`PHASE: build`): per eligible file (ready, not
+    skipped, unclassified unless --force) builds a prompt = full 116-objective POB
+    syllabus + the file's first 10000 chars + an inline JSON schema, routed through
+    `llm_router.chat_for_classification`. Every objective_id Gemini returns is
+    validated against the objectives table and silently dropped if invented (drop
+    count noted in the rationale; Rule 1). `_extract_json` tolerates ```json fences /
+    surrounding prose. Failures are recorded as a classification row (empty objectives
+    + `ERROR:` rationale, status='failed') — retryable. A bulk run self-heals any row
+    left stuck in 'classifying' from an interrupted prior run. `model_used` = 'gemini'
+    when CLOUD_MODE=1 else 'ollama'. CLI: --subject/--staging-id/--force/--dry-run,
+    `@backup_first('pre_classification')`.
+  - `llm_router.chat_for_classification`: CLOUD_MODE=1 → Gemini (loud RuntimeError if
+    unreachable — never a silent degrade); CLOUD_MODE=0 → warns then Ollama. Existing
+    `chat_for_grading` untouched.
+  - Endpoints in `app.py`: `POST /api/staging/{subject}/classify-all` (counts eligible
+    synchronously → returns `{queued}`, runs `classify_uploads` in a BackgroundTask via
+    a lazy import so the runtime server never loads the cloud client at startup),
+    `POST /api/staging/{id}/classify` (single, force=True), `GET
+    /api/staging/{subject}/classifications` (staged ⋈ classification, classified-first
+    ordering — declared BEFORE the `/{staging_id}` detail route so the literal isn't
+    swallowed), `POST /api/staging/{id}/review` (ReviewRequest: accepted|overridden|
+    rejected + override_folder/override_objectives/notes), `POST /api/staging/{id}/unskip`.
+  - `backend/static/upload.html`: a Classification & Review section — "Classify all"
+    with progress polling, a filter (All/Pending/Accepted/Overridden/Rejected/Skipped),
+    per-file cards (folder badge by token colour, four-tier confidence badge, rationale,
+    top-3 objectives expandable, Accept/Override/Reject/View-text), an override panel
+    (folder dropdown + searchable objective multi-select pre-filled from Gemini + notes),
+    skip cards with Unskip, and a View-text modal reusing the staging-detail endpoint.
+  - Tests: `tests/test_classify_uploads.py` (9) + `tests/test_classify_api.py` (5);
+    suite 339/339.
+  - Live: CLOUD_MODE=1, /api/status gemini_available=true. 3 samples classified —
+    P2 2006 (pdf) → 02_PAST_PAPERS/100 (POB-2.4/2.2, span-of-control); lecture-8.docx →
+    04_NOTES/95 (POB-10.x, MIS); P2 2008 (ocr'd) → 02_PAST_PAPERS/100 (15 objectives).
+    Bulk classify-all returned queued=72. **BLOCKER for the user's separate bulk run:**
+    a machine-level `GEMINI_API_KEY=AIzaSy…` (invalid) shadows the .env's working
+    `AQ.*` key — `load_dotenv` does not override existing env vars, so the live run
+    only worked with the key injected into the server's env. Remove the OS-level var
+    (or set it to the AQ.* key) before running the bulk.
 - [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)
