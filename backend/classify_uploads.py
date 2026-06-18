@@ -51,6 +51,10 @@ from db.backup import backup_first  # noqa: E402
 # keys on; sending the full body would balloon token cost for little gain.
 PROMPT_TEXT_CHARS = 10_000
 MAX_OBJECTIVES = 15
+# A structured (response_schema) Gemini call is reliable, but the occasional transient
+# (a flaky network blip, a rare malformed response) is worth one or two cheap retries
+# before recording a file as failed -- a failure costs a manual re-classify later.
+CLASSIFY_ATTEMPTS = 3
 
 VALID_FOLDERS = (
     "00_SYLLABUS", "01_SPECIMEN_PAPERS", "02_PAST_PAPERS",
@@ -317,15 +321,23 @@ def classify_uploads(db: sqlite3.Connection, subject_id: str, *,
             db.commit()
 
         user = _build_user_prompt(syllabus_text, f)
-        raw_response = None  # may be unset if chat_fn itself raises
-        try:
-            raw_response = chat_fn(
-                [{"role": "user", "content": user}],
-                system=CLASSIFICATION_SYSTEM, schema=CLASSIFICATION_SCHEMA,
-            )
-            data = _extract_json(raw_response)
-            cleaned = _clean_classification(data, valid_ids)
-        except Exception as exc:  # noqa: BLE001 -- recorded as a failed classification
+        raw_response = None  # last response seen, for the audit row on total failure
+        cleaned, exc = None, None
+        for attempt in range(CLASSIFY_ATTEMPTS):
+            try:
+                raw_response = chat_fn(
+                    [{"role": "user", "content": user}],
+                    system=CLASSIFICATION_SYSTEM, schema=CLASSIFICATION_SCHEMA,
+                )
+                cleaned = _clean_classification(_extract_json(raw_response), valid_ids)
+                exc = None
+                break
+            except Exception as e:  # noqa: BLE001 -- retry, then record as failed
+                exc = e
+                if verbose and attempt + 1 < CLASSIFY_ATTEMPTS:
+                    print(f"  staging {sid}: attempt {attempt + 1} failed ({e}); retrying")
+
+        if exc is not None:  # all attempts exhausted -- record a failed classification
             summary["failed"] += 1
             summary["rows"].append({
                 "staging_id": sid, "original_name": f["original_name"],

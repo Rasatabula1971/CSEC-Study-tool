@@ -756,9 +756,22 @@ embeds immediately; this one stages for human review first).
   - Live: CLOUD_MODE=1, /api/status gemini_available=true. 3 samples classified —
     P2 2006 (pdf) → 02_PAST_PAPERS/100 (POB-2.4/2.2, span-of-control); lecture-8.docx →
     04_NOTES/95 (POB-10.x, MIS); P2 2008 (ocr'd) → 02_PAST_PAPERS/100 (15 objectives).
-    Bulk classify-all returned queued=72. **BLOCKER for the user's separate bulk run:**
-    a machine-level `GEMINI_API_KEY=AIzaSy…` (invalid) shadows the .env's working
-    `AQ.*` key — `load_dotenv` does not override existing env vars, so the live run
-    only worked with the key injected into the server's env. Remove the OS-level var
-    (or set it to the AQ.* key) before running the bulk.
+    Bulk classify-all returned queued=72.
+  - Follow-up (2026-06-18): env-shadow fixed + bulk completed. The invalid machine-level
+    `GEMINI_API_KEY=AIzaSy…` (it shadowed the .env `AQ.*` key — `load_dotenv` never
+    overrides an existing OS var) was deleted from `HKCU\Environment` + broadcast; .env
+    is now authoritative. Bulk run then hit a ~50% failure rate, root-caused to
+    **gemini-flash-latest being a thinking model**: gemini_client capped
+    `max_output_tokens=2048`, which counts thinking + output together, so heavy-thinking
+    files (OCR'd MCQ papers) blew the budget on thoughts (≈6600 tok) and truncated the
+    JSON mid-array (finish_reason=MAX_TOKENS). Also plain `response_mime_type` alone
+    produced malformed JSON. **Fix in `gemini_client.gemini_chat`:** bump
+    max_output_tokens→8192; pass a `response_schema` (via `_to_gemini_schema`, which
+    reduces a JSON-Schema dict to Gemini's OpenAPI subset — strips minimum/maxItems/etc.)
+    so output is structurally enforced; robust `_response_text` that concatenates parts
+    when `.text` raises on a thought response. classify_uploads got a 3-attempt retry.
+    Re-ran bulk: **all 105 resolved — 75 classified (0 failed, 0 invalid objective_ids,
+    2–15 objectives/file avg 10.5), 30 skipped.** Folders: 46 past_papers, 28 notes,
+    1 syllabus. All 75 unreviewed (the UI review pass is the user's next step). 3 new
+    gemini tests; suite 342/342.
 - [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)

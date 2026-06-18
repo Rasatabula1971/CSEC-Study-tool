@@ -56,13 +56,60 @@ def gemini_key_valid() -> bool:
         return False
 
 
+# Keys Gemini's response_schema (an OpenAPI 3.0 subset) accepts. JSON-Schema
+# validation keywords like minimum/maximum/minItems/maxItems are NOT in that subset
+# and make the API reject the schema, so they are stripped before the schema is sent.
+_GEMINI_SCHEMA_KEYS = {
+    "type", "format", "description", "nullable", "enum",
+    "items", "properties", "required", "propertyOrdering",
+}
+
+
+def _to_gemini_schema(node):
+    """Recursively reduce a JSON-Schema dict to the OpenAPI subset Gemini accepts as a
+    response_schema. Drops unsupported validation keywords (minimum/maxItems/…) while
+    preserving type/enum/items/properties/required so the structure is still enforced."""
+    if not isinstance(node, dict):
+        return node
+    out = {}
+    for key, val in node.items():
+        if key not in _GEMINI_SCHEMA_KEYS:
+            continue
+        if key == "properties" and isinstance(val, dict):
+            out[key] = {pk: _to_gemini_schema(pv) for pk, pv in val.items()}
+        elif key == "items":
+            out[key] = _to_gemini_schema(val)
+        else:
+            out[key] = val
+    return out
+
+
+def _response_text(response) -> str:
+    """Robustly pull text out of a Gemini response. The .text quick-accessor raises on
+    gemini-flash-latest (a thinking model) when the candidate carries a thought part,
+    so fall back to concatenating every text part. Returns "" if no text part exists."""
+    try:
+        return response.text
+    except Exception:  # noqa: BLE001 -- multi-part / thought response; extract manually
+        try:
+            parts = response.candidates[0].content.parts
+            return "".join((getattr(p, "text", "") or "") for p in parts)
+        except (AttributeError, IndexError):
+            return ""
+
+
 def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
     """Send a chat request to Gemini. Matches ollama_chat(messages, system, schema).
 
     The exact same system prompt and user message that would go to Ollama go here
-    unchanged (the prompts carry the JSON-output instructions). When `schema` is
-    supplied we only ask Gemini for JSON output (response_mime_type) -- the prompt
-    already describes the required shape, so we do not translate the JSON Schema.
+    unchanged. When `schema` is supplied we ask for JSON output (response_mime_type)
+    AND pass the schema as a response_schema (reduced to Gemini's OpenAPI subset by
+    _to_gemini_schema) -- with json-mime alone gemini-flash-latest emits malformed
+    JSON on long objective lists; a response_schema makes the output conform.
+
+    max_output_tokens is generous (8192) because gemini-flash-latest is a thinking
+    model: the limit covers thinking + output together, and a tight cap truncates the
+    JSON mid-array (finish_reason=MAX_TOKENS) before the answer is written.
 
     Returns the model's response text. Raises on any failure so the caller
     (chat_for_grading) can fall back to Ollama.
@@ -71,10 +118,11 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
 
     generation_config = {
         "temperature": 0.3,
-        "max_output_tokens": 2048,
+        "max_output_tokens": 8192,
     }
     if schema:
         generation_config["response_mime_type"] = "application/json"
+        generation_config["response_schema"] = _to_gemini_schema(schema)
 
     model = genai.GenerativeModel(
         model_name=GEMINI_MODEL,
@@ -88,4 +136,4 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
         gemini_messages.append({"role": role, "parts": [msg["content"]]})
 
     response = model.generate_content(gemini_messages)
-    return response.text
+    return _response_text(response)
