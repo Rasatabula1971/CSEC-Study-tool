@@ -1,0 +1,135 @@
+{
+  "user_agent": "CSEC-Study-tool-resource-downloader/1.0 (+educational personal archive)",
+  "allow_external_files": false,
+  "allowed_domains": [
+    "www.cxc.org",
+    "cxc.org",
+    "kerwinspringer.com",
+    "caribbeans.ai",
+    "csechub.com",
+    "www.csecpastpapers.com",
+    "csecpastpapers.com",
+    "www.csecmathtutor.com",
+    "csecmathtutor.com",
+    "missfrancois.com",
+    "learn.moe.gov.tt"
+  ],
+  "subjects": [
+    {
+      "name": "Economics",
+      "aliases": ["Econ", "Economics"],
+      "direct_files": [
+        {
+          "title": "CSEC Economics Syllabus",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-Economics-Syllabus.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://caribbeans.ai/csec/economics", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec-past-papers", "default_category": "past_papers"},
+        {"url": "https://www.csecpastpapers.com/subject-areas-all", "default_category": "past_papers"},
+        {"url": "https://learn.moe.gov.tt/course/view.php?id=23313", "default_category": "notes"}
+      ]
+    },
+    {
+      "name": "Mathematics",
+      "aliases": ["Maths", "Math", "Mathematics"],
+      "direct_files": [
+        {
+          "title": "CSEC Mathematics Syllabus Effective for Exams from 2027",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-Mathematics-Syllabus_EffectiveforExamsfrom2027.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://www.csecmathtutor.com/past-papers.html", "default_category": "past_papers"},
+        {"url": "https://www.csecmathtutor.com/mathematics-textbook.html", "default_category": "textbooks_open_books"},
+        {"url": "https://learn.moe.gov.tt/course/view.php?id=23429", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec-past-papers", "default_category": "past_papers"}
+      ]
+    },
+    {
+      "name": "English_A",
+      "aliases": ["English", "English A"],
+      "direct_files": [
+        {
+          "title": "CSEC English Syllabus Amended 2026 for Exams 2027",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-English-Syllabus-Amended-2026-for-Exams-2027V2.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://csechub.com/csec-english-a-hub/", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec-past-papers", "default_category": "past_papers"},
+        {"url": "https://www.csecpastpapers.com/subject-areas-all", "default_category": "past_papers"}
+      ]
+    },
+    {
+      "name": "POA",
+      "aliases": ["POA", "Principles of Accounts"],
+      "direct_files": [
+        {
+          "title": "CSEC Principles of Accounts Syllabus Revised 2017",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-PRINCIPLES-OF-ACCOUNTS-SYLLABUS-Revised-2017.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://csechub.com/csec-principles-of-accounts/", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec/poa", "default_category": "notes"},
+        {"url": "https://learn.moe.gov.tt/course/view.php?id=23352", "default_category": "notes"},
+        {"url": "https://www.csecpastpapers.com/subject-areas-all", "default_category": "past_papers"}
+      ]
+    },
+    {
+      "name": "POB",
+      "aliases": ["POB", "Principles of Business"],
+      "direct_files": [
+        {
+          "title": "CSEC Principles of Business Syllabus",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-Principles-of-Business-Syllabus-.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://caribbeans.ai/csec/pob", "default_category": "notes"},
+        {"url": "https://kerwinspringer.com/papers", "default_category": "past_papers"},
+        {"url": "https://www.csecpastpapers.com/subject-areas-all", "default_category": "past_papers"}
+      ]
+    },
+    {
+      "name": "Integrated_Science",
+      "aliases": ["Integrated Science", "Int Sci", "Inti Sci"],
+      "direct_files": [
+        {
+          "title": "CSEC Integrated Science Syllabus Effective for Exams from 2027",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-Integrated-Science-Syllabus_EffectiveforExamsfrom2027.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://missfrancois.com/integrated-science-notes/", "default_category": "notes"},
+        {"url": "https://missfrancois.com/integrated-science-past-papers/", "default_category": "past_papers"},
+        {"url": "https://csechub.com/csec-integrated-science-hub/", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec-past-papers", "default_category": "past_papers"}
+      ]
+    },
+    {
+      "name": "Information_Technology",
+      "aliases": ["I.T", "IT", "Information Technology"],
+      "direct_files": [
+        {
+          "title": "CSEC Information Technology Syllabus Revised 2017",
+          "category": "syllabus",
+          "url": "https://www.cxc.org/wp-content/uploads/2018/11/CSEC-INFORMATION-TECHNOLOGY-SYLLABUS-Revised-2017.pdf"
+        }
+      ],
+      "seed_pages": [
+        {"url": "https://csechub.com/csec-information-technology-hub/", "default_category": "notes"},
+        {"url": "https://caribbeans.ai/csec-past-papers", "default_category": "past_papers"},
+        {"url": "https://www.csecpastpapers.com/subject-areas-all", "default_category": "past_papers"}
+      ]
+    }
+  ]
+}
