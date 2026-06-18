@@ -699,5 +699,14 @@ embeds immediately; this one stages for human review first).
     Suite 322/322. Live: staging_id 30 (P2 2025 JAN, 20 scanned pages) re-extracted
     411 chars of `[Page N - no text]` -> 27,423 chars of OCR text (conf 32, low-quality
     badge). reextract-all (after a docx-false-positive fix) targets the scanned PDFs.
+  - Follow-up fix (2026-06-18): oversized pages. Two CXC scans (P1 2019 MJ, P2 2026 JAN)
+    failed bulk OCR — rendering at OCR_DPI=300 exceeded Pillow's decompression-bomb guard
+    (`PIL_PIXEL_LIMIT=178,956,970`). `_ocr_render_dpi(page)` now predicts the pixel count
+    from `page.rect` and scales DPI down (sqrt of the area ratio, floored at 72) to stay
+    under 90% of the limit; Pillow's guard is kept (we adjust our render setting, not the
+    security feature). `_extract_pdf` reports `ocr_dpi_reduced`; **m014** adds the
+    `upload_staging.ocr_dpi_reduced` column (surfaced in detail+list for a session-3
+    "reduced resolution" badge). 3 tests; suite 325. Live: ids 12+27 re-extracted OK
+    (ocr_dpi_reduced=1, conf 28/37 — low but extractable); all 105 files now ready.
 - [ ] **Session 3** — Gemini classification (subject + objective) at build time
 - [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)

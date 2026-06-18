@@ -36,9 +36,13 @@ SSD-bundled binary, then PATH).
 """
 
 import io
+import logging
+import math
 import os
 import re
 from pathlib import Path
+
+logger = logging.getLogger("csec.uploads")
 
 MAX_EXTRACT_CHARS = 500_000        # preview cap stored in upload_staging.extracted_text
 TRUNCATION_MARKER = "\n[Truncated: file exceeds 500k char limit]"  # legacy (session 1)
@@ -51,6 +55,10 @@ CHUNK_SIZE          = 100_000      # chars per row in upload_staging_chunks
 MAX_TOTAL_CHARS     = 5_000_000    # hard cap on full extracted text, even with chunks
 OCR_LANG            = "eng"
 OCR_DPI             = 300          # render a PDF page to image at this DPI before OCR
+# Pillow's default Image.MAX_IMAGE_PIXELS decompression-bomb guard. Some CXC PDFs have
+# oversized pages / embedded high-res images that, rendered at OCR_DPI, exceed this and
+# make Pillow refuse to open the image. We keep the guard and lower our render DPI to fit.
+PIL_PIXEL_LIMIT     = 178_956_970
 
 VALID_FILE_TYPES = ("pdf", "docx", "image")
 
@@ -153,11 +161,41 @@ def _ocr_image_obj(img) -> tuple:
     return text, mean_conf
 
 
+def _ocr_render_dpi(page) -> tuple:
+    """Choose the render DPI for a page so the rasterised image stays under Pillow's
+    decompression-bomb guard. Returns (dpi, reduced): `reduced` is True when the page is
+    so large that OCR_DPI would exceed 90% of PIL_PIXEL_LIMIT (10% headroom for Pillow
+    internals), in which case DPI is scaled down proportionally (sqrt of the area ratio),
+    floored at 72. The single source of truth for the DPI decision -- both _ocr_page and
+    _extract_pdf consult it (the tuple contract of _ocr_page stays unchanged)."""
+    rect = page.rect
+    # page.rect is in points (72 per inch); pixels = points * DPI / 72.
+    width_px = rect.width * OCR_DPI / 72
+    height_px = rect.height * OCR_DPI / 72
+    pixel_count = width_px * height_px
+    if pixel_count > PIL_PIXEL_LIMIT * 0.9:
+        ratio = (PIL_PIXEL_LIMIT * 0.9) / pixel_count
+        scale = math.sqrt(ratio)
+        return max(72, int(OCR_DPI * scale)), True
+    return OCR_DPI, False
+
+
 def _ocr_page(page) -> tuple:
-    """Render a PyMuPDF page to a PNG at OCR_DPI, OCR it. Returns (text, mean_conf)."""
+    """Render a PyMuPDF page to a PNG and OCR it. Returns (text, mean_conf). The render
+    DPI is reduced for oversized pages so Pillow's guard never trips (logged when it
+    happens); the (text, conf) contract is unchanged."""
     _ensure_ocr()
     from PIL import Image
-    pix = page.get_pixmap(dpi=OCR_DPI)
+    target_dpi, reduced = _ocr_render_dpi(page)
+    if reduced:
+        rect = page.rect
+        logger.info(
+            "Reducing OCR DPI for oversized page: DPI %d (page rect %.0f×%.0f pt, "
+            "%dpx at %d DPI)",
+            target_dpi, rect.width, rect.height,
+            int(rect.width * OCR_DPI / 72 * rect.height * OCR_DPI / 72), OCR_DPI,
+        )
+    pix = page.get_pixmap(dpi=target_dpi)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
     try:
         return _ocr_image_obj(img)
@@ -215,9 +253,12 @@ def _extract_pdf(path) -> dict:
         ocr_all = avg_chars_per_page < FILE_AVG_THRESHOLD
 
         parts, ocr_pages, ocr_confidences = [], [], []
+        dpi_reduced = False
         for i, txt, page in native:
             needs_ocr = ocr_all or len(txt) < PAGE_TEXT_THRESHOLD
             if needs_ocr:
+                if _ocr_render_dpi(page)[1]:
+                    dpi_reduced = True
                 ocr_text, conf = _ocr_page(page)
                 parts.append(f"\n[Page {i} - OCR]\n{ocr_text}")
                 ocr_pages.append(i)
@@ -228,7 +269,9 @@ def _extract_pdf(path) -> dict:
             else:
                 parts.append(f"\n[Page {i}]\n{txt}")
 
-        return _finalize_extraction("".join(parts), total_pages, ocr_pages, ocr_confidences)
+        result = _finalize_extraction("".join(parts), total_pages, ocr_pages, ocr_confidences)
+        result["ocr_dpi_reduced"] = dpi_reduced
+        return result
     finally:
         doc.close()
 
@@ -367,6 +410,7 @@ def extract_text(staging_id: int, db):
         ocr_pages_count = len(ocr_pages)
         ocr_used = 1 if ocr_pages_count > 0 else 0
         truncated = 1 if result.get("truncated") else 0
+        ocr_dpi_reduced = 1 if result.get("ocr_dpi_reduced") else 0
         chunks = result.get("chunks")
 
         # A re-extract may have left stale chunks; clear them inside this transaction.
@@ -375,9 +419,9 @@ def extract_text(staging_id: int, db):
             "UPDATE upload_staging SET extract_status = 'ready', extracted_text = ?, "
             "extract_error = NULL, ocr_used = ?, ocr_pages_count = ?, "
             "ocr_confidence_avg = ?, total_pages = ?, truncated = ?, "
-            "updated_at = datetime('now') WHERE staging_id = ?",
+            "ocr_dpi_reduced = ?, updated_at = datetime('now') WHERE staging_id = ?",
             (text, ocr_used, ocr_pages_count, result.get("ocr_confidence_avg"),
-             result.get("total_pages"), truncated, staging_id),
+             result.get("total_pages"), truncated, ocr_dpi_reduced, staging_id),
         )
         if chunks:
             for idx, chunk in enumerate(chunks):
@@ -407,8 +451,8 @@ def reset_for_reextract(db, staging_id: int) -> None:
     db.execute(
         "UPDATE upload_staging SET extract_status = 'pending', extracted_text = NULL, "
         "extract_error = NULL, ocr_used = 0, ocr_pages_count = 0, "
-        "ocr_confidence_avg = NULL, truncated = 0, updated_at = datetime('now') "
-        "WHERE staging_id = ?",
+        "ocr_confidence_avg = NULL, truncated = 0, ocr_dpi_reduced = 0, "
+        "updated_at = datetime('now') WHERE staging_id = ?",
         (staging_id,),
     )
     db.commit()
@@ -430,7 +474,7 @@ def get_staging_list(db, subject_id: str) -> list:
         """
         SELECT staging_id, original_name, file_type, file_size_bytes,
                extract_status, status, created_at,
-               ocr_used, ocr_confidence_avg, truncated,
+               ocr_used, ocr_confidence_avg, truncated, ocr_dpi_reduced,
                CASE WHEN extracted_text IS NULL THEN NULL
                     ELSE length(extracted_text) END AS extracted_text_length
         FROM   upload_staging
@@ -444,6 +488,7 @@ def get_staging_list(db, subject_id: str) -> list:
         d = dict(r)
         d["ocr_used"] = bool(d.get("ocr_used"))
         d["truncated"] = bool(d.get("truncated"))
+        d["ocr_dpi_reduced"] = bool(d.get("ocr_dpi_reduced"))
         out.append(d)
     return out
 
@@ -456,7 +501,8 @@ def get_staging_detail(db, staging_id: int):
         SELECT staging_id, subject_id, original_name, file_type, file_size_bytes,
                stored_path, extract_status, extract_error, extracted_text,
                status, created_at,
-               ocr_used, ocr_pages_count, ocr_confidence_avg, total_pages, truncated
+               ocr_used, ocr_pages_count, ocr_confidence_avg, total_pages, truncated,
+               ocr_dpi_reduced
         FROM   upload_staging
         WHERE  staging_id = ?
         """,

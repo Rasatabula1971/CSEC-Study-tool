@@ -407,6 +407,15 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
             ON upload_staging_chunks(staging_id)
         """,
     )
+    # m014 (Upload session 2 follow-up): flag files whose OCR ran at a reduced render
+    # DPI because a page was too large for Pillow's decompression-bomb guard at OCR_DPI.
+    # session 3 surfaces this as a "reduced resolution" review badge. Single ALTER --
+    # _run_migration records it [pre-existing] if the column already exists.
+    _run_migration(
+        db, "m014_upload_ocr_dpi_reduced",
+        "upload_staging.ocr_dpi_reduced",
+        "ALTER TABLE upload_staging ADD COLUMN ocr_dpi_reduced INTEGER DEFAULT 0",
+    )
 
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
@@ -1528,6 +1537,7 @@ def staging_detail(subject_id: str, staging_id: int,
         "ocr_confidence_avg": row["ocr_confidence_avg"],
         "total_pages": row["total_pages"],
         "truncated": bool(row["truncated"]),
+        "ocr_dpi_reduced": bool(row["ocr_dpi_reduced"]),
         "has_chunks": chunk_count > 0,
         "chunk_count": chunk_count,
     }

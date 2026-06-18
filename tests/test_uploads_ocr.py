@@ -168,6 +168,69 @@ def test_ocr_page_handles_zero_words(monkeypatch, tmp_path):
     assert conf is None   # no division by zero
 
 
+# --- oversized-page DPI reduction (m014) ----------------------------------
+def _png_1x1_bytes() -> bytes:
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (1, 1), "white").save(buf, "PNG")
+    return buf.getvalue()
+
+
+class _FakeRect:
+    def __init__(self, w, h): self.width = w; self.height = h
+
+
+class _FakePix:
+    def tobytes(self, fmt): return _png_1x1_bytes()
+
+
+class _FakePage:
+    """A PyMuPDF-page stand-in that records the DPI get_pixmap is called with."""
+    def __init__(self, w, h, text="ignored"):
+        self.rect = _FakeRect(w, h)
+        self._text = text
+        self.dpi_used = None
+    def get_text(self, _): return self._text
+    def get_pixmap(self, dpi=None):
+        self.dpi_used = dpi
+        return _FakePix()
+
+
+class _FakeDoc:
+    def __init__(self, pages): self._p = pages; self.page_count = len(pages)
+    def load_page(self, i): return self._p[i]
+    def close(self): pass
+
+
+def test_ocr_page_reduces_dpi_on_oversized_page(monkeypatch):
+    import pytesseract
+    monkeypatch.setattr(pytesseract, "image_to_data", _fake_image_to_data(["X"], ["80"]))
+    # 5000x5000 pt at 300 DPI -> ~434M px, well over Pillow's ~178M guard.
+    page = _FakePage(5000, 5000)
+    text, conf = uploads._ocr_page(page)
+    assert page.dpi_used is not None
+    assert page.dpi_used < uploads.OCR_DPI   # DPI was reduced
+    assert text == "X"                        # still returned successfully
+
+
+def test_ocr_page_uses_full_dpi_on_normal_page(monkeypatch):
+    import pytesseract
+    monkeypatch.setattr(pytesseract, "image_to_data", _fake_image_to_data(["Y"], ["80"]))
+    page = _FakePage(595, 842)                # A4 in points
+    uploads._ocr_page(page)
+    assert page.dpi_used == uploads.OCR_DPI   # no reduction on a normal page
+
+
+def test_extract_pdf_reports_dpi_reduced(monkeypatch):
+    import fitz
+    import pytesseract
+    monkeypatch.setattr(pytesseract, "image_to_data", _fake_image_to_data(["Z"], ["80"]))
+    page = _FakePage(5000, 5000, text="")     # empty -> OCR; oversized -> reduced
+    monkeypatch.setattr(fitz, "open", lambda path: _FakeDoc([page]))
+    result = uploads._extract_pdf("ignored.pdf")
+    assert result["ocr_dpi_reduced"] is True
+
+
 # --- DB-side: chunk persistence -------------------------------------------
 def open_test_db() -> sqlite3.Connection:
     try:
