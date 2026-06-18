@@ -548,8 +548,9 @@ def plan_page() -> FileResponse:
 
 @app.get("/")
 def index() -> FileResponse:
-    """Stage 13: the panel shell (Learn/Practice/Review/Progress/Library/Exam) is now
-    the app's front door. The old Welcome page remains on disk at /welcome."""
+    """Serves chat.html, the live UI. The Stage 13 panel shell was reverted on
+    2026-06-17 (preserved at chat_panel_shell.html.bak); chat.html is the v1 chat
+    UI again. The Welcome page remains on disk at /welcome."""
     return FileResponse(CHAT_HTML)
 
 

@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSEC Study Partner</title>
+<style>
+  /* ============================ DESIGN TOKENS ============================ */
+  :root {
+    --color-bg: #fafaf9;
+    --color-surface: #ffffff;
+    --color-surface-elevated: #f5f5f4;
+    --color-border: #e7e5e4;
+    --color-border-strong: #d6d3d1;
+    --color-text-primary: #1c1917;
+    --color-text-secondary: #57534e;
+    --color-text-muted: #a8a29e;
+    --color-accent: #2563eb;
+    --color-accent-hover: #1d4ed8;
+    --color-success: #16a34a;
+    --color-warn: #f59e0b;
+    --color-danger: #dc2626;
+
+    --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+    --space-5: 24px; --space-6: 32px; --space-8: 48px;
+
+    --radius-sm: 4px; --radius: 8px; --radius-lg: 12px;
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+
+    --tap: 44px;
+
+    /* heatmap score colours (also re-stated in dark mode) */
+    --heat-null: var(--color-border);
+    --heat-low: #fca5a5;
+    --heat-mid: #fcd34d;
+    --heat-high: #86efac;
+    --heat-top: var(--color-success);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg: #0c0a09;
+      --color-surface: #1c1917;
+      --color-surface-elevated: #292524;
+      --color-border: #292524;
+      --color-border-strong: #44403c;
+      --color-text-primary: #f5f5f4;
+      --color-text-secondary: #d6d3d1;
+      --color-text-muted: #78716c;
+      --color-accent: #3b82f6;
+      --color-accent-hover: #60a5fa;
+      --color-success: #22c55e;
+      --color-warn: #fbbf24;
+      --color-danger: #ef4444;
+
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+      --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5);
+
+      --heat-null: #44403c;
+      --heat-low: #7f1d1d;
+      --heat-mid: #78350f;
+      --heat-high: #14532d;
+      --heat-top: var(--color-success);
+    }
+  }
+
+  /* ============================ RESET / BASE ============================ */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; font-size: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 999px; }
+
+  /* ============================ APP GRID ============================ */
+  #app {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 380px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "nav top    top"
+      "nav banner banner"
+      "nav chat   panel";
+    height: 100vh;
+  }
+
+  /* ----- nav rail ----- */
+  #navRail {
+    grid-area: nav;
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-3) 0;
+    gap: var(--space-1);
+    overflow-y: auto;
+  }
+  .nav-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-2) var(--space-1);
+    min-height: var(--tap);
+    border-radius: var(--radius);
+    margin: 0 var(--space-2);
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+  }
+  .nav-btn .nav-icon { font-size: 20px; line-height: 1; }
+  .nav-btn .nav-label { font-size: 10px; letter-spacing: 0.02em; }
+  .nav-btn:hover:not(:disabled) { background: var(--color-surface-elevated); color: var(--color-text-primary); }
+  .nav-btn[aria-current="true"] { background: var(--color-accent); color: #fff; }
+  .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ----- top bar ----- */
+  #topBar {
+    grid-area: top;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    min-height: 56px;
+  }
+  #subjectSelect {
+    font-family: inherit; font-size: 14px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    min-height: 36px;
+  }
+  #objectiveBadge {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px; font-size: 13px; font-family: var(--font-mono);
+  }
+  #objectiveBadge .x { color: var(--color-text-muted); font-weight: 700; }
+  #examTimer {
+    margin-left: auto;
+    font-family: var(--font-mono); font-weight: 700; font-size: 18px;
+    background: var(--color-danger); color: #fff;
+    padding: var(--space-1) var(--space-3); border-radius: var(--radius);
+  }
+  #settingsBtn {
+    margin-left: auto;
+    background: transparent; border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    width: 36px; height: 36px; border-radius: var(--radius);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #examTimer + #settingsBtn { margin-left: var(--space-2); }
+  .spacer { margin-left: auto; }
+
+  /* ----- exam banner ----- */
+  #examBanner {
+    grid-area: banner;
+    background: var(--color-warn); color: #1c1917;
+    padding: var(--space-2) var(--space-4); font-size: 13px; font-weight: 600;
+    text-align: center;
+  }
+
+  /* ----- chat column ----- */
+  #chatColumn {
+    grid-area: chat;
+    display: flex; flex-direction: column;
+    min-height: 0; background: var(--color-bg);
+  }
+  #chatScroll {
+    flex: 1; overflow-y: auto;
+    padding: var(--space-5);
+    display: flex; flex-direction: column; gap: var(--space-4);
+  }
+  #inputBar {
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+    padding: var(--space-3) var(--space-4);
+    display: flex; gap: var(--space-3); align-items: flex-end;
+  }
+  #chatInput {
+    flex: 1; resize: none; font-family: inherit; font-size: 15px;
+    border: 1px solid var(--color-border-strong); border-radius: var(--radius);
+    padding: var(--space-3); min-height: var(--tap); max-height: 160px;
+    background: var(--color-surface); color: var(--color-text-primary);
+  }
+  #sendBtn {
+    background: var(--color-accent); color: #fff; border: none;
+    border-radius: var(--radius); padding: 0 var(--space-5);
+    min-height: var(--tap); font-weight: 600;
+    transition: background-color 120ms ease-out;
+  }
+  #sendBtn:hover:not(:disabled) { background: var(--color-accent-hover); }
+  #sendBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ----- messages ----- */
+  .msg { max-width: 760px; }
+  .msg.user { align-self: flex-end; }
+  .msg-bubble {
+    padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg);
+    white-space: pre-wrap; word-wrap: break-word;
+  }
+  .msg.user .msg-bubble { background: var(--color-accent); color: #fff; border-bottom-right-radius: var(--radius-sm); }
+  .msg.assistant .msg-bubble { background: var(--color-surface); border: 1px solid var(--color-border); border-bottom-left-radius: var(--radius-sm); }
+  .msg.error .msg-bubble { background: var(--color-surface); border: 1px solid var(--color-danger); color: var(--color-danger); }
+  .msg-meta { font-size: 11px; color: var(--color-text-muted); margin: 0 var(--space-1) var(--space-1); }
+
+  .lesson-section { margin-top: var(--space-3); }
+  .lesson-section h4 { margin: 0 0 var(--space-1); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+  .key-term { font-size: 14px; }
+  .key-term b { color: var(--color-text-primary); }
+
+  /* ----- recall pills ----- */
+  .recall-wrap { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+  .recall-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+  .recall-pill {
+    text-align: left; background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border-strong); border-radius: var(--radius);
+    color: var(--color-text-primary); padding: var(--space-3); min-height: var(--tap);
+    transition: border-color 120ms ease-out, background-color 120ms ease-out;
+  }
+  .recall-pill:hover { border-color: var(--color-accent); background: var(--color-surface); }
+
+  /* ----- feedback buttons ----- */
+  .feedback-row { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap; }
+  .feedback-row .fb-label { font-size: 12px; color: var(--color-text-muted); }
+  .fb-btn {
+    background: var(--color-surface); border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius); min-width: var(--tap); min-height: 36px; font-size: 16px;
+    transition: border-color 120ms ease-out, background-color 120ms ease-out;
+  }
+  .fb-btn:hover:not(:disabled) { border-color: var(--color-accent); }
+  .fb-btn.chosen { border-color: var(--color-accent); background: var(--color-surface-elevated); }
+  .fb-btn:disabled { opacity: 0.5; cursor: default; }
+  .fb-done { font-size: 12px; color: var(--color-success); }
+
+  /* ----- grading card ----- */
+  .grade-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); }
+  .grade-score { font-size: 24px; font-weight: 700; }
+  .grade-band { display: inline-block; padding: 2px var(--space-3); border-radius: 999px; font-size: 12px; font-weight: 600; margin: var(--space-2) 0; }
+  .grade-source { font-size: 12px; color: var(--color-text-muted); margin-bottom: var(--space-3); }
+  .grade-pending { background: var(--color-warn); color: #1c1917; padding: var(--space-2) var(--space-3); border-radius: var(--radius); font-size: 13px; font-weight: 600; margin-bottom: var(--space-3); }
+  .mark-point { display: flex; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
+  .mark-point .mp-icon { font-weight: 700; flex: none; }
+  .mark-point.awarded .mp-icon { color: var(--color-success); }
+  .mark-point.missed .mp-icon { color: var(--color-danger); }
+  .mp-evidence { font-size: 13px; color: var(--color-text-secondary); }
+  .mp-note { font-size: 12px; font-style: italic; color: var(--color-text-muted); }
+  .review-flags { margin-top: var(--space-3); }
+  .review-flags summary { cursor: pointer; font-size: 13px; color: var(--color-warn); }
+  .review-flags li { font-size: 13px; color: var(--color-text-secondary); }
+
+  /* ============================ PANEL COLUMN ============================ */
+  #panelColumn {
+    grid-area: panel;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  #panelHeader { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; }
+  #panelTitle { margin: 0; font-size: 16px; }
+  #panelClose { display: none; background: transparent; border: none; color: var(--color-text-muted); font-size: 20px; }
+  #panelContent { flex: 1; overflow-y: auto; padding: var(--space-4); }
+
+  /* accordion (Learn / Library) */
+  .section { border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: var(--space-3); overflow: hidden; }
+  .section-head { width: 100%; text-align: left; background: var(--color-surface-elevated); border: none; padding: var(--space-3); font-weight: 600; display: flex; justify-content: space-between; align-items: center; min-height: var(--tap); color: var(--color-text-primary); }
+  .section-body { padding: var(--space-2); display: none; }
+  .section.open .section-body { display: block; }
+  .obj-row { width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: var(--space-2) var(--space-3); display: block; color: var(--color-text-primary); min-height: var(--tap); }
+  .obj-row:hover { background: var(--color-surface-elevated); border-color: var(--color-border); }
+  .obj-top { display: flex; gap: var(--space-2); align-items: baseline; }
+  .obj-num { font-family: var(--font-mono); font-size: 12px; color: var(--color-accent); flex: none; }
+  .obj-stmt { font-size: 13px; }
+  .obj-badges { display: flex; gap: var(--space-2); margin-top: 2px; font-size: 11px; color: var(--color-text-muted); align-items: center; }
+  .lesson-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; border: 1px solid var(--color-success); }
+  .lesson-dot.has { background: var(--color-success); }
+  .rank-badge { color: var(--color-warn); letter-spacing: -1px; }
+
+  /* practice papers */
+  .paper { border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: var(--space-3); }
+  .paper-head { width: 100%; text-align: left; background: var(--color-surface-elevated); border: none; padding: var(--space-3); min-height: var(--tap); display: flex; justify-content: space-between; color: var(--color-text-primary); }
+  .paper-body { display: none; padding: var(--space-2); }
+  .paper.open .paper-body { display: block; }
+  .q-row { width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: var(--space-2) var(--space-3); min-height: var(--tap); color: var(--color-text-primary); display: flex; justify-content: space-between; gap: var(--space-2); }
+  .q-row:hover { background: var(--color-surface-elevated); border-color: var(--color-border); }
+  .q-num { font-family: var(--font-mono); color: var(--color-accent); }
+
+  /* review list */
+  .review-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--space-3); min-height: var(--tap); margin-bottom: var(--space-2); color: var(--color-text-primary); display: block; }
+  .review-item:hover { background: var(--color-surface-elevated); }
+  .box-badge { display: inline-block; font-family: var(--font-mono); font-size: 11px; background: var(--color-accent); color: #fff; border-radius: var(--radius-sm); padding: 0 var(--space-2); margin-right: var(--space-2); }
+
+  /* progress heatmap */
+  .heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: var(--space-2); }
+  .heat-cell { aspect-ratio: 1; border: 1px solid var(--color-border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 11px; font-family: var(--font-mono); color: var(--color-text-primary); background: var(--heat-null); }
+  .heat-cell:hover { outline: 2px solid var(--color-accent); }
+
+  /* library search */
+  #librarySearch { width: 100%; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border-strong); border-radius: var(--radius); margin-bottom: var(--space-3); background: var(--color-surface); color: var(--color-text-primary); min-height: 36px; }
+  .lib-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+
+  /* exam panel */
+  .exam-q-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .exam-q-btn { text-align: left; background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); min-height: var(--tap); color: var(--color-text-primary); display: flex; justify-content: space-between; }
+  .exam-q-btn[aria-current="true"] { border-color: var(--color-accent); }
+  .exam-q-btn .ans-mark { font-size: 12px; }
+  .exam-q-btn .ans-mark.done { color: var(--color-success); }
+
+  /* generic UI */
+  .btn-primary { background: var(--color-accent); color: #fff; border: none; border-radius: var(--radius); padding: var(--space-3) var(--space-4); min-height: var(--tap); font-weight: 600; }
+  .btn-primary:hover { background: var(--color-accent-hover); }
+  .btn-secondary { background: var(--color-surface); color: var(--color-text-primary); border: 1px solid var(--color-border-strong); border-radius: var(--radius); padding: var(--space-3) var(--space-4); min-height: var(--tap); }
+  .muted { color: var(--color-text-muted); }
+  .center-state { text-align: center; color: var(--color-text-secondary); padding: var(--space-6) var(--space-4); }
+  .center-state .big { font-size: 32px; margin-bottom: var(--space-2); }
+  .arrow-hint { font-size: 13px; color: var(--color-text-muted); }
+
+  /* skeleton loaders */
+  .skeleton { height: 14px; border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--color-surface-elevated) 25%, var(--color-border) 37%, var(--color-surface-elevated) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; margin-bottom: var(--space-3); }
+  .skeleton.w70 { width: 70%; } .skeleton.w40 { width: 40%; } .skeleton.tall { height: 40px; }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+  /* toast */
+  #toastHost { position: fixed; left: 50%; bottom: var(--space-5); transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
+  .toast { background: var(--color-text-primary); color: var(--color-bg); padding: var(--space-2) var(--space-4); border-radius: 999px; font-size: 13px; box-shadow: var(--shadow); animation: toast-in 120ms ease-out; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* modal */
+  #modalHost { position: fixed; inset: 0; background: rgb(0 0 0 / 0.45); display: flex; align-items: center; justify-content: center; z-index: 60; padding: var(--space-4); }
+  #modalHost[hidden] { display: none; }
+  .modal { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); max-width: 440px; box-shadow: var(--shadow); }
+  .modal h3 { margin: 0 0 var(--space-3); }
+  .modal p { color: var(--color-text-secondary); margin: 0 0 var(--space-4); }
+  .modal-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+
+  /* floating open-panel button (mobile only) */
+  #openPanelBtn { display: none; position: fixed; right: var(--space-4); bottom: 76px; z-index: 40; background: var(--color-accent); color: #fff; border: none; border-radius: 999px; padding: var(--space-3) var(--space-4); min-height: var(--tap); box-shadow: var(--shadow); font-weight: 600; }
+
+  /* ============================ RESPONSIVE ============================ */
+  @media (max-width: 767px) {
+    #app {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "top" "banner" "chat" "nav";
+    }
+    #navRail { flex-direction: row; justify-content: space-around; border-right: none; border-top: 1px solid var(--color-border); padding: var(--space-1) 0; }
+    .nav-btn { margin: 0; flex: 1; }
+    #panelColumn {
+      position: fixed; top: 0; right: 0; bottom: 0; width: min(92vw, 420px);
+      transform: translateX(100%); transition: transform 150ms ease-out; z-index: 45;
+      box-shadow: var(--shadow);
+    }
+    body.panel-open #panelColumn { transform: none; }
+    #panelClose { display: inline-block; }
+    #openPanelBtn { display: inline-flex; align-items: center; }
+    body.panel-open #openPanelBtn { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app" data-panel="learn">
+  <nav id="navRail" aria-label="Study panels"></nav>
+
+  <header id="topBar">
+    <label for="subjectSelect" class="sr-only" style="position:absolute;left:-9999px;">Subject</label>
+    <select id="subjectSelect" aria-label="Subject"><option value="">Loading subjects…</option></select>
+    <button id="objectiveBadge" hidden type="button" aria-label="Clear selected objective"></button>
+    <div id="examTimer" hidden aria-live="polite"></div>
+    <button id="settingsBtn" type="button" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <div id="examBanner" hidden role="status">Exam in progress — return to the Exam panel to resume.</div>
+
+  <main id="chatColumn">
+    <div id="chatScroll" aria-live="polite"></div>
+    <div id="inputBar">
+      <textarea id="chatInput" rows="1" placeholder="Type your answer or a question…" aria-label="Message"></textarea>
+      <button id="sendBtn" type="button" disabled>Send</button>
+    </div>
+  </main>
+
+  <aside id="panelColumn" aria-label="Active panel">
+    <div id="panelHeader">
+      <h2 id="panelTitle">Learn</h2>
+      <button id="panelClose" type="button" aria-label="Close panel">✕</button>
+    </div>
+    <div id="panelContent"></div>
+  </aside>
+</div>
+
+<button id="openPanelBtn" type="button">Panel</button>
+<div id="toastHost"></div>
+<div id="modalHost" hidden></div>
+
+<script>
+"use strict";
+/* ============================ CONSTANTS ============================ */
+var API = ""; // same-origin
+var PANELS = [
+  { id: "learn",    icon: "📖", label: "Learn" },
+  { id: "practice", icon: "✏️", label: "Practice" },
+  { id: "review",   icon: "🔄", label: "Review" },
+  { id: "progress", icon: "📊", label: "Progress" },
+  { id: "library",  icon: "🗂", label: "Library" },
+  { id: "exam",     icon: "🎯", label: "Exam" }
+];
+var EXAM_LOCKED_PANELS = ["learn", "review", "progress", "library"]; // disabled during an exam
+var MINUTES_PER_QUESTION = 6;
+
+/* ============================ STATE ============================ */
+var state = {
+  subject: null,
+  subjects: [],
+  panel: "learn",
+  objective: null,
+  chat: [],
+  loading: false,
+  error: null,
+  examSession: null, // { paperDocId, questions, current, answers, timerSeconds, startedAt }
+  panelData: { learn: null, practice: null, review: null, progress: null, library: null, exam: null }
+};
+var examTimerHandle = null;
+
+/* ============================ DOM HELPERS ============================ */
+function $(sel) { return document.querySelector(sel); }
+function el(tag, attrs, children) {
+  var node = document.createElement(tag);
+  attrs = attrs || {};
+  Object.keys(attrs).forEach(function (k) {
+    if (k === "class") node.className = attrs[k];
+    else if (k === "html") node.innerHTML = attrs[k];
+    else if (k === "text") node.textContent = attrs[k];
+    else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") node.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] === true) node.setAttribute(k, "");
+    else if (attrs[k] !== false && attrs[k] != null) node.setAttribute(k, attrs[k]);
+  });
+  (children || []).forEach(function (c) {
+    if (c == null) return;
+    node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  });
+  return node;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function escapeHtml(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+function truncate(s, n) { s = s == null ? "" : String(s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+/* ============================ API ============================ */
+function apiGet(path) {
+  return fetch(API + path).then(function (r) {
+    if (!r.ok) throw new Error("GET " + path + " -> " + r.status);
+    return r.json();
+  });
+}
+function apiPost(path, body) {
+  return fetch(API + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  }).then(function (r) {
+    return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
+  });
+}
+
+/* ============================ URL STATE ============================ */
+function initials(id) { return String(id).split("_").map(function (w) { return w.charAt(0).toUpperCase(); }).join(""); }
+function resolveSubjectParam(param) {
+  if (!param) return null;
+  var exact = state.subjects.filter(function (s) { return s.subject_id === param; });
+  if (exact.length) return exact[0].subject_id;
+  var byInit = state.subjects.filter(function (s) { return initials(s.subject_id).toLowerCase() === param.toLowerCase(); });
+  return byInit.length === 1 ? byInit[0].subject_id : null;
+}
+function syncUrl() {
+  var p = new URLSearchParams();
+  if (state.subject) p.set("subject", state.subject);
+  if (state.panel) p.set("panel", state.panel);
+  if (state.objective) p.set("objective", state.objective);
+  var qs = p.toString();
+  history.replaceState({ subject: state.subject, panel: state.panel, objective: state.objective },
+    "", qs ? "?" + qs : location.pathname);
+}
+function restoreFromUrl() {
+  var p = new URLSearchParams(location.search);
+  var subj = resolveSubjectParam(p.get("subject"));
+  if (subj) state.subject = subj;
+  var panel = p.get("panel");
+  if (panel && PANELS.some(function (x) { return x.id === panel; })) state.panel = panel;
+  var obj = p.get("objective");
+  if (obj) state.objective = obj;
+}
+
+/* ============================ NAV RAIL ============================ */
+function navEnabled(panelId) {
+  if (!state.examSession) return true;
+  return EXAM_LOCKED_PANELS.indexOf(panelId) === -1; // Practice + Exam stay open mid-exam
+}
+function renderNav() {
+  var nav = $("#navRail");
+  clear(nav);
+  PANELS.forEach(function (p) {
+    var enabled = navEnabled(p.id);
+    nav.appendChild(el("button", {
+      class: "nav-btn",
+      type: "button",
+      "aria-current": state.panel === p.id ? "true" : "false",
+      disabled: !enabled,
+      title: enabled ? p.label : p.label + " (locked during exam)",
+      onclick: function () { if (enabled) setPanel(p.id); }
+    }, [
+      el("span", { class: "nav-icon", "aria-hidden": "true", text: p.icon }),
+      el("span", { class: "nav-label", text: p.label })
+    ]));
+  });
+}
+
+/* ============================ SUBJECT / PANEL / OBJECTIVE ============================ */
+function setSubject(id) {
+  state.subject = id || null;
+  state.objective = null;
+  state.panelData = { learn: null, practice: null, review: null, progress: null, library: null, exam: null };
+  updateObjectiveBadge();
+  syncUrl();
+  renderPanel(state.panel);
+}
+function setPanel(name) {
+  if (state.examSession && !navEnabled(name)) { showToast("That panel is locked during your exam.", 2000); return; }
+  state.panel = name;
+  $("#app").setAttribute("data-panel", name);
+  $("#panelTitle").textContent = (PANELS.filter(function (p) { return p.id === name; })[0] || {}).label || name;
+  renderNav();
+  syncUrl();
+  renderPanel(name);
+  if (window.matchMedia("(max-width: 767px)").matches) document.body.classList.add("panel-open");
+}
+function setObjective(id) {
+  state.objective = id || null;
+  updateObjectiveBadge();
+  syncUrl();
+}
+function updateObjectiveBadge() {
+  var b = $("#objectiveBadge");
+  if (state.objective) {
+    b.hidden = false;
+    clear(b);
+    b.appendChild(document.createTextNode(state.objective + " "));
+    b.appendChild(el("span", { class: "x", "aria-hidden": "true", text: "✕" }));
+  } else { b.hidden = true; }
+}
+
+/* ============================ LOADING / TOAST ============================ */
+function showLoading(panel) {
+  var host = $("#panelContent");
+  clear(host);
+  for (var i = 0; i < 5; i++) host.appendChild(el("div", { class: "skeleton " + (i % 2 ? "w70" : "") }));
+  host.appendChild(el("div", { class: "skeleton tall" }));
+}
+function hideLoading() { /* content replaced by render; nothing persistent to remove */ }
+function showToast(text, duration) {
+  var host = $("#toastHost");
+  var t = el("div", { class: "toast", text: text });
+  host.appendChild(t);
+  setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, duration || 2000);
+}
+function panelError(message, retryFn) {
+  var host = $("#panelContent");
+  clear(host);
+  host.appendChild(el("div", { class: "center-state" }, [
+    el("div", { class: "big", text: "⚠️" }),
+    el("p", { text: message }),
+    el("button", { class: "btn-secondary", type: "button", text: "Retry", onclick: retryFn })
+  ]));
+}
+
+/* ============================ PANEL DISPATCH ============================ */
+function renderPanel(panel) {
+  $("#panelTitle").textContent = (PANELS.filter(function (p) { return p.id === panel; })[0] || {}).label || panel;
+  if (!state.subject && panel !== "exam") {
+    var host = $("#panelContent"); clear(host);
+    host.appendChild(el("div", { class: "center-state" }, [
+      el("div", { class: "big", text: "↑" }),
+      el("p", { text: "Choose a subject above to begin." }),
+      el("div", { class: "arrow-hint", text: "Use the subject menu in the top bar." })
+    ]));
+    return;
+  }
+  if (panel === "learn") return renderLearnPanel();
+  if (panel === "practice") return renderPracticePanel();
+  if (panel === "review") return renderReviewPanel();
+  if (panel === "progress") return renderProgressPanel();
+  if (panel === "library") return renderLibraryPanel();
+  if (panel === "exam") return renderExamPanel();
+}
+function loadPanelData(panel) {
+  // Returns a promise that resolves with the data (cached after first load).
+  if (!state.subject) return Promise.resolve(null);
+  if (state.panelData[panel]) return Promise.resolve(state.panelData[panel]);
+  var path = null;
+  if (panel === "learn" || panel === "library") path = "/api/syllabus/" + state.subject;
+  else if (panel === "practice" || panel === "exam") path = "/api/past-papers/" + state.subject;
+  else if (panel === "review") path = "/api/due/" + state.subject;
+  else if (panel === "progress") path = "/api/progress/" + state.subject;
+  if (!path) return Promise.resolve(null);
+  return apiGet(path).then(function (data) {
+    if (panel === "learn" || panel === "library") { state.panelData.learn = data; state.panelData.library = data; }
+    else state.panelData[panel] = data;
+    return data;
+  });
+}
+
+/* ============================ LEARN PANEL ============================ */
+function renderLearnPanel() {
+  if (!state.panelData.learn) {
+    showLoading("learn");
+    loadPanelData("learn").then(function () { renderLearnPanel(); })
+      .catch(function () { panelError("Couldn't load the syllabus. Is the study system running?", renderLearnPanel); });
+    return;
+  }
+  var data = state.panelData.learn;
+  var host = $("#panelContent"); clear(host);
+  if (!data.sections || !data.sections.length) {
+    host.appendChild(el("div", { class: "center-state" }, [el("p", { text: "No syllabus loaded for this subject yet." })]));
+    return;
+  }
+  data.sections.forEach(function (sec) {
+    host.appendChild(buildSection(sec, false));
+  });
+}
+function buildSection(sec, expanded) {
+  var body = el("div", { class: "section-body" });
+  sec.objectives.forEach(function (o) { body.appendChild(buildObjectiveRow(o)); });
+  var wrap = el("div", { class: "section" + (expanded ? " open" : "") }, [
+    el("button", { class: "section-head", type: "button", onclick: function () {
+      var open = wrap.classList.contains("open");
+      // accordion: close siblings (Learn only; Library passes expanded=true and skips this)
+      if (!expanded) {
+        Array.prototype.forEach.call(document.querySelectorAll(".section.open"), function (s) { if (s !== wrap) s.classList.remove("open"); });
+      }
+      wrap.classList.toggle("open", !open);
+    } }, [
+      el("span", { text: (sec.section_num ? sec.section_num + ". " : "") + sec.title }),
+      el("span", { class: "muted", text: sec.objectives.length + " objectives" })
+    ]),
+    body
+  ]);
+  return wrap;
+}
+function rankStars(rank) {
+  if (rank === 2) return "⭐⭐⭐⭐";
+  if (rank === 3) return "⭐⭐⭐";
+  if (rank === 4) return "⭐⭐";
+  return "";
+}
+function buildObjectiveRow(o, opts) {
+  opts = opts || {};
+  var badges = [
+    el("span", { class: "lesson-dot" + (o.has_lesson ? " has" : ""), title: o.has_lesson ? "Lesson available" : "No lesson yet" }),
+    el("span", { text: (o.mark_point_count || 0) + " mark pts" })
+  ];
+  if (o.best_source_rank) badges.push(el("span", { class: "rank-badge", title: "Source quality", text: rankStars(o.best_source_rank) }));
+  var children = [
+    el("div", { class: "obj-top" }, [
+      el("span", { class: "obj-num", text: o.objective_num }),
+      el("span", { class: "obj-stmt", text: truncate(o.content_stmt, opts.full ? 9999 : 60) })
+    ]),
+    el("div", { class: "obj-badges" }, badges)
+  ];
+  if (opts.full) {
+    children.push(el("div", { class: "lib-meta", text:
+      (o.skill_type ? "Skill: " + o.skill_type + "  ·  " : "") +
+      "Command: " + ((o.command_words && o.command_words.join(", ")) || "—") }));
+  }
+  return el("button", {
+    class: "obj-row", type: "button", title: o.content_stmt,
+    onclick: opts.full ? null : function () { setObjective(o.objective_id); loadObjectiveLesson(o.objective_id); }
+  }, children);
+}
+function loadObjectiveLesson(objectiveId) {
+  addChat({ role: "user", kind: "text", content: "Teach me " + objectiveId });
+  state.pendingQuestion = null;
+  apiPost("/api/chat", { message: "Teach me this objective", subject_id: state.subject, route: "teach", objective_id: objectiveId })
+    .then(function (res) { receiveResponse(res.ok ? res.body : { error: "Couldn't load the lesson." }); })
+    .catch(function () { receiveResponse({ error: "Couldn't reach the study system. Is Ollama running?" }); });
+}
+
+/* ============================ PRACTICE PANEL ============================ */
+function renderPracticePanel() {
+  if (!state.panelData.practice) {
+    showLoading("practice");
+    loadPanelData("practice").then(function () { renderPracticePanel(); })
+      .catch(function () { panelError("Couldn't load past papers.", renderPracticePanel); });
+    return;
+  }
+  var papers = (state.panelData.practice && state.panelData.practice.papers) || [];
+  var host = $("#panelContent"); clear(host);
+  if (!papers.length) { host.appendChild(el("div", { class: "center-state" }, [el("p", { text: "No past papers available for this subject yet." })])); return; }
+  papers.forEach(function (p) { host.appendChild(buildPaper(p, false)); });
+}
+function buildPaper(p, examMode) {
+  var body = el("div", { class: "paper-body" });
+  var loaded = false;
+  var wrap = el("div", { class: "paper" }, [
+    el("button", { class: "paper-head", type: "button", onclick: function () {
+      wrap.classList.toggle("open");
+      if (!loaded) { loaded = true; loadPaperQuestions(p, body, examMode); }
+    } }, [
+      el("span", { text: p.paper + (p.year ? "" : "") }),
+      el("span", { class: "muted", text: p.question_count + " Q" })
+    ]),
+    body
+  ]);
+  return wrap;
+}
+function loadPaperQuestions(paper, body, examMode) {
+  clear(body);
+  body.appendChild(el("div", { class: "skeleton w70" }));
+  // We don't have a per-paper question list endpoint; derive question_nums from a
+  // lightweight call per known objective is overkill, so fetch the gradeable
+  // questions via the practice-question endpoint lazily as the student taps. Here
+  // we list question numbers by probing the paper's objectives is not available,
+  // so instead we show the objectives covered and let each map to its question.
+  // Simpler + correct: ask the questions endpoint scoped to this subject, filter by doc.
+  apiGet("/api/questions/" + state.subject).then(function (rows) {
+    clear(body);
+    var qs = rows.filter(function (r) { return r.question_id && r.question_id.indexOf("-stem") !== -1; });
+    // map this paper's questions by matching paper label
+    var mine = qs.filter(function (r) { return r.paper === paper.paper; });
+    if (!mine.length) { body.appendChild(el("p", { class: "muted", text: "No gradeable questions parsed for this paper." })); return; }
+    mine.sort(function (a, b) { return String(a.question_num).localeCompare(String(b.question_num)); });
+    mine.forEach(function (r) {
+      body.appendChild(el("button", { class: "q-row", type: "button", onclick: function () {
+        loadQuestionByDoc(paper.doc_id, r.question_num, examMode);
+      } }, [
+        el("span", { class: "q-num", text: "Q" + (r.question_num || "?") }),
+        el("span", { class: "muted", text: (r.marks || r.marks_total || 0) + " marks" })
+      ]));
+    });
+  }).catch(function () { clear(body); body.appendChild(el("p", { class: "muted", text: "Couldn't load questions." })); });
+}
+function loadQuestionByDoc(docId, questionNum, examMode) {
+  apiGet("/api/practice-question/" + encodeURIComponent(docId) + "/" + encodeURIComponent(questionNum))
+    .then(function (q) {
+      setObjective(q.objective_id);
+      state.pendingQuestion = { questionId: q.question_id, objectiveId: q.objective_id, gradeable: true, marks: q.marks_total };
+      var cw = (q.command_words && q.command_words.join(", ")) || "";
+      if (!examMode) {
+        addChat({ role: "assistant", kind: "question", content: q.question_text,
+          meta: (cw ? cw + " · " : "") + (q.marks_total || 0) + " marks" });
+        showToast("Question loaded — type your answer below.", 2000);
+        $("#chatInput").focus();
+      }
+      return q;
+    })
+    .catch(function () { showToast("Couldn't load that question.", 2000); });
+}
+
+/* ============================ REVIEW PANEL ============================ */
+function renderReviewPanel() {
+  if (!state.panelData.review) {
+    showLoading("review");
+    loadPanelData("review").then(function () { renderReviewPanel(); })
+      .catch(function () { panelError("Couldn't load today's review.", renderReviewPanel); });
+    return;
+  }
+  var items = state.panelData.review || [];
+  var host = $("#panelContent"); clear(host);
+  if (!items.length) {
+    host.appendChild(el("div", { class: "center-state" }, [
+      el("div", { class: "big", text: "📅" }),
+      el("p", { text: "All caught up for today! Come back tomorrow." })
+    ]));
+    return;
+  }
+  items.slice().sort(function (a, b) { return (a.leitner_box || 1) - (b.leitner_box || 1); }).forEach(function (it) {
+    host.appendChild(el("button", { class: "review-item", type: "button", onclick: function () { reviewObjective(it.objective_id); } }, [
+      el("div", {}, [
+        el("span", { class: "box-badge", text: "Box " + (it.leitner_box || 1) }),
+        el("span", { text: truncate(it.content_stmt || it.objective_id, 60) })
+      ]),
+      it.score_pct != null ? el("div", { class: "muted", text: "Last score: " + it.score_pct + "%" }) : null
+    ]));
+  });
+}
+function reviewObjective(objectiveId) {
+  setObjective(objectiveId);
+  setPanel("learn");
+  loadObjectiveLesson(objectiveId);
+}
+
+/* ============================ PROGRESS PANEL ============================ */
+function heatColor(score) {
+  if (score == null) return "var(--heat-null)";
+  if (score < 40) return "var(--heat-low)";
+  if (score < 70) return "var(--heat-mid)";
+  if (score < 90) return "var(--heat-high)";
+  return "var(--heat-top)";
+}
+function renderProgressPanel() {
+  if (!state.panelData.progress) {
+    showLoading("progress");
+    loadPanelData("progress").then(function () { renderProgressPanel(); })
+      .catch(function () { panelError("Couldn't load progress.", renderProgressPanel); });
+    return;
+  }
+  var objs = (state.panelData.progress && state.panelData.progress.objectives) || [];
+  var host = $("#panelContent"); clear(host);
+  if (!objs.length) { host.appendChild(el("div", { class: "center-state" }, [el("p", { text: "No objectives to chart yet." })])); return; }
+  var grid = el("div", { class: "heatmap" });
+  objs.forEach(function (o) {
+    var label = o.content_stmt || o.objective_id;
+    var days = o.next_review ? daysUntil(o.next_review) : null;
+    var tip = label + "\nLast score: " + (o.latest_score_pct == null ? "—" : o.latest_score_pct + "%") +
+      "\nLeitner box: " + (o.leitner_box == null ? "—" : o.leitner_box) +
+      "\nNext review: " + (days == null ? "—" : (days <= 0 ? "due" : days + " day(s)")) +
+      "\nFlags: " + (o.feedback_negative || 0) + "👎 " + (o.feedback_confused || 0) + "🤔";
+    var cell = el("button", {
+      class: "heat-cell", type: "button", title: tip,
+      "aria-label": o.objective_num + " " + label + ", score " + (o.latest_score_pct == null ? "none" : o.latest_score_pct + "%"),
+      text: o.objective_num
+    });
+    cell.style.background = heatColor(o.latest_score_pct);
+    cell.addEventListener("click", function () { setObjective(o.objective_id); setPanel("learn"); loadObjectiveLesson(o.objective_id); });
+    grid.appendChild(cell);
+  });
+  host.appendChild(grid);
+}
+function daysUntil(iso) {
+  var d = new Date(iso + (iso.indexOf("T") === -1 ? "T00:00:00" : ""));
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
+}
+
+/* ============================ LIBRARY PANEL ============================ */
+function renderLibraryPanel() {
+  if (!state.panelData.library) {
+    showLoading("library");
+    loadPanelData("library").then(function () { renderLibraryPanel(); })
+      .catch(function () { panelError("Couldn't load the library.", renderLibraryPanel); });
+    return;
+  }
+  var data = state.panelData.library;
+  var host = $("#panelContent"); clear(host);
+  var search = el("input", { id: "librarySearch", type: "search", placeholder: "Filter objectives…", "aria-label": "Filter objectives" });
+  host.appendChild(search);
+  var listHost = el("div", {});
+  host.appendChild(listHost);
+  function paint(filter) {
+    clear(listHost);
+    var f = (filter || "").toLowerCase();
+    var any = false;
+    (data.sections || []).forEach(function (sec) {
+      var matches = sec.objectives.filter(function (o) { return !f || (o.content_stmt || "").toLowerCase().indexOf(f) !== -1 || (o.objective_num || "").toLowerCase().indexOf(f) !== -1; });
+      if (!matches.length) return;
+      any = true;
+      var body = el("div", { class: "section-body" });
+      matches.forEach(function (o) { body.appendChild(buildObjectiveRow(o, { full: true })); });
+      var wrap = el("div", { class: "section open" }, [
+        el("button", { class: "section-head", type: "button", onclick: function () { wrap.classList.toggle("open"); } }, [
+          el("span", { text: (sec.section_num ? sec.section_num + ". " : "") + sec.title }),
+          el("span", { class: "muted", text: matches.length + " objectives" })
+        ]),
+        body
+      ]);
+      listHost.appendChild(wrap);
+    });
+    if (!any) listHost.appendChild(el("p", { class: "muted", text: "No objectives match “" + filter + "”." }));
+  }
+  search.addEventListener("input", function () { paint(search.value); });
+  paint("");
+}
+
+/* ============================ EXAM PANEL ============================ */
+function renderExamPanel() {
+  var host = $("#panelContent"); clear(host);
+  if (state.examSession) { renderExamInProgress(host); return; }
+  // empty state: list of papers to start from
+  host.appendChild(el("p", { class: "center-state", text: "Choose a past paper to start a timed exam attempt." }));
+  if (!state.subject) { host.appendChild(el("p", { class: "muted", text: "Select a subject first." })); return; }
+  if (!state.panelData.exam) {
+    var sk = el("div", {}); for (var i = 0; i < 3; i++) sk.appendChild(el("div", { class: "skeleton" })); host.appendChild(sk);
+    loadPanelData("exam").then(function () { renderExamPanel(); }).catch(function () { panelError("Couldn't load papers.", renderExamPanel); });
+    return;
+  }
+  var papers = (state.panelData.exam && state.panelData.exam.papers) || [];
+  if (!papers.length) { host.appendChild(el("p", { class: "muted", text: "No past papers available to sit." })); return; }
+  papers.forEach(function (p) {
+    host.appendChild(el("button", { class: "review-item", type: "button", onclick: function () { confirmStartExam(p); } }, [
+      el("div", {}, [el("strong", { text: p.paper })]),
+      el("div", { class: "muted", text: p.question_count + " questions · ~" + (p.question_count * MINUTES_PER_QUESTION) + " min" })
+    ]));
+  });
+}
+function confirmStartExam(paper) {
+  var mins = paper.question_count * MINUTES_PER_QUESTION;
+  openModal("Start a timed attempt?",
+    "This starts a timed attempt on " + paper.paper + ". Recommended time: " + mins +
+    " minutes. Hints, lessons, and recall questions are disabled until you submit.",
+    "Start", function () { closeModal(); startExam(paper.doc_id); });
+}
+function startExam(paperDocId) {
+  var paper = ((state.panelData.exam && state.panelData.exam.papers) || []).filter(function (p) { return p.doc_id === paperDocId; })[0];
+  if (!paper) { showToast("Paper not found.", 2000); return; }
+  // Load every gradeable question for this paper, then open the session.
+  showToast("Loading exam…", 1500);
+  apiGet("/api/questions/" + state.subject).then(function (rows) {
+    var mine = rows.filter(function (r) { return r.paper === paper.paper && r.question_id && r.question_id.indexOf("-stem") !== -1; });
+    mine.sort(function (a, b) { return String(a.question_num).localeCompare(String(b.question_num)); });
+    if (!mine.length) { showToast("This paper has no gradeable questions.", 2500); return; }
+    var startedAt = readExamStart(paperDocId);
+    state.examSession = {
+      paperDocId: paperDocId,
+      paperLabel: paper.paper,
+      questions: mine.map(function (r) { return { questionId: r.question_id, questionNum: r.question_num, objectiveId: r.objective_id, text: r.question_text || "", marks: r.marks || r.marks_total || 0 }; }),
+      current: 0,
+      answers: {},
+      timerSeconds: mine.length * MINUTES_PER_QUESTION * 60,
+      startedAt: startedAt
+    };
+    sessionStorage.setItem("examStart_" + paperDocId, String(startedAt));
+    sessionStorage.setItem("examDoc", paperDocId);
+    setPanel("exam");
+    startExamTimer();
+    renderExamPanel();
+    renderChat();
+  }).catch(function () { showToast("Couldn't load the exam.", 2500); });
+}
+function readExamStart(paperDocId) {
+  var saved = sessionStorage.getItem("examStart_" + paperDocId);
+  return saved ? parseInt(saved, 10) : Date.now();
+}
+function startExamTimer() {
+  if (examTimerHandle) clearInterval(examTimerHandle);
+  examTimerHandle = setInterval(tickExamTimer, 1000);
+  tickExamTimer();
+}
+function tickExamTimer() {
+  if (!state.examSession) { if (examTimerHandle) clearInterval(examTimerHandle); return; }
+  var elapsed = Math.floor((Date.now() - state.examSession.startedAt) / 1000);
+  var remaining = state.examSession.timerSeconds - elapsed;
+  var timerEl = $("#examTimer");
+  if (remaining <= 0) {
+    timerEl.textContent = "00:00";
+    clearInterval(examTimerHandle); examTimerHandle = null;
+    showToast("Time up — your attempt has been submitted.", 3000);
+    submitExam(true);
+    return;
+  }
+  timerEl.hidden = false;
+  var m = Math.floor(remaining / 60), s = remaining % 60;
+  timerEl.textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+}
+function renderExamInProgress(host) {
+  var sess = state.examSession;
+  clear(host);
+  host.appendChild(el("p", { class: "muted", text: sess.paperLabel }));
+  var list = el("div", { class: "exam-q-list" });
+  sess.questions.forEach(function (q, i) {
+    var answered = (sess.answers[q.questionId] || "").trim().length > 0;
+    list.appendChild(el("button", { class: "exam-q-btn", type: "button", "aria-current": i === sess.current ? "true" : "false", onclick: function () { sess.current = i; renderExamPanel(); renderChat(); } }, [
+      el("span", { text: "Q" + (q.questionNum || (i + 1)) }),
+      el("span", { class: "ans-mark" + (answered ? " done" : ""), text: answered ? "answered" : "—" })
+    ]));
+  });
+  host.appendChild(list);
+  host.appendChild(el("button", { class: "btn-primary", type: "button", style: "margin-top:var(--space-4);width:100%;", onclick: confirmSubmitExam, text: "Submit attempt" }));
+}
+function confirmSubmitExam() {
+  openModal("Submit your attempt?", "You cannot go back to change answers after submitting.",
+    "Submit", function () { closeModal(); submitExam(false); });
+}
+function submitExam(auto) {
+  var sess = state.examSession;
+  if (!sess) return;
+  if (examTimerHandle) { clearInterval(examTimerHandle); examTimerHandle = null; }
+  // capture any in-progress textarea answer
+  captureExamAnswer();
+  var host = $("#chatScroll"); clear(host);
+  host.appendChild(el("div", { class: "msg assistant" }, [el("div", { class: "msg-bubble", text: "Grading your attempt…" })]));
+  var elapsed = Math.floor((Date.now() - sess.startedAt) / 1000);
+  var chain = Promise.resolve();
+  var results = [];
+  sess.questions.forEach(function (q) {
+    chain = chain.then(function () {
+      var ans = (sess.answers[q.questionId] || "");
+      return apiPost("/api/chat", { message: ans, subject_id: state.subject, route: "grade", question_id: q.questionId })
+        .then(function (res) { results.push({ q: q, data: res.body }); })
+        .catch(function () { results.push({ q: q, data: { error: "grading failed" } }); });
+    });
+  });
+  chain.then(function () {
+    state.examSession = null;
+    sessionStorage.removeItem("examStart_" + sess.paperDocId);
+    sessionStorage.removeItem("examDoc");
+    $("#examTimer").hidden = true;
+    $("#examBanner").hidden = true;
+    renderNav();
+    renderExamResults(results, elapsed, auto);
+  });
+}
+function renderExamResults(results, elapsedSeconds, auto) {
+  var host = $("#chatScroll"); clear(host);
+  var awarded = 0, total = 0;
+  results.forEach(function (r) { if (r.data && typeof r.data.awarded === "number") { awarded += r.data.awarded; total += r.data.total || 0; } });
+  var pct = total ? Math.round(100 * awarded / total) : 0;
+  var m = Math.floor(elapsedSeconds / 60), s = elapsedSeconds % 60;
+  var summary = el("div", { class: "grade-card" }, [
+    el("div", { class: "grade-score", text: awarded + " / " + total + " marks (" + pct + "%)" }),
+    el("div", { class: "muted", text: "Time taken: " + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s + (auto ? " (auto-submitted at time-up)" : "") })
+  ]);
+  host.appendChild(el("div", { class: "msg assistant" }, [summary]));
+  results.forEach(function (r) {
+    var head = el("div", { class: "msg-meta", text: "Q" + (r.q.questionNum || "") + " · " + r.q.objectiveId });
+    var card = (r.data && typeof r.data.score_pct === "number") ? renderGradingResult(r.data, r.q.objectiveId) : el("div", { class: "msg-bubble", text: (r.data && r.data.error) || "Not graded." });
+    host.appendChild(el("div", { class: "msg assistant" }, [head, card]));
+  });
+  showToast("Exam graded.", 2500);
+}
+function captureExamAnswer() {
+  if (!state.examSession) return;
+  var ta = document.getElementById("examAnswer");
+  if (ta) state.examSession.answers[state.examSession.questions[state.examSession.current].questionId] = ta.value;
+}
+
+/* ============================ CHAT ============================ */
+function addChat(msg) { state.chat.push(msg); renderChat(); }
+function renderChat() {
+  var host = $("#chatScroll");
+  clear(host);
+  // Exam mode: chat hidden, show only the current question + answer area.
+  if (state.examSession) { renderExamQuestionArea(host); return; }
+  if (!state.chat.length) {
+    host.appendChild(el("div", { class: "center-state" }, [
+      el("div", { class: "big", text: "📖" }),
+      el("p", { text: state.subject ? "Pick an objective in Learn, or a question in Practice, to begin." : "Choose a subject above to begin." })
+    ]));
+    return;
+  }
+  state.chat.forEach(function (m) { host.appendChild(renderMessage(m)); });
+  host.scrollTop = host.scrollHeight;
+}
+function renderExamQuestionArea(host) {
+  var sess = state.examSession;
+  var q = sess.questions[sess.current];
+  captureExamAnswer.lastDom = null;
+  var ta = el("textarea", { id: "examAnswer", rows: "8", style: "width:100%;font-family:inherit;font-size:15px;padding:var(--space-3);border:1px solid var(--color-border-strong);border-radius:var(--radius);background:var(--color-surface);color:var(--color-text-primary);", "aria-label": "Your answer" });
+  ta.value = sess.answers[q.questionId] || "";
+  ta.addEventListener("input", function () { sess.answers[q.questionId] = ta.value; });
+  host.appendChild(el("div", { class: "msg assistant", style: "max-width:100%;" }, [
+    el("div", { class: "msg-meta", text: "Exam · Q" + (q.questionNum || (sess.current + 1)) + " · " + (q.marks || 0) + " marks" }),
+    el("div", { class: "msg-bubble", text: q.text || "(question text unavailable)" })
+  ]));
+  host.appendChild(el("div", { style: "margin-top:var(--space-3);" }, [ta]));
+  host.appendChild(el("div", { style: "display:flex;gap:var(--space-3);margin-top:var(--space-3);" }, [
+    el("button", { class: "btn-secondary", type: "button", text: "Save & Next", onclick: function () {
+      sess.answers[q.questionId] = ta.value;
+      sess.current = (sess.current + 1) % sess.questions.length;
+      renderExamPanel(); renderChat();
+    } })
+  ]));
+}
+function renderMessage(m) {
+  if (m.kind === "grading") {
+    return el("div", { class: "msg assistant", style: "max-width:100%;" }, [renderGradingResult(m.data, m.objectiveId)]);
+  }
+  if (m.kind === "lesson") {
+    var wrap = el("div", { class: "msg assistant", style: "max-width:100%;" }, [renderLesson(m)]);
+    return wrap;
+  }
+  if (m.kind === "question") {
+    return el("div", { class: "msg assistant", style: "max-width:100%;" }, [
+      m.meta ? el("div", { class: "msg-meta", text: m.meta }) : null,
+      el("div", { class: "msg-bubble", text: m.content })
+    ]);
+  }
+  if (m.kind === "selfcheck") {
+    return el("div", { class: "msg assistant", style: "max-width:100%;" }, [
+      el("div", { class: "msg-bubble" }, [
+        el("strong", { text: "Self-check" }),
+        el("p", { class: "muted", style: "margin:var(--space-2) 0 0;", text: "Compare your answer with the lesson above. (Automated marking runs in Practice and Exam, where official mark schemes exist.)" })
+      ]),
+      buildFeedbackRow(m.objectiveId, "recall_question")
+    ]);
+  }
+  if (m.kind === "error") {
+    return el("div", { class: "msg error" }, [el("div", { class: "msg-bubble", text: m.content })]);
+  }
+  // plain text
+  return el("div", { class: "msg " + (m.role === "user" ? "user" : "assistant") }, [el("div", { class: "msg-bubble", text: m.content })]);
+}
+function renderLesson(m) {
+  var frag = el("div", { class: "msg-bubble" });
+  frag.appendChild(el("div", { html: escapeHtml(m.content).replace(/\n/g, "<br>") }));
+  if (m.keyTerms && m.keyTerms.length) {
+    var sec = el("div", { class: "lesson-section" }, [el("h4", { text: "Key terms" })]);
+    m.keyTerms.forEach(function (t) { sec.appendChild(el("div", { class: "key-term", html: "<b>" + escapeHtml(t.term) + ":</b> " + escapeHtml(t.definition) })); });
+    frag.appendChild(sec);
+  }
+  if (m.workedExamples && m.workedExamples.length) {
+    var ex = el("div", { class: "lesson-section" }, [el("h4", { text: "Worked example" })]);
+    m.workedExamples.forEach(function (w) { ex.appendChild(el("div", { class: "key-term", text: w })); });
+    frag.appendChild(ex);
+  }
+  if (m.commonMistakes) frag.appendChild(el("div", { class: "lesson-section" }, [el("h4", { text: "Common mistakes" }), el("div", { class: "key-term", text: m.commonMistakes })]));
+  var container = el("div", {}, [frag]);
+  if (m.recall && m.recall.length) container.appendChild(renderRecallPills(m.recall, m.objectiveId));
+  container.appendChild(buildFeedbackRow(m.objectiveId, "lesson"));
+  return container;
+}
+function renderRecallPills(questions, objectiveId) {
+  var wrap = el("div", { class: "recall-wrap" }, [el("div", { class: "recall-label", text: "Active-recall — tap one to self-check" })]);
+  questions.forEach(function (q) {
+    wrap.appendChild(el("button", { class: "recall-pill", type: "button", text: q, onclick: function () { askRecall(q, objectiveId); } }));
+  });
+  return wrap;
+}
+function askRecall(question, objectiveId) {
+  addChat({ role: "assistant", kind: "question", content: question, meta: "Recall question" });
+  state.pendingQuestion = { gradeable: false, objectiveId: objectiveId };
+  $("#chatInput").focus();
+}
+
+/* ============================ GRADING RENDER ============================ */
+function confidenceBand(c) {
+  c = (typeof c === "number") ? c : 50;
+  if (c >= 85) return { bg: "var(--color-success)", fg: "#fff", text: "Strong grading match" };
+  if (c >= 70) return { bg: "var(--color-accent)", fg: "#fff", text: "Reasonable automated mark" };
+  if (c >= 50) return { bg: "var(--color-warn)", fg: "#1c1917", text: "Needs teacher check" };
+  return { bg: "var(--color-danger)", fg: "#fff", text: "Practice estimate — not official marking" };
+}
+function renderGradingResult(data, objectiveId) {
+  if (data.error) {
+    if (data.error === "mark_points pending review") {
+      return el("div", { class: "grade-card" }, [el("div", { class: "grade-pending", text: "This objective is still being prepared (its mark points are awaiting review). Try another question for now." })]);
+    }
+    return el("div", { class: "grade-card" }, [el("div", { class: "msg-bubble", text: "Couldn't grade this answer: " + data.error })]);
+  }
+  var awarded = data.awarded || 0, total = data.total || 0, pct = data.score_pct || 0;
+  var card = el("div", { class: "grade-card" });
+  if (data.pending_review) card.appendChild(el("div", { class: "grade-pending", text: "Some mark points for this objective are still being reviewed. Treat this grading as practice only." }));
+  card.appendChild(el("div", { class: "grade-score", text: awarded + " / " + total + " marks (" + pct + "%)" }));
+  var band = confidenceBand(data.overall_confidence);
+  var pill = el("div", { class: "grade-band", text: band.text }); pill.style.background = band.bg; pill.style.color = band.fg;
+  card.appendChild(pill);
+  if (data.source_rank_label) card.appendChild(el("div", { class: "grade-source", text: "Graded against: " + data.source_rank_label }));
+  (data.points || []).forEach(function (p) {
+    var awd = !!p.awarded;
+    var row = el("div", { class: "mark-point " + (awd ? "awarded" : "missed") }, [
+      el("span", { class: "mp-icon", text: awd ? "✓" : "✗" }),
+      el("div", {}, [
+        el("div", { text: p.point_text || p.mark_point_id || "" }),
+        (awd && p.evidence) ? el("div", { class: "mp-evidence", text: p.evidence }) : null,
+        (p.evidence && /\[auto-downgraded/.test(p.evidence)) ? el("div", { class: "mp-note", text: "Auto-downgraded: evidence too thin." }) : null
+      ])
+    ]);
+    card.appendChild(row);
+  });
+  if (data.review_flags && data.review_flags.length) {
+    var det = el("details", { class: "review-flags" }, [el("summary", { text: data.review_flags.length + " point(s) flagged for review" })]);
+    var ul = el("ul", {});
+    var byId = {}; (data.points || []).forEach(function (p) { byId[p.mark_point_id] = p; });
+    data.review_flags.forEach(function (id) { ul.appendChild(el("li", { text: id + (byId[id] && byId[id].evidence ? " — " + byId[id].evidence : "") })); });
+    det.appendChild(ul); card.appendChild(det);
+  }
+  var container = el("div", {}, [card, buildFeedbackRow(objectiveId || data.objective_id, "grading")]);
+  return container;
+}
+
+/* ============================ FEEDBACK ============================ */
+function buildFeedbackRow(objectiveId, feedbackType) {
+  var row = el("div", { class: "feedback-row" }, [el("span", { class: "fb-label", text: "Was this helpful?" })]);
+  var defs = [{ s: "positive", e: "👍" }, { s: "negative", e: "👎" }, { s: "confused", e: "🤔" }];
+  defs.forEach(function (d) {
+    row.appendChild(el("button", { class: "fb-btn", type: "button", "aria-label": d.s, text: d.e, onclick: function (ev) {
+      var btn = ev.currentTarget;
+      handleFeedback(objectiveId, d.s, feedbackType);
+      Array.prototype.forEach.call(row.querySelectorAll(".fb-btn"), function (b) { b.disabled = true; b.classList.toggle("chosen", b === btn); });
+      row.appendChild(el("span", { class: "fb-done", text: "Thanks, logged." }));
+    } }));
+  });
+  return row;
+}
+function handleFeedback(objectiveId, sentiment, feedbackType) {
+  if (!objectiveId || !state.subject) { showToast("Feedback needs an objective in context.", 2000); return; }
+  apiPost("/api/feedback", { objective_id: objectiveId, subject_id: state.subject, feedback_type: feedbackType, sentiment: sentiment })
+    .then(function () { showToast("Thanks, logged.", 2000); })
+    .catch(function () { /* best-effort telemetry */ });
+}
+
+/* ============================ SEND / RECEIVE ============================ */
+function onSend() {
+  var input = $("#chatInput");
+  var text = input.value.trim();
+  if (!text) return;
+  var pq = state.pendingQuestion;
+  if (pq && pq.gradeable) { sendMessage(text, "grade"); }
+  else if (pq && !pq.gradeable) { sendMessage(text, "selfcheck"); }
+  else { showToast("Open a lesson (Learn) or a question (Practice) first.", 2500); return; }
+  input.value = ""; autoGrowInput();
+}
+function sendMessage(text, route) {
+  addChat({ role: "user", kind: "text", content: text });
+  var pq = state.pendingQuestion || {};
+  if (route === "grade") {
+    addChat({ role: "assistant", kind: "text", content: "Grading…" });
+    apiPost("/api/chat", { message: text, subject_id: state.subject, route: "grade", question_id: pq.questionId })
+      .then(function (res) { state.chat.pop(); receiveResponse(res.ok ? res.body : { error: "Grading failed (" + res.status + ")." }); })
+      .catch(function () { state.chat.pop(); receiveResponse({ error: "Couldn't reach the study system. Is Ollama running?" }); });
+  } else if (route === "selfcheck") {
+    addChat({ role: "assistant", kind: "selfcheck", objectiveId: pq.objectiveId });
+    state.pendingQuestion = null;
+  } else if (route === "teach") {
+    apiPost("/api/chat", { message: text, subject_id: state.subject, route: "teach", objective_id: state.objective })
+      .then(function (res) { receiveResponse(res.ok ? res.body : { error: "Couldn't load the lesson." }); })
+      .catch(function () { receiveResponse({ error: "Couldn't reach the study system." }); });
+  }
+}
+function receiveResponse(data) {
+  if (!data || data.error) {
+    var msg = (data && data.error) ? (typeof data.error === "string" ? data.error : "Something went wrong.") : "Empty response.";
+    if (data && (data.score_pct != null || data.error === "mark_points pending review")) { addChat({ role: "assistant", kind: "grading", data: data, objectiveId: data.objective_id }); return; }
+    addChat({ role: "assistant", kind: "error", content: msg });
+    return;
+  }
+  if (data.score_pct != null || (data.points && data.route !== "teach")) {
+    addChat({ role: "assistant", kind: "grading", data: data, objectiveId: data.objective_id });
+    state.pendingQuestion = null;
+    return;
+  }
+  if (data.lesson_text != null || data.lesson != null) {
+    addChat({
+      role: "assistant", kind: "lesson",
+      content: data.lesson_text || data.lesson || "",
+      recall: data.recall_questions || [],
+      keyTerms: data.key_terms || [],
+      workedExamples: data.worked_examples || [],
+      commonMistakes: data.common_mistakes || "",
+      objectiveId: data.objective_id
+    });
+    if (data.lesson_source === "runtime") showToast("Live-generated lesson (no canonical version yet).", 2500);
+    return;
+  }
+  addChat({ role: "assistant", kind: "text", content: JSON.stringify(data) });
+}
+
+/* ============================ MODAL ============================ */
+function openModal(title, body, confirmLabel, onConfirm) {
+  var host = $("#modalHost");
+  clear(host); host.hidden = false;
+  host.appendChild(el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, [
+    el("h3", { text: title }),
+    el("p", { text: body }),
+    el("div", { class: "modal-actions" }, [
+      el("button", { class: "btn-secondary", type: "button", text: "Cancel", onclick: closeModal }),
+      el("button", { class: "btn-primary", type: "button", text: confirmLabel, onclick: onConfirm })
+    ])
+  ]));
+}
+function closeModal() { var h = $("#modalHost"); h.hidden = true; clear(h); }
+
+/* ============================ INPUT ============================ */
+function autoGrowInput() {
+  var ta = $("#chatInput");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+  $("#sendBtn").disabled = !ta.value.trim() || !!state.examSession;
+}
+
+/* ============================ INIT ============================ */
+function init() {
+  renderNav();
+  // input wiring
+  var ta = $("#chatInput");
+  ta.addEventListener("input", autoGrowInput);
+  ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } });
+  $("#sendBtn").addEventListener("click", onSend);
+  $("#objectiveBadge").addEventListener("click", function () { setObjective(null); });
+  $("#settingsBtn").addEventListener("click", function () { showToast("Settings: theme follows your system. More options coming soon.", 2500); });
+  $("#panelClose").addEventListener("click", function () { document.body.classList.remove("panel-open"); });
+  $("#openPanelBtn").addEventListener("click", function () { document.body.classList.add("panel-open"); });
+  window.addEventListener("popstate", function () { restoreFromUrl(); applyState(); });
+
+  // load subjects, then restore URL + paint
+  $("#subjectSelect").innerHTML = "<option value=''>Loading…</option>";
+  apiGet("/api/subjects").then(function (subs) {
+    state.subjects = subs || [];
+    var sel = $("#subjectSelect");
+    clear(sel);
+    sel.appendChild(el("option", { value: "", text: "Choose a subject…" }));
+    state.subjects.forEach(function (s) { sel.appendChild(el("option", { value: s.subject_id, text: s.display_name })); });
+    sel.addEventListener("change", function () { setSubject(sel.value); renderChat(); });
+    restoreFromUrl();
+    // resume an in-progress exam if one was stored
+    var examDoc = sessionStorage.getItem("examDoc");
+    applyState();
+    if (examDoc && state.subject) { startExam(examDoc); }
+  }).catch(function () {
+    state.error = "subjects";
+    var host = $("#panelContent"); clear(host);
+    host.appendChild(el("div", { class: "center-state" }, [
+      el("div", { class: "big", text: "⚠️" }),
+      el("p", { text: "Couldn't reach the study system. Is Ollama running?" }),
+      el("button", { class: "btn-secondary", type: "button", text: "Retry", onclick: init })
+    ]));
+  });
+}
+function applyState() {
+  // reflect state into the controls + render the active panel & chat
+  var sel = $("#subjectSelect");
+  if (state.subject) sel.value = state.subject;
+  updateObjectiveBadge();
+  $("#app").setAttribute("data-panel", state.panel);
+  renderNav();
+  renderPanel(state.panel);
+  renderChat();
+}
+
+init();
+</script>
+</body>
+</html>

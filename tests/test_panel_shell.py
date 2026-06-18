@@ -1,7 +1,12 @@
 """
 tests/test_panel_shell.py
 =========================
-Stage 13 structural guards for the single-file panel shell (backend/static/chat.html).
+Stage 13 structural guards for the single-file panel shell.
+
+NOTE (2026-06-17): the panel shell was reverted as the live UI; chat.html is back to
+the v1 chat page. The panel shell is preserved on disk at chat_panel_shell.html.bak,
+so these structural guards now point there. They keep protecting the shell against
+truncation/stubbing in case the UI direction is revisited.
 
 These enforce the full-output-enforcement contract at test time: every required JS
 function is defined, every design token exists (with a dark-mode override), there
@@ -18,7 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-CHAT_HTML = ROOT / "backend" / "static" / "chat.html"
+# Panel shell reverted; UI returned to v1 chat.html. The shell lives at the .bak path.
+CHAT_HTML = ROOT / "backend" / "static" / "chat_panel_shell.html.bak"
 HTML = CHAT_HTML.read_text(encoding="utf-8")
 
 REQUIRED_FUNCTIONS = [
