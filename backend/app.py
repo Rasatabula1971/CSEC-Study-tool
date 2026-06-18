@@ -28,7 +28,16 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -49,6 +58,7 @@ from study_plan import get_plan_progress  # noqa: E402
 from export_progress import export_progress, fetch_progress  # noqa: E402
 from notes import classify_notes, save_notes  # noqa: E402
 from extract import detect_mime_type, extract_text  # noqa: E402
+import uploads  # noqa: E402  -- namespaced to avoid clashing with extract.extract_text
 
 logger = logging.getLogger("csec.app")
 # Ensure our startup INFO lines (Ollama / Gemini status) actually surface: the
@@ -65,6 +75,7 @@ WELCOME_HTML = STATIC_DIR / "welcome.html"
 CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 PLAN_HTML = STATIC_DIR / "study_plan.html"
+UPLOAD_HTML = STATIC_DIR / "upload.html"
 
 
 # Idempotent runtime migration: ensures tables added after a DB was first created
@@ -303,6 +314,36 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         "mark_points.source_rank",
         "ALTER TABLE mark_points ADD COLUMN source_rank INTEGER",
     )
+    # m012 (Upload session 1): the staging table for the Upload Material feature.
+    # A dropped PDF/DOCX is recorded here and its text extracted for preview; nothing
+    # is ingested yet (status stays 'staged' -- 'ingested'/'rejected' arrive in
+    # sessions 3-4). extract_status drives the pending->extracting->ready|failed
+    # state machine the UI polls on.
+    _run_migration(
+        db, "m012_upload_session_1",
+        "upload_staging table for the upload feature (session 1)",
+        """
+        CREATE TABLE IF NOT EXISTS upload_staging (
+            staging_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id      TEXT NOT NULL REFERENCES subjects(subject_id),
+            original_name   TEXT NOT NULL,
+            stored_path     TEXT NOT NULL,
+            file_type       TEXT NOT NULL CHECK (file_type IN ('pdf','docx')),
+            file_size_bytes INTEGER NOT NULL,
+            extracted_text  TEXT,
+            extract_status  TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (extract_status IN
+                              ('pending','extracting','ready','failed')),
+            extract_error   TEXT,
+            status          TEXT NOT NULL DEFAULT 'staged'
+                            CHECK (status IN ('staged','ingested','rejected')),
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_upload_staging_subject
+            ON upload_staging(subject_id, status)
+        """,
+    )
 
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
@@ -368,6 +409,37 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """
     )
     db.commit()
+
+    # Upload session 1: make sure the SSD staging tree exists for every locked
+    # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
+    # clearer error at upload time.
+    ensure_staging_dirs(db)
+
+
+def ensure_staging_dirs(db: sqlite3.Connection) -> None:
+    """Create {SSD_ROOT}/06_UPLOAD_STAGING and a subdir per locked subject.
+
+    Called from apply_runtime_migrations so the tree exists before the first
+    upload. If the SSD is not mounted (or SSD_ROOT is unset), log a warning and
+    skip -- the upload endpoint fails with a clearer message at write time.
+    """
+    ssd_root = os.getenv("SSD_ROOT")
+    if not ssd_root:
+        logger.warning("SSD_ROOT not set -- skipping upload-staging directory setup.")
+        return
+    staging_root = Path(ssd_root) / "06_UPLOAD_STAGING"
+    try:
+        staging_root.mkdir(parents=True, exist_ok=True)
+        rows = db.execute(
+            "SELECT subject_id FROM subjects WHERE syllabus_locked = 1"
+        ).fetchall()
+        for r in rows:
+            (staging_root / r["subject_id"]).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not create upload-staging dirs under %s (%s) -- uploads will "
+            "fail until the SSD is mounted.", staging_root, exc,
+        )
 
 
 @asynccontextmanager
@@ -544,6 +616,12 @@ def quiz_page() -> FileResponse:
 def plan_page() -> FileResponse:
     """Serve the standalone Study Plan page (backend/static/study_plan.html)."""
     return FileResponse(PLAN_HTML)
+
+
+@app.get("/upload")
+def upload_page() -> FileResponse:
+    """Serve the Upload Material page (backend/static/upload.html)."""
+    return FileResponse(UPLOAD_HTML)
 
 
 @app.get("/")
@@ -1264,3 +1342,128 @@ async def notes_upload(request: Request) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Upload Material (session 1: stage + extract-for-preview, no ingestion)
+# ---------------------------------------------------------------------------
+# Errors on these routes follow the {"ok": False, "error": "..."} contract; the
+# HTTP status is set via the injected Response so the body shape stays uniform
+# (the Stage 12 feedback pattern), rather than HTTPException's {"detail": ...}.
+_UPLOAD_EXT_TO_TYPE = {".pdf": "pdf", ".docx": "docx"}
+
+
+def _run_extraction(db: sqlite3.Connection, staging_id: int) -> None:
+    """Background-task wrapper around uploads.extract_text. uploads.extract_text
+    already records 'failed' on its own; this guard only catches anything that
+    escapes it so a background error never goes silently unlogged."""
+    try:
+        uploads.extract_text(staging_id, db)
+    except Exception:  # noqa: BLE001 -- background task; just log
+        logger.exception("Background extraction failed for staging_id=%s", staging_id)
+
+
+@app.post("/api/upload")
+async def upload_material(
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    subject_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict:
+    """Stage one PDF/DOCX and kick off background text extraction.
+
+    Validates the subject is locked and the extension is .pdf/.docx, caps the
+    file at 50 MB, writes it to the SSD staging area, then returns immediately
+    with the staging_id while extraction runs in the background.
+    """
+    db = request.app.state.db
+
+    if not db.execute(
+        "SELECT 1 FROM subjects WHERE subject_id = ? AND syllabus_locked = 1",
+        (subject_id,),
+    ).fetchone():
+        response.status_code = 400
+        return {"ok": False, "error": f"Subject '{subject_id}' is not a locked subject."}
+
+    ext = Path(file.filename or "").suffix.lower()
+    file_type = _UPLOAD_EXT_TO_TYPE.get(ext)
+    if file_type is None:
+        response.status_code = 400
+        return {
+            "ok": False,
+            "error": f"Unsupported file type '{ext or file.filename}'. "
+                     "Only .pdf and .docx are accepted in session 1.",
+        }
+
+    data = await file.read()
+    if not data:
+        response.status_code = 400
+        return {"ok": False, "error": "The uploaded file is empty."}
+    if len(data) > MAX_UPLOAD_BYTES:
+        response.status_code = 413
+        return {"ok": False, "error": "File is too large. Maximum 50 MB."}
+
+    try:
+        staging_id = uploads.stage_file(
+            db, subject_id, file.filename or f"upload.{file_type}", data, file_type
+        )
+    except ValueError as exc:
+        response.status_code = 400
+        return {"ok": False, "error": str(exc)}
+    except IOError as exc:
+        response.status_code = 500
+        return {"ok": False, "error": str(exc)}
+
+    background_tasks.add_task(_run_extraction, db, staging_id)
+    return {"ok": True, "staging_id": staging_id, "extract_status": "pending"}
+
+
+@app.get("/api/staging/{subject_id}")
+def staging_list(subject_id: str, request: Request) -> dict:
+    """List staged files for a subject, newest first (no full text)."""
+    items = uploads.get_staging_list(request.app.state.db, subject_id)
+    return {"ok": True, "items": items}
+
+
+@app.get("/api/staging/{subject_id}/{staging_id}")
+def staging_detail(subject_id: str, staging_id: int,
+                   request: Request, response: Response) -> dict:
+    """Full detail for one staged file, INCLUDING the extracted text."""
+    row = uploads.get_staging_detail(request.app.state.db, staging_id)
+    if row is None or row["subject_id"] != subject_id:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+    return {
+        "ok": True,
+        "staging_id": row["staging_id"],
+        "original_name": row["original_name"],
+        "file_type": row["file_type"],
+        "extract_status": row["extract_status"],
+        "extract_error": row["extract_error"],
+        "extracted_text": row["extracted_text"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+    }
+
+
+@app.delete("/api/staging/{subject_id}/{staging_id}")
+def staging_delete(subject_id: str, staging_id: int,
+                   request: Request, response: Response) -> dict:
+    """Reject / cancel: remove the staged file from the SSD and delete the row."""
+    db = request.app.state.db
+    row = uploads.get_staging_detail(db, staging_id)
+    if row is None or row["subject_id"] != subject_id:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+
+    stored = row.get("stored_path")
+    if stored:
+        try:
+            Path(stored).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not delete staged file %s: %s", stored, exc)
+
+    db.execute("DELETE FROM upload_staging WHERE staging_id = ?", (staging_id,))
+    db.commit()
+    return {"ok": True}

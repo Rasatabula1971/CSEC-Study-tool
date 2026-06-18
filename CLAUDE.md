@@ -638,3 +638,41 @@ The current stage is the first unchecked box.
 - [ ] **Stage 15** — (reserved — further pre-rollout hardening, TBD in PDR v3.2)
 - [ ] **Stage 16** (was Stage 8) — Rollout: remaining six subjects through the lock gate
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
+
+---
+
+## Upload Material feature (build-phase, 4 sessions)
+
+A `PHASE: build` content-preparation flow: drop a PDF/Word file in the browser,
+stage it on the SSD, and review its extracted text before anything is ingested.
+Separate from the older `/api/notes/*` paste-and-ingest flow (that one chunks +
+embeds immediately; this one stages for human review first).
+
+- [x] **Session 1** — Staging + PDF/DOCX text extraction (preview only) ✓ 2026-06-17
+  - `upload_staging` table via migration **m012** (`apply_runtime_migrations`,
+    version-tracked Layer 1); `extract_status` state machine
+    pending→extracting→ready|failed; `status` staged|ingested|rejected (only
+    'staged' is written in session 1). `ensure_staging_dirs()` creates
+    `{SSD_ROOT}/06_UPLOAD_STAGING/{subject_id}/` for each locked subject
+    (best-effort; warns + skips if the SSD is unmounted).
+  - `backend/uploads.py` (`PHASE: build`): `stage_file` (FK-/type-validated SSD
+    write, filename sanitised against path traversal, returns staging_id),
+    `extract_text` (PyMuPDF page-by-page with `[Page N]` / `[Page N - no text]`
+    markers; python-docx paragraphs + `[Table]…[/Table]` with ` | ` cells; 500k
+    char cap), `get_staging_list` (no full text), `get_staging_detail` (full text).
+  - Endpoints in `app.py`: `POST /api/upload` (multipart; locked-subject + .pdf/
+    .docx + 50 MB gates; `BackgroundTasks` runs extraction async; errors use the
+    `{"ok": false, "error": …}` + injected-`Response`-status pattern, not
+    HTTPException), `GET /api/staging/{subject}`, `GET /api/staging/{subject}/{id}`,
+    `DELETE /api/staging/{subject}/{id}` (removes file + row), `GET /upload`.
+  - `backend/static/upload.html` (vanilla JS, links `shared.css`): drag-and-drop,
+    sequential per-file upload, status-badge list polling every 3s while any file
+    is pending/extracting, monospace preview with 10k-char "Show all", subject
+    picker from `/api/subjects`. Unsupported drops show "Skipped: PNG not supported
+    until session 2." per file.
+  - Tests: `tests/test_uploads.py` (8) + `tests/test_upload_api.py` (8); suite 309/309.
+  - NOTE: m012 is applied to the live E: DB. Live in-browser smoke test deferred —
+    an `ingest.py` run held the DB write-lock at build time.
+- [ ] **Session 2** — OCR for image-only PDF pages / image uploads
+- [ ] **Session 3** — Gemini classification (subject + objective) at build time
+- [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)
