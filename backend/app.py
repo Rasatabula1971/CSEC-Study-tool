@@ -401,14 +401,24 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
     # Normalise question_id to the -stem convention used by ingest_solutions.py. Old
     # PDF-ingester rows stored question_id without the suffix; this makes the
     # grade-picker join work for all rows. Idempotent via the NOT LIKE guard.
-    db.execute(
-        """
-        UPDATE mark_points
-        SET    question_id = question_id || '-stem'
-        WHERE  question_id NOT LIKE '%-stem'
-        """
-    )
-    db.commit()
+    try:
+        db.execute(
+            """
+            UPDATE mark_points
+            SET    question_id = question_id || '-stem'
+            WHERE  question_id NOT LIKE '%-stem'
+            """
+        )
+        db.commit()
+    except sqlite3.OperationalError as e:
+        # Database may be locked by a concurrent ingest. The backfill
+        # is idempotent -- it will run on a future startup when the
+        # lock is released. Log and continue rather than crashing app
+        # startup.
+        logger.warning(
+            "question_id backfill skipped: %s (will retry on next startup)",
+            e,
+        )
 
     # Upload session 1: make sure the SSD staging tree exists for every locked
     # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
