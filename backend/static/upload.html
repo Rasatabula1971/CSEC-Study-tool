@@ -126,6 +126,19 @@
 
   /* ----- Classification & Review (session 3) ----- */
   .classify-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .classify-header-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+  /* Auto-accept: the distinct primary action -- larger, accent-filled, stands out from
+     the secondary "Classify all" button beside it. */
+  .btn-auto {
+    padding: var(--space-3) var(--space-5);
+    font-size: var(--text-sm); font-weight: 700;
+    background: var(--booklet-bright); color: #0b1a12; border: 1px solid var(--booklet-bright);
+    border-radius: var(--radius-md); cursor: pointer;
+    transition: filter 120ms ease, transform 80ms var(--ease-spring);
+  }
+  .btn-auto:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-auto:active:not(:disabled) { transform: translateY(1px); }
+  .btn-auto:disabled { opacity: 0.5; cursor: not-allowed; }
   .classify-status { font-size: var(--text-sm); color: var(--booklet-bright); min-height: 1.2em; margin: var(--space-2) 0; }
   .classify-toolbar { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; flex-wrap: wrap; }
   .classify-toolbar label { font-size: var(--text-xs); color: var(--paper-faint); }
@@ -229,7 +242,8 @@
     font-size: var(--text-xs); line-height: 1.7; color: var(--paper); white-space: pre-wrap; word-break: break-word; }
   .modal-actions { padding: var(--space-3) var(--space-4); border-top: var(--border);
     display: flex; gap: var(--space-2); justify-content: flex-end; }
-  .modal-text { padding: var(--space-4); color: var(--paper); font-size: var(--text-sm); line-height: 1.6; }
+  .modal-text { padding: var(--space-4); color: var(--paper); font-size: var(--text-sm);
+    line-height: 1.6; white-space: pre-wrap; }
 
   /* ----- Ingestion (session 4) ----- */
   .ingest-summary { font-size: var(--text-sm); color: var(--paper-dim); margin: var(--space-2) 0 var(--space-3); line-height: 1.7; }
@@ -315,9 +329,14 @@
       <section>
         <div class="classify-header">
           <div class="section-label">Classification &amp; Review</div>
-          <button class="btn btn-primary btn-sm" id="classifyAllBtn">
-            Classify all unclassified files
-          </button>
+          <div class="classify-header-actions">
+            <button class="btn btn-secondary btn-sm" id="classifyAllBtn">
+              Classify all unclassified files
+            </button>
+            <button class="btn btn-auto" id="autoAcceptBtn">
+              Auto-accept and ingest all
+            </button>
+          </div>
         </div>
         <div class="classify-status" id="classifyStatus" aria-live="polite"></div>
         <div class="classify-toolbar">
@@ -1295,6 +1314,76 @@ function onClassifyFilterChange() {
   renderClassifications();
 }
 
+// Files this run WOULD auto-accept: classified, unreviewed, not skipped, conf >= 70.
+const AUTO_ACCEPT_MIN_CONF = 70;
+function autoAcceptCandidates() {
+  return state.classifications.filter(c =>
+    c.classification_status === "classified" && c.classification &&
+    !c.classification.review_decision && !c.skip_classification &&
+    (c.classification.folder_confidence || 0) >= AUTO_ACCEPT_MIN_CONF).length;
+}
+
+async function autoAcceptAndIngest() {
+  if (!state.subjectId) return;
+  const n = autoAcceptCandidates();
+  if (n === 0) {
+    document.getElementById("classifyStatus").textContent =
+      "Nothing to auto-accept (no unreviewed classifications at confidence ≥ 70).";
+    return;
+  }
+  confirmModal(
+    `You are about to:\n` +
+    `  • Auto-accept ${n} unreviewed classification(s) (folder confidence ≥ 70)\n` +
+    `  • Move accepted files into their KB folders\n` +
+    `  • Run ingestion against the existing pipeline\n` +
+    `  • Flag affected lessons as stale\n\n` +
+    `Use this when uploaded material came from authoritative sources (e.g. official ` +
+    `CSEC documents) and you're trusting the source rather than reviewing each ` +
+    `classification individually.\n\n` +
+    `A backup will be taken before ingestion runs.`,
+    "Auto-accept and ingest", async () => {
+      const statusEl = document.getElementById("classifyStatus");
+      // 1. Backup first (Stage 14). Halt if it fails -- never ingest without it.
+      statusEl.textContent = "Taking backup…";
+      try {
+        const bres = await fetch("/api/backup", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: "pre_auto_accept_ingest" }),
+        });
+        const bbody = await bres.json();
+        if (!bres.ok || bbody.ok === false) {
+          statusEl.textContent =
+            "Backup failed — not proceeding. " + ((bbody && bbody.error) || `HTTP ${bres.status}`);
+          return;
+        }
+      } catch (e) {
+        statusEl.textContent = "Backup failed (couldn't reach the server) — not proceeding.";
+        return;
+      }
+      // 2. Auto-accept + trigger ingestion.
+      try {
+        const res = await fetch(
+          `/api/staging/${encodeURIComponent(state.subjectId)}/auto-accept-and-ingest`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ min_folder_confidence: AUTO_ACCEPT_MIN_CONF }),
+          });
+        const body = await res.json();
+        if (!res.ok || body.ok === false) {
+          statusEl.textContent = (body && body.error) ? body.error : `Auto-accept failed (HTTP ${res.status}).`;
+          return;
+        }
+        statusEl.textContent =
+          `Auto-accepted ${body.auto_accepted} · Ingesting ${body.queued_for_ingestion} in background`;
+      } catch (e) {
+        statusEl.textContent = "Couldn't reach the server. Is it running?";
+        return;
+      }
+      // 3. Refresh: classifications now show 'accepted'; ingestion-status polling resumes.
+      await loadClassifications();
+      await loadIngestionStatus();
+    });
+}
+
 // --------------------------------------------------------------------------
 // View-text modal (reuses the staged-detail endpoint)
 // --------------------------------------------------------------------------
@@ -1620,6 +1709,7 @@ function wireDropzone() {
 document.getElementById("subjectSelect").addEventListener("change", onSubjectChange);
 document.getElementById("reextractAllBtn").addEventListener("click", reextractAll);
 document.getElementById("classifyAllBtn").addEventListener("click", classifyAll);
+document.getElementById("autoAcceptBtn").addEventListener("click", autoAcceptAndIngest);
 document.getElementById("classifyFilter").addEventListener("change", onClassifyFilterChange);
 document.getElementById("ingestAllBtn").addEventListener("click", ingestAll);
 document.getElementById("regenAllBtn").addEventListener("click", regenerateAllStale);
