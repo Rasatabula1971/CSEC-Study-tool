@@ -70,6 +70,12 @@
   .badge.ready  { background: var(--color-pass-bg); color: var(--tick); }
   .badge.failed { background: var(--color-fail-bg); color: var(--red-pen); cursor: help; }
   .badge.skipped { background: var(--color-fail-bg); color: var(--red-pen); }
+  /* session-2 quality badges */
+  .badge.ocr { background: var(--color-warn-bg); color: var(--color-warn); }
+  .badge.truncated { background: var(--color-warn-bg); color: var(--color-warn); }
+  .badge.lowq { background: var(--color-fail-bg); color: var(--red-pen); }
+
+  .staged-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 
   .btn-sm { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
   .btn-danger { background: var(--ink-3); border: 1px solid rgba(224, 106, 90, 0.35); color: var(--red-pen); }
@@ -149,18 +155,23 @@
       <!-- Drop zone -->
       <section>
         <div class="dropzone" id="dropzone" tabindex="0" role="button"
-             aria-label="Drop PDF or Word files here, or click to select files">
-          <div class="dropzone-title">Drop PDF or Word files here</div>
+             aria-label="Drop PDF, Word, or image files here, or click to select files">
+          <div class="dropzone-title">Drop PDF, Word, or image files here</div>
           <div class="dropzone-sub">or click to select files</div>
-          <div class="dropzone-hint">Accepted: .pdf, .docx · Max 50 MB each</div>
+          <div class="dropzone-hint">Accepted: .pdf, .docx, .png, .jpg, .jpeg · Max 50 MB each</div>
         </div>
-        <input type="file" id="fileInput" accept=".pdf,.docx" multiple hidden />
+        <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg" multiple hidden />
         <div class="upload-status" id="uploadStatus" aria-live="polite"></div>
       </section>
 
       <!-- Staged files -->
       <section>
-        <div class="section-label">Staged Files</div>
+        <div class="staged-header">
+          <div class="section-label">Staged Files</div>
+          <button class="btn btn-secondary btn-sm" id="reextractAllBtn" hidden>
+            Re-extract all session-1 files
+          </button>
+        </div>
         <div id="listArea"></div>
       </section>
 
@@ -181,7 +192,8 @@
 // --------------------------------------------------------------------------
 const PREVIEW_TRUNCATE = 10000;   // chars shown before "Show all"
 const POLL_MS = 3000;
-const SUPPORTED_EXT = ["pdf", "docx"];
+const SUPPORTED_EXT = ["pdf", "docx", "png", "jpg", "jpeg"];
+const OCR_LOW_CONF = 70;          // ocr_confidence_avg below this = "low quality" badge
 
 const state = {
   subjects: [],
@@ -311,9 +323,17 @@ function renderList() {
       ? ` · ${it.extracted_text_length.toLocaleString()} chars` : "";
     const badgeAttr = it.extract_status === "failed"
       ? ` title="Extraction failed — open preview for details"` : "";
+    // session-2 quality badges
+    let quality = "";
+    if (it.ocr_used) quality += `<span class="badge ocr" title="Text recovered via OCR">OCR</span>`;
+    if (it.ocr_confidence_avg != null && it.ocr_confidence_avg < OCR_LOW_CONF) {
+      quality += `<span class="badge lowq" title="Average OCR confidence ${it.ocr_confidence_avg}%">low quality</span>`;
+    }
+    if (it.truncated) quality += `<span class="badge truncated" title="Full text stored in chunks">truncated</span>`;
     rows.push(`
       <div class="file-row${sel}" data-id="${it.staging_id}">
         <span class="badge ${esc(it.extract_status)}"${badgeAttr}>${esc(badgeLabel(it.extract_status))}</span>
+        ${quality}
         <div class="file-main">
           <div class="file-name">${esc(it.original_name)}</div>
           <div class="file-meta">${esc(it.file_type.toUpperCase())} · ${esc(sizePart)}${esc(lenPart)}</div>
@@ -321,6 +341,7 @@ function renderList() {
         <div class="file-actions">
           <button class="btn btn-secondary btn-sm preview-btn" data-id="${it.staging_id}"
                   ${canPreview ? "" : "disabled"}>Preview</button>
+          <button class="btn btn-secondary btn-sm reextract-btn" data-id="${it.staging_id}">Re-extract</button>
           <button class="btn btn-danger btn-sm delete-btn" data-id="${it.staging_id}">Delete</button>
         </div>
       </div>`);
@@ -350,10 +371,61 @@ function renderList() {
 
   area.querySelectorAll(".preview-btn").forEach(b =>
     b.addEventListener("click", () => selectFile(Number(b.dataset.id))));
+  area.querySelectorAll(".reextract-btn").forEach(b =>
+    b.addEventListener("click", () => reextractFile(Number(b.dataset.id))));
   area.querySelectorAll(".delete-btn").forEach(b =>
     b.addEventListener("click", () => deleteFile(Number(b.dataset.id))));
   area.querySelectorAll(".dismiss-btn").forEach(b =>
     b.addEventListener("click", () => dismissSkipped(b.dataset.skip)));
+
+  // Show the bulk re-extract button only when there is at least one staged file.
+  const bulkBtn = document.getElementById("reextractAllBtn");
+  if (bulkBtn) bulkBtn.hidden = state.items.length === 0;
+}
+
+// --------------------------------------------------------------------------
+// Re-extract (session 2: re-run extraction with OCR fallback)
+// --------------------------------------------------------------------------
+async function reextractFile(stagingId) {
+  try {
+    const res = await fetch(`/api/staging/${stagingId}/reextract`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      document.getElementById("uploadStatus").textContent =
+        (body && body.error) ? body.error : `Re-extract failed (HTTP ${res.status}).`;
+      return;
+    }
+  } catch (e) {
+    document.getElementById("uploadStatus").textContent =
+      "Couldn't reach the server. Is it running?";
+    return;
+  }
+  await loadList();   // row returns to 'pending'; managePolling resumes
+}
+
+async function reextractAll() {
+  if (!state.subjectId) return;
+  const ok = window.confirm(
+    "This will re-run extraction on files that look scanned, using OCR fallback. Continue?");
+  if (!ok) return;
+  const statusEl = document.getElementById("uploadStatus");
+  try {
+    const res = await fetch(`/api/staging/${encodeURIComponent(state.subjectId)}/reextract-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ only_low_quality: true }),
+    });
+    const body = await res.json();
+    if (!res.ok || body.ok === false) {
+      statusEl.textContent = (body && body.error) ? body.error : `Re-extract failed (HTTP ${res.status}).`;
+      return;
+    }
+    statusEl.textContent = `Re-extracting ${body.queued} file(s) with OCR fallback…`;
+  } catch (e) {
+    statusEl.textContent = "Couldn't reach the server. Is it running?";
+    return;
+  }
+  await loadList();
 }
 
 function managePolling() {
@@ -555,6 +627,7 @@ function wireDropzone() {
 }
 
 document.getElementById("subjectSelect").addEventListener("change", onSubjectChange);
+document.getElementById("reextractAllBtn").addEventListener("click", reextractAll);
 window.addEventListener("beforeunload", stopPolling);
 
 wireDropzone();

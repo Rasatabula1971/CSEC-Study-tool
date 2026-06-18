@@ -673,6 +673,31 @@ embeds immediately; this one stages for human review first).
   - Tests: `tests/test_uploads.py` (8) + `tests/test_upload_api.py` (8); suite 309/309.
   - NOTE: m012 is applied to the live E: DB. Live in-browser smoke test deferred —
     an `ingest.py` run held the DB write-lock at build time.
-- [ ] **Session 2** — OCR for image-only PDF pages / image uploads
+- [x] **Session 2** — OCR fallback + chunked storage + image upload ✓ 2026-06-18
+  - **m013** REBUILDS `upload_staging` (session-1's `CHECK (file_type IN ('pdf','docx'))`
+    can't be ALTERed to add `'image'`, and SQLite can't drop a CHECK -> rebuild),
+    folding in `ocr_used`, `ocr_pages_count`, `ocr_confidence_avg`, `total_pages`,
+    `truncated`; preserves all rows. Adds `upload_staging_chunks` (FULL text in
+    100k-char chunks for files past 500k, ON DELETE CASCADE).
+  - `uploads.py`: `_extract_pdf` now does page-level OCR fallback (a page below
+    `PAGE_TEXT_THRESHOLD=50` chars) and full-file OCR (file avg below
+    `FILE_AVG_THRESHOLD=100` chars/page) — catches empty-string pages AND hidden
+    scans (barcode/page-number-only). `_extract_image` (.png/.jpg/.jpeg) via
+    Tesseract. `_finalize_extraction` applies a 5M hard cap, the truncated flag, and
+    chunk slicing. Tesseract is located via `extract._configure_tesseract`
+    (TESSERACT_CMD -> SSD-bundled `E:\...\Tesseract\tesseract.exe` -> PATH).
+  - Endpoints: `POST /api/staging/{id}/reextract` (one file, 409 mid-extract),
+    `POST /api/staging/{subject}/reextract-all` (bulk; `{only_low_quality:true}`
+    selects only PDFs with `[Page ` markers averaging < `FILE_AVG_THRESHOLD` — DOCX
+    have no markers and are correctly EXCLUDED). Detail adds ocr_*/total_pages/
+    truncated/has_chunks/chunk_count; list adds ocr_used/ocr_confidence_avg/truncated.
+  - `upload.html`: accepts images, OCR/low-quality/truncated badges, per-row
+    Re-extract + a "Re-extract all session-1 files" button (confirm modal).
+  - Tests: `test_uploads_ocr.py` (7) + `test_uploads_api_session_2.py` (6); the two
+    session-1 test files updated (PDF fixtures now have >100 chars/page so they stay
+    off the OCR path; the 500k test now asserts chunks instead of hard truncation).
+    Suite 322/322. Live: staging_id 30 (P2 2025 JAN, 20 scanned pages) re-extracted
+    411 chars of `[Page N - no text]` -> 27,423 chars of OCR text (conf 32, low-quality
+    badge). reextract-all (after a docx-false-positive fix) targets the scanned PDFs.
 - [ ] **Session 3** — Gemini classification (subject + objective) at build time
 - [ ] **Session 4** — Ingestion trigger + stale-lesson tracking (status→ingested/rejected)

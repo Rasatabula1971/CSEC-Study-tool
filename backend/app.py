@@ -344,6 +344,69 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
             ON upload_staging(subject_id, status)
         """,
     )
+    # m013 (Upload session 2): OCR fields + chunked text storage.
+    #
+    # This must REBUILD upload_staging rather than ALTER it: session 2 adds 'image'
+    # as a file_type, but m012's table has CHECK (file_type IN ('pdf','docx')), and
+    # SQLite cannot ALTER/DROP a CHECK constraint. So we recreate the table with the
+    # widened CHECK and fold in the 5 new columns (ocr_used, ocr_pages_count,
+    # ocr_confidence_avg, total_pages, truncated) in the same rebuild, preserving every
+    # existing row. The rebuild is safe under foreign_keys=ON because no child table
+    # references upload_staging yet (upload_staging_chunks is created AFTER the rename).
+    # Version-tracked, so it runs exactly once; the SELECT only names the old columns,
+    # so it tolerates a DB where a partial earlier run already added some new columns.
+    _run_migration(
+        db, "m013_upload_session_2",
+        "OCR fields and chunked text storage for session 2",
+        """
+        CREATE TABLE upload_staging_new (
+            staging_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id      TEXT NOT NULL REFERENCES subjects(subject_id),
+            original_name   TEXT NOT NULL,
+            stored_path     TEXT NOT NULL,
+            file_type       TEXT NOT NULL CHECK (file_type IN ('pdf','docx','image')),
+            file_size_bytes INTEGER NOT NULL,
+            extracted_text  TEXT,
+            extract_status  TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (extract_status IN
+                              ('pending','extracting','ready','failed')),
+            extract_error   TEXT,
+            status          TEXT NOT NULL DEFAULT 'staged'
+                            CHECK (status IN ('staged','ingested','rejected')),
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT,
+            ocr_used            INTEGER DEFAULT 0,
+            ocr_pages_count     INTEGER DEFAULT 0,
+            ocr_confidence_avg  INTEGER,
+            total_pages         INTEGER,
+            truncated           INTEGER DEFAULT 0
+        );
+        INSERT INTO upload_staging_new
+            (staging_id, subject_id, original_name, stored_path, file_type,
+             file_size_bytes, extracted_text, extract_status, extract_error,
+             status, created_at, updated_at)
+        SELECT staging_id, subject_id, original_name, stored_path, file_type,
+               file_size_bytes, extracted_text, extract_status, extract_error,
+               status, created_at, updated_at
+        FROM upload_staging;
+        DROP TABLE upload_staging;
+        ALTER TABLE upload_staging_new RENAME TO upload_staging;
+        CREATE INDEX IF NOT EXISTS idx_upload_staging_subject
+            ON upload_staging(subject_id, status);
+        CREATE TABLE IF NOT EXISTS upload_staging_chunks (
+            chunk_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            staging_id      INTEGER NOT NULL REFERENCES upload_staging(staging_id) ON DELETE CASCADE,
+            chunk_index     INTEGER NOT NULL,
+            chunk_text      TEXT NOT NULL,
+            page_start      INTEGER,
+            page_end        INTEGER,
+            ocr_used        INTEGER DEFAULT 0,
+            UNIQUE (staging_id, chunk_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staging_chunks_staging
+            ON upload_staging_chunks(staging_id)
+        """,
+    )
 
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
@@ -1360,7 +1423,10 @@ async def notes_upload(request: Request) -> dict:
 # Errors on these routes follow the {"ok": False, "error": "..."} contract; the
 # HTTP status is set via the injected Response so the body shape stays uniform
 # (the Stage 12 feedback pattern), rather than HTTPException's {"detail": ...}.
-_UPLOAD_EXT_TO_TYPE = {".pdf": "pdf", ".docx": "docx"}
+_UPLOAD_EXT_TO_TYPE = {
+    ".pdf": "pdf", ".docx": "docx",
+    ".png": "image", ".jpg": "image", ".jpeg": "image",  # session 2: image OCR
+}
 
 
 def _run_extraction(db: sqlite3.Connection, staging_id: int) -> None:
@@ -1403,7 +1469,7 @@ async def upload_material(
         return {
             "ok": False,
             "error": f"Unsupported file type '{ext or file.filename}'. "
-                     "Only .pdf and .docx are accepted in session 1.",
+                     "Accepted: .pdf, .docx, .png, .jpg, .jpeg.",
         }
 
     data = await file.read()
@@ -1439,11 +1505,14 @@ def staging_list(subject_id: str, request: Request) -> dict:
 @app.get("/api/staging/{subject_id}/{staging_id}")
 def staging_detail(subject_id: str, staging_id: int,
                    request: Request, response: Response) -> dict:
-    """Full detail for one staged file, INCLUDING the extracted text."""
-    row = uploads.get_staging_detail(request.app.state.db, staging_id)
+    """Full detail for one staged file, INCLUDING the extracted text and the
+    session-2 OCR / truncation signals."""
+    db = request.app.state.db
+    row = uploads.get_staging_detail(db, staging_id)
     if row is None or row["subject_id"] != subject_id:
         response.status_code = 404
         return {"ok": False, "error": "Staged file not found."}
+    chunk_count = uploads.count_chunks(db, staging_id)
     return {
         "ok": True,
         "staging_id": row["staging_id"],
@@ -1454,6 +1523,13 @@ def staging_detail(subject_id: str, staging_id: int,
         "extracted_text": row["extracted_text"],
         "status": row["status"],
         "created_at": row["created_at"],
+        "ocr_used": bool(row["ocr_used"]),
+        "ocr_pages_count": row["ocr_pages_count"] or 0,
+        "ocr_confidence_avg": row["ocr_confidence_avg"],
+        "total_pages": row["total_pages"],
+        "truncated": bool(row["truncated"]),
+        "has_chunks": chunk_count > 0,
+        "chunk_count": chunk_count,
     }
 
 
@@ -1477,3 +1553,68 @@ def staging_delete(subject_id: str, staging_id: int,
     db.execute("DELETE FROM upload_staging WHERE staging_id = ?", (staging_id,))
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/staging/{staging_id}/reextract")
+def staging_reextract(staging_id: int, request: Request, response: Response,
+                      background_tasks: BackgroundTasks) -> dict:
+    """Re-run extraction on one staged file (session-2 OCR fallback / chunking) without
+    re-uploading. Resets the row to 'pending', drops any chunks, and queues extraction.
+    409 while the file is mid-extraction; 404 if it doesn't exist."""
+    db = request.app.state.db
+    row = db.execute(
+        "SELECT extract_status FROM upload_staging WHERE staging_id = ?", (staging_id,)
+    ).fetchone()
+    if row is None:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+    if row["extract_status"] == "extracting":
+        response.status_code = 409
+        return {"ok": False, "error": "File is currently extracting; try again shortly."}
+
+    uploads.reset_for_reextract(db, staging_id)
+    background_tasks.add_task(_run_extraction, db, staging_id)
+    return {"ok": True, "staging_id": staging_id, "extract_status": "pending"}
+
+
+@app.post("/api/staging/{subject_id}/reextract-all")
+async def staging_reextract_all(subject_id: str, request: Request,
+                                background_tasks: BackgroundTasks) -> dict:
+    """Bulk re-extract the subject's files that were staged before session-2 logic
+    existed (extract_status='ready' AND ocr_used=0 AND total_pages IS NULL).
+
+    With body {"only_low_quality": true}, restrict to files whose extracted_text
+    averages below FILE_AVG_THRESHOLD chars per page -- the scanned/OCR candidates --
+    so the clean digital files are left untouched."""
+    db = request.app.state.db
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- empty/non-JSON body is fine
+        body = {}
+    only_low_quality = bool(body.get("only_low_quality")) if isinstance(body, dict) else False
+
+    rows = db.execute(
+        "SELECT staging_id, extracted_text FROM upload_staging "
+        "WHERE subject_id = ? AND extract_status = 'ready' "
+        "AND ocr_used = 0 AND total_pages IS NULL",
+        (subject_id,),
+    ).fetchall()
+
+    selected = []
+    for r in rows:
+        if only_low_quality:
+            text = r["extracted_text"] or ""
+            pages = text.count("[Page ")
+            # No PDF page markers -> not a scanned-PDF OCR candidate (e.g. a DOCX,
+            # which is digital text with no pages). Don't OCR it.
+            if pages == 0:
+                continue
+            if (len(text) / pages) >= uploads.FILE_AVG_THRESHOLD:
+                continue
+        selected.append(r["staging_id"])
+
+    for sid in selected:
+        uploads.reset_for_reextract(db, sid)
+        background_tasks.add_task(_run_extraction, db, sid)
+
+    return {"ok": True, "queued": len(selected), "staging_ids": selected}

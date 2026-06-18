@@ -84,7 +84,14 @@ def make_pdf_bytes(text: str = "Hello PDF extraction test") -> bytes:
     import fitz
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((72, 72), text)
+    # Enough real text that the page stays on the NATIVE extraction path -- session 2
+    # OCRs any page below PAGE_TEXT_THRESHOLD chars and any file averaging below
+    # FILE_AVG_THRESHOLD chars/page, so a one-liner would otherwise trigger OCR.
+    lines = [text] + [
+        f"Business studies revision line {i} with extra descriptive words here."
+        for i in range(6)
+    ]
+    page.insert_text((72, 72), "\n".join(lines), fontsize=11)
     data = doc.tobytes()
     doc.close()
     return data
@@ -195,14 +202,20 @@ def test_filename_sanitisation_strips_traversal(db):
 
 
 def test_500k_char_cap_on_extraction(db):
+    # Session 2: text past 500k is no longer hard-truncated -- the preview is capped
+    # with the "see chunks" marker and the FULL text is preserved in
+    # upload_staging_chunks.
     big = "x" * 600_000
     sid = uploads.stage_file(db, SUBJECT, "huge.docx",
                              make_docx_bytes(paragraphs=(big,), table=None), "docx")
     uploads.extract_text(sid, db)
 
     row = db.execute(
-        "SELECT extracted_text FROM upload_staging WHERE staging_id = ?", (sid,)
+        "SELECT extracted_text, truncated FROM upload_staging WHERE staging_id = ?", (sid,)
     ).fetchone()
     text = row["extracted_text"]
-    assert uploads.TRUNCATION_MARKER in text
-    assert len(text) == uploads.MAX_EXTRACT_CHARS + len(uploads.TRUNCATION_MARKER)
+    assert uploads.TRUNCATE_PREVIEW_MARKER in text
+    assert len(text) == uploads.MAX_EXTRACT_CHARS + len(uploads.TRUNCATE_PREVIEW_MARKER)
+    assert row["truncated"] == 1
+    # the full 600k chars survive as 100k-char chunks (6 of them)
+    assert uploads.count_chunks(db, sid) == 6

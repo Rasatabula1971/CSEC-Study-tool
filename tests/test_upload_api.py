@@ -89,7 +89,12 @@ def make_pdf_bytes(text: str = "Hello upload API test") -> bytes:
     import fitz
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((72, 72), text)
+    # Plenty of native text so extraction stays off the session-2 OCR path.
+    lines = [text] + [
+        f"Business studies revision line {i} with extra descriptive words here."
+        for i in range(6)
+    ]
+    page.insert_text((72, 72), "\n".join(lines), fontsize=11)
     data = doc.tobytes()
     doc.close()
     return data
