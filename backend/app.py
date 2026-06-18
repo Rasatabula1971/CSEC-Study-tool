@@ -416,6 +416,46 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         "upload_staging.ocr_dpi_reduced",
         "ALTER TABLE upload_staging ADD COLUMN ocr_dpi_reduced INTEGER DEFAULT 0",
     )
+    # m015 (Upload session 3): classification fields on upload_staging + the
+    # upload_classifications table that links each staged file to Gemini's proposed
+    # folder + objectives, and records the human review decision. Three new
+    # upload_staging columns (all brand-new under m015, so the bundled ALTERs never
+    # hit a duplicate-column abort; _run_migration records them [pre-existing] only
+    # if a partial earlier run already added one). The one-time skip backfill lives
+    # in Layer 2 below so the test pattern (seed rows, then migrate) flags them.
+    _run_migration(
+        db, "m015_upload_session_3",
+        "Classification fields and table for session 3",
+        """
+        ALTER TABLE upload_staging ADD COLUMN skip_classification INTEGER DEFAULT 0;
+        ALTER TABLE upload_staging ADD COLUMN skip_reason TEXT;
+        ALTER TABLE upload_staging ADD COLUMN classification_status TEXT
+            DEFAULT 'unclassified';
+        CREATE TABLE IF NOT EXISTS upload_classifications (
+            classification_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            staging_id             INTEGER NOT NULL UNIQUE
+                                   REFERENCES upload_staging(staging_id) ON DELETE CASCADE,
+            recommended_folder     TEXT NOT NULL CHECK (recommended_folder IN
+                                     ('00_SYLLABUS','01_SPECIMEN_PAPERS','02_PAST_PAPERS',
+                                      '03_MARK_SCHEMES','04_NOTES','UNCERTAIN')),
+            folder_confidence      INTEGER NOT NULL,
+            objectives_json        TEXT NOT NULL,
+            rationale              TEXT,
+            model_used             TEXT NOT NULL,
+            raw_response           TEXT,
+            classified_at          TEXT DEFAULT (datetime('now')),
+            reviewed_at            TEXT,
+            review_decision        TEXT,
+            review_folder          TEXT,
+            review_objectives_json TEXT,
+            review_notes           TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_classifications_staging
+            ON upload_classifications(staging_id);
+        CREATE INDEX IF NOT EXISTS idx_classifications_decision
+            ON upload_classifications(review_decision)
+        """,
+    )
 
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
@@ -491,6 +531,83 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
             "question_id backfill skipped: %s (will retry on next startup)",
             e,
         )
+
+    # Upload session 3: auto-skip staged files that are not worth classifying --
+    # low-OCR-confidence scans, reduced-DPI scans, truncated files, content
+    # duplicates, and PDF/DOCX format twins (DOCX preferred, its text is cleaner).
+    # Runs on EVERY call (Layer 2) rather than once with m015, so the test pattern
+    # (insert rows, then call apply_runtime_migrations to flag them) works and so a
+    # newly staged duplicate gets caught. Every UPDATE is idempotent: the first sets
+    # skip_classification=1 outright (re-asserting the same skip), the rest are guarded
+    # by skip_classification=0 so reasons never accumulate. A file the user later
+    # /unskips becomes eligible until the next startup re-asserts a genuine quality
+    # skip -- intentional: the quality signal is intrinsic to the file. Wrapped so a
+    # pre-m015 DB (columns absent) degrades quietly.
+    try:
+        db.execute(
+            "UPDATE upload_staging "
+            "SET skip_classification = 1, skip_reason = 'low_ocr_confidence' "
+            "WHERE extract_status = 'ready' AND ocr_used = 1 "
+            "  AND ocr_confidence_avg < 70"
+        )
+        db.execute(
+            "UPDATE upload_staging "
+            "SET skip_classification = 1, "
+            "    skip_reason = COALESCE(skip_reason || ',', '') || 'ocr_dpi_reduced' "
+            "WHERE extract_status = 'ready' AND ocr_dpi_reduced = 1 "
+            "  AND skip_classification = 0"
+        )
+        db.execute(
+            "UPDATE upload_staging "
+            "SET skip_classification = 1, "
+            "    skip_reason = COALESCE(skip_reason || ',', '') || 'truncated' "
+            "WHERE extract_status = 'ready' AND truncated = 1 "
+            "  AND skip_classification = 0"
+        )
+        # Content duplicates: same extracted_text length (>1000 chars to avoid tiny
+        # empties matching), keep the lowest staging_id, skip the rest.
+        db.execute(
+            """
+            UPDATE upload_staging
+            SET skip_classification = 1,
+                skip_reason = COALESCE(skip_reason || ',', '') || 'duplicate_content'
+            WHERE staging_id IN (
+                SELECT s2.staging_id
+                FROM upload_staging s1
+                JOIN upload_staging s2
+                  ON LENGTH(s1.extracted_text) = LENGTH(s2.extracted_text)
+                 AND LENGTH(s1.extracted_text) > 1000
+                 AND s1.staging_id < s2.staging_id
+                 AND s1.subject_id = s2.subject_id
+                WHERE s1.subject_id = 'Principles_of_Business'
+            )
+            AND skip_classification = 0
+            """
+        )
+        # Format twins: same filename stem (case-insensitive), keep the DOCX, skip
+        # the PDF -- DOCX text extraction is cleaner than from a PDF.
+        db.execute(
+            """
+            UPDATE upload_staging
+            SET skip_classification = 1,
+                skip_reason = COALESCE(skip_reason || ',', '') || 'format_twin'
+            WHERE staging_id IN (
+                SELECT s_pdf.staging_id
+                FROM upload_staging s_docx
+                JOIN upload_staging s_pdf
+                  ON LOWER(REPLACE(s_docx.original_name, '.docx', ''))
+                   = LOWER(REPLACE(s_pdf.original_name, '.pdf', ''))
+                 AND s_docx.file_type = 'docx'
+                 AND s_pdf.file_type = 'pdf'
+                 AND s_docx.subject_id = s_pdf.subject_id
+                WHERE s_docx.subject_id = 'Principles_of_Business'
+            )
+            AND skip_classification = 0
+            """
+        )
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # pre-m015 DB -- classification columns absent; nothing to backfill
 
     # Upload session 1: make sure the SSD staging tree exists for every locked
     # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
@@ -645,6 +762,29 @@ class ClassifyNotesRequest(BaseModel):
     """Classify pasted/uploaded note text: which subject + objectives it belongs to."""
     text: str = Field(min_length=1, max_length=50000)
     available_subjects: list[str] = []
+
+
+class ClassifyAllRequest(BaseModel):
+    """Trigger a bulk classification run for a subject (upload session 3)."""
+    force: bool = False
+
+
+class ReviewObjective(BaseModel):
+    """One objective in an override decision -- only the id is needed."""
+    objective_id: str
+
+
+class ReviewRequest(BaseModel):
+    """A human review decision on a file's classification (upload session 3).
+
+    decision is a Literal, so an unknown value is rejected with 422 before the
+    endpoint body runs. override_folder / override_objectives are only meaningful
+    when decision='overridden'.
+    """
+    decision: Literal['accepted', 'overridden', 'rejected']
+    override_folder: Optional[str] = None
+    override_objectives: Optional[list[ReviewObjective]] = None
+    notes: Optional[str] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -975,6 +1115,16 @@ def _decode_command_words(raw) -> list[str]:
         return [str(c) for c in val] if isinstance(val, list) else [str(val)]
     except (json.JSONDecodeError, TypeError):
         return [str(raw)]
+
+
+def _safe_json(raw, default):
+    """Decode a JSON-text column to Python, returning `default` on null/bad JSON."""
+    if raw is None:
+        return default
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return default
 
 
 @app.get("/api/syllabus/{subject_id}")
@@ -1511,6 +1661,68 @@ def staging_list(subject_id: str, request: Request) -> dict:
     return {"ok": True, "items": items}
 
 
+@app.get("/api/staging/{subject_id}/classifications")
+def staging_classifications(subject_id: str, request: Request) -> dict:
+    """Staged files joined with their classification proposals (upload session 3).
+
+    Ordering puts the files that need a human decision first: classified-awaiting-
+    review, then unclassified, then skipped, then failed; newest first within each
+    group. This route is declared BEFORE /{staging_id} so the literal 'classifications'
+    is not swallowed by the int path param.
+    """
+    db = request.app.state.db
+    rows = db.execute(
+        """
+        SELECT s.staging_id, s.original_name, s.extract_status,
+               s.skip_classification, s.skip_reason, s.classification_status,
+               s.created_at,
+               c.recommended_folder, c.folder_confidence, c.objectives_json,
+               c.rationale, c.model_used, c.review_decision, c.review_folder,
+               c.review_objectives_json
+        FROM   upload_staging s
+        LEFT   JOIN upload_classifications c ON c.staging_id = s.staging_id
+        WHERE  s.subject_id = ?
+        ORDER  BY CASE s.classification_status
+                    WHEN 'classified'   THEN 0
+                    WHEN 'classifying'  THEN 1
+                    WHEN 'unclassified' THEN 2
+                    WHEN 'queued'       THEN 3
+                    WHEN 'skipped'      THEN 4
+                    WHEN 'failed'       THEN 5
+                    ELSE 6
+                  END,
+                  s.created_at DESC, s.staging_id DESC
+        """,
+        (subject_id,),
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        classification = None
+        if d["recommended_folder"] is not None:
+            classification = {
+                "recommended_folder": d["recommended_folder"],
+                "folder_confidence": d["folder_confidence"],
+                "objectives": _safe_json(d["objectives_json"], []),
+                "rationale": d["rationale"],
+                "model_used": d["model_used"],
+                "review_decision": d["review_decision"],
+                "review_folder": d["review_folder"],
+                "review_objectives": _safe_json(d["review_objectives_json"], None),
+            }
+        items.append({
+            "staging_id": d["staging_id"],
+            "original_name": d["original_name"],
+            "extract_status": d["extract_status"],
+            "skip_classification": bool(d["skip_classification"]),
+            "skip_reason": d["skip_reason"],
+            "classification_status": d["classification_status"],
+            "classification": classification,
+        })
+    return {"ok": True, "items": items}
+
+
 @app.get("/api/staging/{subject_id}/{staging_id}")
 def staging_detail(subject_id: str, staging_id: int,
                    request: Request, response: Response) -> dict:
@@ -1628,3 +1840,139 @@ async def staging_reextract_all(subject_id: str, request: Request,
         background_tasks.add_task(_run_extraction, db, sid)
 
     return {"ok": True, "queued": len(selected), "staging_ids": selected}
+
+
+# ---------------------------------------------------------------------------
+# Upload Material (session 3: Gemini classification + human review)
+# ---------------------------------------------------------------------------
+# classify_uploads is PHASE: build (it pulls in the cloud client transitively via
+# the router). It is imported lazily inside the background-task wrapper so the live
+# offline server never loads google.generativeai at startup -- only when a build-time
+# classification is actually triggered from the UI.
+def _run_classification(db: sqlite3.Connection, subject_id: str,
+                        staging_id=None, force: bool = False) -> None:
+    """Background-task wrapper around classify_uploads.classify_uploads. Lazy import
+    keeps the cloud client off the runtime startup path; any error is logged (each
+    file's own failure is already recorded as classification_status='failed')."""
+    try:
+        import classify_uploads
+        classify_uploads.classify_uploads(
+            db, subject_id, staging_id=staging_id, force=force, verbose=False,
+        )
+    except Exception:  # noqa: BLE001 -- background task; just log
+        logger.exception(
+            "Background classification failed (subject=%s, staging_id=%s)",
+            subject_id, staging_id,
+        )
+
+
+def _count_eligible_for_classification(db: sqlite3.Connection, subject_id: str,
+                                       force: bool) -> int:
+    """How many staged files this run will send to the model: ready, not skipped, and
+    (unless --force) not already classified. Mirrors classify_uploads._eligible_files."""
+    sql = (
+        "SELECT COUNT(*) FROM upload_staging "
+        "WHERE subject_id = ? AND extract_status = 'ready' AND skip_classification = 0"
+    )
+    if not force:
+        sql += " AND classification_status = 'unclassified'"
+    return db.execute(sql, (subject_id,)).fetchone()[0]
+
+
+@app.post("/api/staging/{subject_id}/classify-all")
+async def staging_classify_all(subject_id: str, request: Request,
+                               background_tasks: BackgroundTasks) -> dict:
+    """Classify every eligible staged file for a subject (background). Returns the
+    count queued immediately; the run proceeds in the background. Body (optional):
+    {"force": false}."""
+    db = request.app.state.db
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- empty/non-JSON body is fine
+        body = {}
+    force = bool(body.get("force")) if isinstance(body, dict) else False
+
+    queued = _count_eligible_for_classification(db, subject_id, force)
+    if queued:
+        background_tasks.add_task(_run_classification, db, subject_id, None, force)
+    return {"ok": True, "queued": queued}
+
+
+@app.post("/api/staging/{staging_id}/classify")
+def staging_classify_one(staging_id: int, request: Request,
+                         response: Response, background_tasks: BackgroundTasks) -> dict:
+    """Classify (or re-classify) a single staged file (background). 404 if absent;
+    400 if it is auto-skipped (unskip it first)."""
+    db = request.app.state.db
+    row = db.execute(
+        "SELECT subject_id, extract_status, skip_classification "
+        "FROM upload_staging WHERE staging_id = ?",
+        (staging_id,),
+    ).fetchone()
+    if row is None:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+    if row["skip_classification"]:
+        response.status_code = 400
+        return {"ok": False, "error": "File is auto-skipped; unskip it before classifying."}
+    if row["extract_status"] != "ready":
+        response.status_code = 400
+        return {"ok": False, "error": "File is not extracted yet."}
+
+    # Single-file: always (re)classify on demand -> force=True.
+    background_tasks.add_task(_run_classification, db, row["subject_id"], staging_id, True)
+    return {"ok": True, "staging_id": staging_id, "classification_status": "queued"}
+
+
+@app.post("/api/staging/{staging_id}/review")
+def staging_review(staging_id: int, body: ReviewRequest,
+                   request: Request, response: Response) -> dict:
+    """Record a human review decision (accepted / overridden / rejected) against a
+    file's classification row. 404 if the file has no classification to review."""
+    db = request.app.state.db
+    crow = db.execute(
+        "SELECT classification_id FROM upload_classifications WHERE staging_id = ?",
+        (staging_id,),
+    ).fetchone()
+    if crow is None:
+        response.status_code = 404
+        return {"ok": False, "error": "No classification to review for this file."}
+
+    review_folder = body.override_folder if body.decision == "overridden" else None
+    review_objs = None
+    if body.decision == "overridden" and body.override_objectives is not None:
+        review_objs = json.dumps([{"objective_id": o.objective_id}
+                                  for o in body.override_objectives])
+
+    db.execute(
+        "UPDATE upload_classifications "
+        "SET review_decision = ?, review_folder = ?, review_objectives_json = ?, "
+        "    review_notes = ?, reviewed_at = datetime('now') "
+        "WHERE staging_id = ?",
+        (body.decision, review_folder, review_objs, body.notes, staging_id),
+    )
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/staging/{staging_id}/unskip")
+def staging_unskip(staging_id: int, request: Request, response: Response) -> dict:
+    """Clear the auto-skip flag on a staged file so it becomes eligible again.
+    Resets classification_status to 'unclassified'. 404 if the file is absent."""
+    db = request.app.state.db
+    row = db.execute(
+        "SELECT 1 FROM upload_staging WHERE staging_id = ?", (staging_id,)
+    ).fetchone()
+    if row is None:
+        response.status_code = 404
+        return {"ok": False, "error": "Staged file not found."}
+
+    db.execute(
+        "UPDATE upload_staging "
+        "SET skip_classification = 0, skip_reason = NULL, "
+        "    classification_status = 'unclassified', updated_at = datetime('now') "
+        "WHERE staging_id = ?",
+        (staging_id,),
+    )
+    db.commit()
+    return {"ok": True}

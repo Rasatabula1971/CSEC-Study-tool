@@ -21,6 +21,7 @@ silent fallback in either direction.
 Both mirror ollama_chat(messages, system, schema) so callers swap freely.
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -32,6 +33,8 @@ from gemini_client import gemini_chat, is_gemini_available  # noqa: E402
 # / is_gemini_available at call time -- this is what lets ingestion-script tests
 # patch gemini_client.* and have build routing honour it.
 import gemini_client  # noqa: E402
+
+logger = logging.getLogger("csec.llm_router")
 
 
 def chat_for_grading(messages: list, system: str, schema: dict | None = None) -> str:
@@ -53,6 +56,38 @@ def chat_for_grading(messages: list, system: str, schema: dict | None = None) ->
 
 def chat_local(messages: list, system: str, schema: dict | None = None) -> str:
     """Always Ollama. For non-grading calls (teach, classify, question gen)."""
+    return ollama_chat(messages, system, schema)
+
+
+def chat_for_classification(messages: list, system: str,
+                            schema: dict | None = None) -> str:
+    """Route an upload-classification call by CLOUD_MODE (read at call time).
+
+    ROUTING POLICY (v3.1 PDR). Classification is build-time only (PHASE: build):
+    it proposes which CSEC objectives a staged file covers and which archive folder
+    it belongs in -- never on a student/runtime path.
+
+    CLOUD_MODE=1: prefers Gemini (it knows the POB syllabus far better than the local
+    3B model). If Gemini is unreachable, raise an explicit error -- classification
+    must NEVER silently degrade to Ollama mid-run.
+    CLOUD_MODE=0: warn loudly that quality will be substantially lower, then use
+    Ollama. Mirrors ollama_chat(messages, system, schema) so callers swap freely.
+    """
+    if os.getenv("CLOUD_MODE", "0") == "1":
+        if not is_gemini_available():
+            raise RuntimeError(
+                "CLOUD_MODE=1 but Gemini is unreachable. "
+                "Classification needs Gemini; Ollama 3B is not "
+                "reliable for this task. Check GEMINI_API_KEY."
+            )
+        return gemini_chat(messages, system, schema)
+
+    # CLOUD_MODE=0: warn and use Ollama
+    logger.warning(
+        "Classification running on Ollama with CLOUD_MODE=0. "
+        "Quality will be substantially lower than with Gemini. "
+        "Set CLOUD_MODE=1 for better results."
+    )
     return ollama_chat(messages, system, schema)
 
 

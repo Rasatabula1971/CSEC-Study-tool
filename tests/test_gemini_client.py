@@ -115,3 +115,95 @@ def test_gemini_chat_returns_text_on_success(monkeypatch):
     assert captured["init"]["generation_config"]["response_mime_type"] == "application/json"
     # assistant role maps to "model"; user stays "user"
     assert [m["role"] for m in captured["messages"]] == ["user", "model"]
+
+
+# ---------------------------------------------------------------------------
+# _to_gemini_schema  (JSON-Schema -> Gemini response_schema subset)
+# ---------------------------------------------------------------------------
+def test_to_gemini_schema_strips_unsupported_keywords():
+    """minimum/maximum/minItems/maxItems are not in Gemini's OpenAPI subset and would
+    make the API reject the schema -- they must be dropped while structure survives."""
+    src = {
+        "type": "object",
+        "required": ["objectives"],
+        "properties": {
+            "folder_confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+            "objectives": {
+                "type": "array",
+                "maxItems": 15,
+                "items": {
+                    "type": "object",
+                    "required": ["objective_id", "confidence"],
+                    "properties": {
+                        "objective_id": {"type": "string"},
+                        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+                    },
+                },
+            },
+        },
+    }
+    out = gemini_client._to_gemini_schema(src)
+    # structure preserved
+    assert out["type"] == "object"
+    assert out["required"] == ["objectives"]
+    assert out["properties"]["objectives"]["type"] == "array"
+    assert out["properties"]["objectives"]["items"]["properties"]["objective_id"]["type"] == "string"
+    # validation keywords stripped at every level
+    assert "maxItems" not in out["properties"]["objectives"]
+    assert "minimum" not in out["properties"]["folder_confidence"]
+    assert "maximum" not in out["properties"]["folder_confidence"]
+    conf = out["properties"]["objectives"]["items"]["properties"]["confidence"]
+    assert conf == {"type": "integer"}
+
+
+def test_gemini_chat_passes_response_schema(monkeypatch):
+    """A schema arg now produces a response_schema (sanitised) in the generation config."""
+    monkeypatch.setattr(gemini_client, "GEMINI_API_KEY", "good-key")
+    monkeypatch.setattr(gemini_client.genai, "configure", lambda **k: None)
+    captured = {}
+
+    class FakeResponse:
+        text = "{}"
+
+    class FakeModel:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+
+        def generate_content(self, messages):
+            return FakeResponse()
+
+    monkeypatch.setattr(gemini_client.genai, "GenerativeModel", FakeModel)
+    gemini_client.gemini_chat(
+        [{"role": "user", "content": "q"}], system="s",
+        schema={"type": "object", "properties": {"a": {"type": "integer", "minimum": 0}}},
+    )
+    gc = captured["init"]["generation_config"]
+    assert gc["response_mime_type"] == "application/json"
+    assert gc["response_schema"] == {"type": "object", "properties": {"a": {"type": "integer"}}}
+    assert gc["max_output_tokens"] == 8192   # generous cap for the thinking model
+
+
+# ---------------------------------------------------------------------------
+# _response_text  (robust extraction when .text raises on a thinking model)
+# ---------------------------------------------------------------------------
+def test_response_text_falls_back_to_parts():
+    """When response.text raises (thinking model multi-part response), concatenate the
+    text parts instead of losing the answer."""
+    class Part:
+        def __init__(self, t):
+            self.text = t
+
+    class Content:
+        parts = [Part('{"ok":'), Part(" true}")]
+
+    class Candidate:
+        content = Content()
+
+    class Resp:
+        candidates = [Candidate()]
+
+        @property
+        def text(self):
+            raise ValueError("could not convert part to text")
+
+    assert gemini_client._response_text(Resp()) == '{"ok": true}'
