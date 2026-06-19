@@ -218,9 +218,11 @@ def test_group1_full_teach_loop(db):
 
     assert out["route"] == "teach"
     assert out["objective_id"] == "POB-1.1"           # known, in-scope objective
-    assert out["lesson"].strip()                       # lesson text present
-    assert out["lesson"].count("?") == 1               # exactly one question
-    assert out["lesson"].count("Q:") == 1
+    assert out["lesson"].strip()                       # placeholder text present
+    # No canonical lesson for this objective -> honest placeholder, no runtime
+    # generation (the model is never called).
+    assert out["lesson_source"] == "placeholder"
+    assert out["recall_questions"] == []
 
 
 # ===========================================================================
@@ -360,12 +362,13 @@ def test_group4_revision_plan_orders_by_leitner_box(db):
 # Group 5 — Traceability VAL-08 (objective_id + source_file + page)
 # ===========================================================================
 def test_group5_traceability_structured_lookup(db):
-    """A structured (paper/year/question) request returns objective_id, source_file,
-    and page from a real FK join — and makes NO embedding call."""
+    """A structured (paper/year/question) request resolves the correct objective via a
+    real FK join, makes NO embedding call, and serves a placeholder (no canonical
+    lesson). Traceability of grounded content now lives on the grading path; the teach
+    placeholder carries the full shape with source_file/page = None."""
 
-    # MOCK ollama_chat (Tutor): structured path still produces a lesson.
     def fake_chat(messages, system):
-        return "Lesson grounded in the past-paper extract.\nQ: Define a business."
+        raise AssertionError("teach must not generate a lesson at runtime")
 
     out = controller.handle_request(
         db,
@@ -374,9 +377,9 @@ def test_group5_traceability_structured_lookup(db):
         chat_fn=fake_chat, embed_fn=boom_embed,   # structured lookup -> no embedding
     )
 
-    assert out["objective_id"] == "POB-1.1"
-    assert out["source_file"] == "pob_p2_2019.pdf"
-    assert out["page"] == 12
+    assert out["objective_id"] == "POB-1.1"           # FK join resolved the objective
+    assert out["lesson_source"] == "placeholder"
+    assert out["source_file"] is None and out["page"] is None
 
 
 # ===========================================================================
@@ -549,11 +552,13 @@ class TestPOBStudyLoop:
             )
         assert out["route"] == "teach"
         assert out["objective_id"] == "POB-1.1"
-        # The controller returns the lesson (with the question embedded) under the
-        # single "lesson" key -- there is no separate lesson_text/question field.
+        # No canonical lesson for this objective -> honest placeholder (runtime no
+        # longer generates lessons). The lesson text is present but carries no
+        # fabricated question.
         lesson = out["lesson"]
-        assert isinstance(lesson, str) and lesson.strip()   # lesson_text: non-empty
-        assert "?" in lesson                                 # a question is present
+        assert isinstance(lesson, str) and lesson.strip()
+        assert out["lesson_source"] == "placeholder"
+        assert out["recall_questions"] == []
 
     def test_grading_loop(self, loop_db):
         """2 of 3 mark points awarded -> Python score 67; fail (<70) -> Leitner box 1."""
@@ -628,10 +633,11 @@ class TestPOBStudyLoop:
         mock_chat.assert_not_called()
 
     def test_traceability(self, loop_db):
-        """teach for POB-1.1 surfaces objective_id + source_file + page (VAL-08)."""
-        # MOCK ollama_chat (Tutor role): traceability is about the source metadata.
+        """teach for POB-1.1 keeps the full response shape (VAL-08). With no canonical
+        lesson it serves a placeholder: objective resolved, source_file/page = None,
+        and the model is never called at runtime."""
         def fake_chat(messages, system, schema=None):
-            return "Lesson grounded in the 2024 P2 extract.\nQ: Define a business."
+            raise AssertionError("teach must not generate a lesson at runtime")
 
         with patch("controller.ollama_chat", fake_chat):
             out = controller.handle_request(
@@ -640,8 +646,9 @@ class TestPOBStudyLoop:
                  "objective_id": "POB-1.1", "query": "define business"},
             )
         assert out["objective_id"] == "POB-1.1"
-        assert out["source_file"] == "POB_2024_P2.pdf"
-        assert out["page"] == 4
+        assert out["lesson_source"] == "placeholder"
+        assert out["source_file"] is None and out["page"] is None
+        assert "source_file" in out and "page" in out   # full shape preserved
 
     def test_weakness_validation(self, loop_db):
         """log_weakness raises ValueError on a missing required field (never silent)."""

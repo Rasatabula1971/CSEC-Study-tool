@@ -124,8 +124,69 @@ LESSON_SYSTEM = (
     "  student to recall or apply, not just recognise.\n"
     "- common_mistakes: 1-2 sentences naming what examiners often\n"
     "  penalise on this kind of question.\n"
-    "- worked_examples: 0-3 worked examples drawn from the source."
+    "- worked_examples: 0-3 worked examples drawn from the source.\n\n"
+    "CRITICAL OUTPUT RULES:\n"
+    "- Recall questions must be complete questions ending in '?'.\n"
+    "- Never write 'let me know', 'feel free to ask', 'clarification',\n"
+    "  or any conversational closing in any field.\n"
+    "- Never cite chunk section numbers as if they are authoritative\n"
+    "  ('According to Section 2'). The chunks are source material, not\n"
+    "  citable references. Refer to concepts directly.\n"
+    "- Each recall question must require specific recall or explanation,\n"
+    "  not generic placeholders like 'Explain objective X'."
 )
+
+
+# A recall prompt is valid if it ENDS in '?' or BEGINS with one of these CSEC command
+# words (imperative prompts like "Identify one example..." are real recall questions
+# that do not end in '?'). Junk array elements ('multiple-choice', a leaked answer in
+# parentheses) match neither and are rejected.
+_RECALL_COMMAND_WORDS = (
+    "define", "state", "explain", "identify", "describe", "discuss",
+    "distinguish", "outline", "list", "calculate", "compare", "contrast",
+)
+
+
+def _validate_lesson_quality(lesson_text, recall_questions):
+    """Reject semantically-broken lessons the JSON schema can't catch (chat
+    boilerplate, hallucinated 'Section N' citations, junk recall questions).
+
+    Returns (ok, reason): (True, None) when the lesson is clean, else (False, reason).
+    Applied before INSERT so a syntactically-valid-but-broken lesson is queued for a
+    re-attempt instead of being served to a student.
+
+    A recall question is accepted when it ends in '?' OR opens with a CSEC command
+    word -- valid imperative prompts ("Identify two roles of...") do not end in '?',
+    so requiring a literal '?' would wrongly reject good questions while still letting
+    junk through. Everything else (boilerplate, too-short, non-string, leaked answers,
+    bare labels like 'multiple-choice') is rejected.
+    """
+    lower = (lesson_text or "").lower()
+    if 'according to section' in lower:
+        return False, 'lesson_text cites chunk section'
+    if 'let me know' in lower or 'feel free' in lower or 'clarification' in lower:
+        return False, 'lesson_text contains chat boilerplate'
+    if not isinstance(recall_questions, list) or len(recall_questions) != 3:
+        got = len(recall_questions) if isinstance(recall_questions, list) else 'non-list'
+        return False, f'recall_questions count != 3 (got {got})'
+    for q in recall_questions:
+        if not isinstance(q, str):
+            return False, 'non-string in recall_questions'
+        qs = q.strip()
+        if len(qs) < 15:
+            return False, 'recall_question too short'
+        ql = qs.lower()
+        if 'let me know' in ql or 'feel free' in ql or 'clarification' in ql:
+            return False, 'recall_question contains chat boilerplate'
+        # Answer leakage: the model appended the answer in parentheses, e.g.
+        # "What is the term...? (Answer: Transportation)" (the POB-10.13 pattern).
+        if '(answer:' in ql:
+            return False, 'recall_question leaks the answer'
+        is_question = qs.endswith('?')
+        is_command = any(ql.startswith(cw + ' ') for cw in _RECALL_COMMAND_WORDS)
+        if not (is_question or is_command):
+            return False, 'recall_question is not a question or command prompt'
+    return True, None
 
 
 def ensure_lesson_tables(db: sqlite3.Connection) -> None:
@@ -332,6 +393,21 @@ def _queue_insufficient(db: sqlite3.Connection, objective_id: str,
         )
 
 
+def _queue_quality_failed(db: sqlite3.Connection, objective_id: str,
+                          reason: str, dry_run: bool) -> None:
+    """Queue an objective whose composed lesson failed the quality gate, so it is
+    re-attempted later instead of a broken lesson being written. The specific failure
+    is folded into the reason ('quality_check_failed: <why>')."""
+    if not dry_run:
+        full_reason = "quality_check_failed: " + (reason or "unknown")
+        db.execute(
+            "INSERT INTO lesson_generation_queue (objective_id, reason) "
+            "VALUES (?, ?) "
+            "ON CONFLICT(objective_id, reason) DO UPDATE SET created_at = datetime('now')",
+            (objective_id, full_reason),
+        )
+
+
 def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                                regenerate: bool = False,
                                confidence_floor: int = DEFAULT_CONFIDENCE_FLOOR,
@@ -428,6 +504,20 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 _queue_insufficient(db, oid, dry_run)
                 _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)
                 summary["queued"] += 1
+                continue
+
+            # (e2) Quality gate: reject semantically-broken output the JSON schema
+            # cannot catch (chat boilerplate, 'According to Section N' citations, junk
+            # recall questions). A failure is queued for re-attempt, never written.
+            ok, why = _validate_lesson_quality(
+                data.get("lesson_text", ""), data.get("recall_questions", [])
+            )
+            if not ok:
+                _queue_quality_failed(db, oid, why, dry_run)
+                _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)
+                summary["queued"] += 1
+                if verbose:
+                    print(f"    {oid}: quality_check_failed -- {why}")
                 continue
 
             # (f) Write the lesson. lesson_id = sha256(objective_id|generated_at)[:16].

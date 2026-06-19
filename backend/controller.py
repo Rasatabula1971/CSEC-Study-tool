@@ -292,27 +292,37 @@ def _handle_teach(db, request, chat_fn, embed_fn) -> dict:
         if canonical is not None:
             return canonical
 
-    # Runtime fallback: no stored lesson. Generate live AND queue this objective so
-    # the offline ingest_lessons pass writes a canonical lesson for it next run.
-    user_msg = (
-        f"OBJECTIVE: {objective_id}\n"
-        f"STUDENT REQUEST: {request.get('query', '')}\n\n"
-        f"SOURCE MATERIAL (ground your lesson in this, do not invent beyond it):\n"
-        f"{ctx['chunk_text']}"
-    )
-    lesson = chat_fn([{"role": "user", "content": user_msg}], system=_load_prompt("tutor.txt"))
-    _queue_lesson_generation(db, objective_id, "served_runtime")
+    # No stored lesson. We do NOT generate one live: runtime must serve canonical
+    # build-time artifacts, never fresh AI lesson content mid-session (PDR v3.1
+    # runtime/build separation). An unconstrained tutor.txt chat here produced
+    # conversational prose + hallucinated "Section N" citations, which the UI then
+    # scraped into fake recall questions. Instead serve an honest placeholder that
+    # quotes the syllabus statement, and queue the objective for the next offline
+    # ingest_lessons pass.
+    crow = db.execute(
+        "SELECT content_stmt FROM objectives WHERE objective_id = ?", (objective_id,)
+    ).fetchone()
+    content_stmt = (crow["content_stmt"] if crow else "") or ""
+    _queue_lesson_generation(db, objective_id, "served_placeholder")
     return {
         "route": "teach",
         "objective_id": objective_id,
-        "source_file": ctx["source_file"],
-        "page": ctx["page"],
-        # notes / mark_scheme / past_paper / specimen / syllabus_only -- lets the UI
-        # nudge "add notes for this topic" when only the syllabus statement was used.
-        # None for the free-text semantic path (get_context returns no tag).
-        "context_source": ctx.get("context_source"),
-        "lesson": lesson,
-        "lesson_source": "runtime",
+        "subject_id": subject_id,
+        # Full response shape preserved (VAL-08 traceability contract): there is no
+        # source chunk behind a placeholder, so source_file/page are None and the
+        # context is the bare syllabus statement.
+        "source_file": None,
+        "page": None,
+        "context_source": "syllabus",
+        "lesson": (
+            "A canonical lesson for this objective is being prepared. "
+            f"The syllabus statement for {objective_id} is:\n\n"
+            f"  {content_stmt}\n\n"
+            "Please try another objective from today's plan, or come "
+            "back after new material is added."
+        ),
+        "recall_questions": [],
+        "lesson_source": "placeholder",
     }
 
 

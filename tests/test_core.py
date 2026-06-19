@@ -455,7 +455,7 @@ def test_controller_teach_happy_path(db, monkeypatch):
     })
 
     def fake_chat(messages, system):
-        return "A business supplies goods/services.\nExample: ...\nQ: What is a business?"
+        raise AssertionError("teach must not generate a lesson at runtime")
 
     out = controller.handle_request(
         db,
@@ -464,5 +464,8 @@ def test_controller_teach_happy_path(db, monkeypatch):
     )
     assert out["route"] == "teach"
     assert out["objective_id"] == "POB-1.1"
-    assert out["source_file"] == "notes.pdf" and out["page"] == 3
-    assert "Q:" in out["lesson"]
+    # No canonical lesson for this objective -> honest placeholder, no runtime
+    # generation. source_file/page are None (nothing is grounded behind a placeholder).
+    assert out["lesson_source"] == "placeholder"
+    assert out["recall_questions"] == []
+    assert out["source_file"] is None and out["page"] is None

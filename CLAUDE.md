@@ -875,3 +875,31 @@ Next actions in order:
   3. Re-run python backend/ingest_lessons.py --subject Principles_of_Business
      (96 queued objectives may now produce lessons against enlarged corpus)
   4. First real session with Rylee on three POB objectives
+
+---
+
+## Lesson quality fix (18 June 2026)
+
+A POB-1.11 "lesson" showed hallucinated "Section N" citations + chat
+boilerplate. Root cause was the runtime teach FALLBACK, not a stored lesson:
+controller._handle_teach generated freeform prose via tutor.txt when no canonical
+lesson existed, and study_plan.html scraped fake recall_questions from that prose.
+
+Fixes (all on `main`):
+  - controller._handle_teach NO LONGER generates lessons at runtime. With no
+    canonical lesson it returns an honest placeholder (syllabus statement quoted),
+    lesson_source='placeholder', recall_questions=[], full response shape kept
+    (source_file=None, page=None, context_source='syllabus' — VAL-08), and queues
+    reason='served_placeholder'. Runtime/build separation now enforced for teach.
+  - study_plan.html: removed the extractQuestionFromLesson regex; empty
+    recall_questions renders "No recall questions available for this lesson."
+  - ingest_lessons._validate_lesson_quality gates every INSERT (rejects 'According
+    to Section', chat boilerplate, answer leakage '(Answer: …)', count!=3,
+    too-short, junk non-question/non-command; accepts '?' OR a CSEC command-word
+    start). Failures queue reason='quality_check_failed: <why>'.
+  - The new validator caught 2 pre-existing polluted stored lessons the Stage-11
+    confidence floor missed: **POB-3.6** (junk schema-field echoes) and
+    **POB-10.13** (answer leakage). Both deleted + re-queued
+    (reason='quality_check_failed: pre-existing'). 18 of 20 stored lessons remain.
+  - 7 teach tests updated to the placeholder contract; 9 new validator/controller
+    tests. Suite 370.

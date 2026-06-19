@@ -173,9 +173,11 @@ def test_unknown_objective_returns_none():
 # Wiring: the teach response surfaces context_source
 # ---------------------------------------------------------------------------
 def test_teach_response_carries_context_source(monkeypatch):
+    # No canonical lesson -> the teach route serves a placeholder (runtime no longer
+    # generates freeform lessons). The response keeps the full shape with
+    # context_source='syllabus'; chat_fn must never run.
     monkeypatch.setattr(controller, "subject_is_locked", lambda db, s: True)
     monkeypatch.setattr(controller, "is_in_scope", lambda db, s, o: True)
-    monkeypatch.setattr(controller, "_load_prompt", lambda name: "SYSTEM")
     monkeypatch.setattr(controller, "_objective_context", lambda db, oid: {
         "objective_id": oid,
         "chunk_text": "Section: Nature of Business\nObjective 1.1: ...",
@@ -183,21 +185,30 @@ def test_teach_response_carries_context_source(monkeypatch):
         "page": None,
         "context_source": "syllabus_only",
     })
-    # Stage 11: this test exercises the runtime fallback path -- stub the canonical
-    # lookup (no stored lesson) and the queue side-effect, just as the retrieval
-    # boundary above is stubbed, so db=None stays unused here.
     monkeypatch.setattr(controller, "_fetch_canonical_lesson", lambda db, oid: None)
     monkeypatch.setattr(controller, "_queue_lesson_generation",
                         lambda db, oid, reason: None)
 
+    class _DB:
+        def execute(self, sql, params=()):
+            class _C:
+                def fetchone(self_inner):
+                    return {"content_stmt": "Define the term business."}
+            return _C()
+
+    def chat_must_not_run(messages, system):
+        raise AssertionError("runtime teach must not call the model")
+
     out = controller._handle_teach(
-        db=None,
+        db=_DB(),
         request={"subject_id": "Principles_of_Business",
                  "objective_id": "POB-1.1", "query": "teach me"},
-        chat_fn=lambda messages, system: "A lesson.",
+        chat_fn=chat_must_not_run,
         embed_fn=None,
     )
     assert out["route"] == "teach"
-    assert out["context_source"] == "syllabus_only"
-    assert out["lesson"] == "A lesson."
-    assert out["lesson_source"] == "runtime"
+    assert out["context_source"] == "syllabus"
+    assert out["lesson_source"] == "placeholder"
+    assert out["recall_questions"] == []
+    assert out["source_file"] is None and out["page"] is None
+    assert "Define the term business." in out["lesson"]

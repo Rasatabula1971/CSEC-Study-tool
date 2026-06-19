@@ -56,7 +56,7 @@ def lesson_json(confidence: int) -> str:
         "common_mistakes": "Students often confuse a business with a charity.",
         "recall_questions": [
             "Define a business in your own words.",
-            "Name two resources a business uses.",
+            "List two resources a business uses.",
             "Explain why a business needs to make a profit.",
         ],
         "confidence": confidence,
@@ -276,10 +276,11 @@ def test_teach_route_serves_canonical_without_llm(db):
     chat.assert_not_called()
 
 
-def test_teach_route_fallback_queues_runtime(db):
-    """No stored lesson -> runtime generation runs once AND the objective is queued."""
+def test_teach_route_fallback_serves_placeholder(db):
+    """No stored lesson -> an honest placeholder is served with NO LLM call (runtime
+    no longer generates freeform lessons), and the objective is queued."""
     assert lesson_count(db) == 0, "precondition: no canonical lesson"
-    chat = MagicMock(return_value="A lesson body.\n\nQuestion: What is a business?")
+    chat = MagicMock()  # must NEVER be called -- the fix removed runtime generation
 
     out = controller.handle_request(
         db,
@@ -288,9 +289,12 @@ def test_teach_route_fallback_queues_runtime(db):
         chat_fn=chat, embed_fn=fake_embed,
     )
 
-    assert out["lesson_source"] == "runtime"
-    assert chat.call_count == 1, "runtime path calls the tutor exactly once"
-    assert queue_count(db, reason="served_runtime") == 1
+    assert out["lesson_source"] == "placeholder"
+    assert out["recall_questions"] == []
+    assert out["objective_id"] == OBJECTIVE
+    assert "being prepared" in out["lesson"]
+    chat.assert_not_called()
+    assert queue_count(db, reason="served_placeholder") == 1
 
 
 def test_successful_write_clears_the_queue(db):
@@ -329,3 +333,73 @@ def test_requeuing_is_idempotent():
             "second run upserts (refreshes created_at), it does not add a second row"
     finally:
         conn.close()
+
+
+# --- _validate_lesson_quality (defence-in-depth quality gate) ---------------
+def _clean_questions():
+    return ["What is a business?",
+            "State two functions of an entrepreneur.",
+            "Explain how capital is used in production."]
+
+
+def test_validate_rejects_section_citation():
+    ok, why = il._validate_lesson_quality(
+        "According to Section 2, a business supplies goods.", _clean_questions())
+    assert ok is False and "section" in why.lower()
+
+
+def test_validate_rejects_boilerplate_in_lesson_text():
+    ok, why = il._validate_lesson_quality(
+        "A business supplies goods. Let me know if you'd like more clarification!",
+        _clean_questions())
+    assert ok is False and "boilerplate" in why.lower()
+
+
+def test_validate_rejects_wrong_question_count():
+    ok, why = il._validate_lesson_quality(
+        "A clean lesson body about business.", ["Only one question here?"])
+    assert ok is False and "count != 3" in why
+
+
+def test_validate_rejects_too_short_question():
+    ok, why = il._validate_lesson_quality(
+        "A clean lesson body about business.",
+        ["What is a business?", "OK?", "Explain capital use in production."])
+    assert ok is False and "too short" in why.lower()
+
+
+def test_validate_rejects_answer_leakage():
+    # The model appended the answer to the question (the POB-10.13 pattern).
+    ok, why = il._validate_lesson_quality(
+        "A clean lesson body about logistics.",
+        ["What is the movement of goods called? (Answer: Transportation)",
+         "State two modes of transport.", "Explain why transport matters."])
+    assert ok is False and "leak" in why.lower()
+
+
+def test_validate_rejects_non_question_non_command():
+    # No '?' and not a command-word prompt -> rejected (this is the junk case, e.g.
+    # 'multiple-choice' or a leaked-answer fragment).
+    ok, why = il._validate_lesson_quality(
+        "A clean lesson body about business.",
+        ["What is a business?", "State two functions of management.",
+         "The answer here is taxation and revenue."])
+    assert ok is False and "not a question or command" in why.lower()
+
+
+def test_validate_accepts_clean_response():
+    ok, why = il._validate_lesson_quality(
+        "A business supplies goods and services to satisfy needs and wants.",
+        _clean_questions())
+    assert ok is True and why is None
+
+
+def test_validate_accepts_imperative_command_prompt_without_question_mark():
+    # CSEC recall prompts are often imperatives that do not end in '?'. These are
+    # valid and must NOT be rejected.
+    ok, why = il._validate_lesson_quality(
+        "A business supplies goods and services.",
+        ["Identify two roles of an entrepreneur.",
+         "Describe the role of capital in a business.",
+         "Distinguish between fixed and working capital."])
+    assert ok is True and why is None

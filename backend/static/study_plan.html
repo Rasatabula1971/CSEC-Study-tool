@@ -327,75 +327,11 @@
 
   function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
   function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
-  // The Tutor lesson always ends with one active-recall question (tutor.txt). The
-  // study plan now makes ONE LLM call (the lesson) and reuses that embedded question
-  // as the gradeable card, so lesson and question can never describe different
-  // sub-topics. Returns { lessonClean, questionText }: split at the LAST question
-  // heading; if none matches, the last non-empty paragraph is the question.
-  function extractQuestionFromLesson(lesson) {
-    if (!lesson) return { lessonClean: '', questionText: '' };
-
-    const patterns = [
-      /\*{0,2}\s*active[- ]recall question\s*\*{0,2}\s*:/gi,
-      /\*{0,2}\s*now,?\s+let'?s (?:test|check) your understanding\s*\*{0,2}\s*:/gi,
-      /\*{0,2}\s*(?:test|check|assess) your understanding\s*\*{0,2}\s*:/gi,
-      /\*{0,2}\s*question\s*\*{0,2}\s*:/gi,
-    ];
-
-    let bestMatch = null;
-    for (const re of patterns) {
-      let m;
-      while ((m = re.exec(lesson)) !== null) {
-        if (!bestMatch || m.index > bestMatch.index) {
-          bestMatch = { index: m.index, length: m[0].length };
-        }
-      }
-    }
-
-    if (bestMatch) {
-      const lessonClean = lesson.slice(0, bestMatch.index).trimEnd();
-      // Strip any markdown left after the colon (e.g. the closing "**" of
-      // "**Active-Recall Question:**") plus surrounding whitespace.
-      const questionText = lesson
-        .slice(bestMatch.index + bestMatch.length)
-        .replace(/^[\s*:>#-]+/, '')
-        .trim();
-      return { lessonClean, questionText };
-    }
-
-    // Fallback: last paragraph is the question.
-    const paragraphs = lesson.split(/\n\s*\n/).filter(p => p.trim());
-    if (paragraphs.length >= 2) {
-      const questionText = paragraphs[paragraphs.length - 1].trim();
-      const lessonClean = paragraphs.slice(0, -1).join('\n\n').trimEnd();
-      return { lessonClean, questionText };
-    }
-
-    // Degenerate fallback: no question detectable.
-    return { lessonClean: lesson, questionText: '' };
-  }
-
-  // Self-test — logs PASS/FAIL to the console on page load (the regression guard
-  // for this frontend logic, which the Python suite does not cover).
-  (function testExtractQuestion() {
-    const cases = [
-      { name: 'Active-Recall Question with bold',
-        input: 'Lesson body here.\n\n**Active-Recall Question:**\n\nWhat is X?', expectQ: 'What is X?' },
-      { name: 'lowercase active recall no bold',
-        input: 'Body.\n\nactive recall question: What is Y?', expectQ: 'What is Y?' },
-      { name: "now let's test",
-        input: "Body.\n\nNow, let's test your understanding:\n\nDefine Z.", expectQ: 'Define Z.' },
-      { name: 'plain Question:',
-        input: 'Body.\n\nQuestion: Explain W.', expectQ: 'Explain W.' },
-      { name: 'fallback last paragraph',
-        input: 'Para one.\n\nPara two ends with what is V?', expectQ: 'Para two ends with what is V?' },
-    ];
-    for (const c of cases) {
-      const out = extractQuestionFromLesson(c.input);
-      const pass = out.questionText === c.expectQ;
-      console.log((pass ? 'PASS' : 'FAIL') + ' — ' + c.name + ' — got: ' + JSON.stringify(out.questionText));
-    }
-  })();
+  // NOTE: extractQuestionFromLesson (a regex that scraped a "question" out of lesson
+  // prose) was REMOVED. Runtime no longer generates freeform lessons with an embedded
+  // question; canonical lessons carry structured recall_questions, and the placeholder
+  // response carries none. Scraping prose fabricated bogus questions, so the UI now
+  // only ever shows server-provided recall_questions (or "none available").
   function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
   function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
   function hideError(){errorNotice.classList.remove('visible');}
@@ -630,7 +566,9 @@
   // a pill loads that question into the gradeable card so the student answers it.
   function renderRecallPills(questions){
     state.recallQuestions=questions;
-    if(!questions.length)return '';
+    if(!questions.length){
+      return `<div class="recall-pills"><div class="recall-pills-label">No recall questions available for this lesson.</div></div>`;
+    }
     const pills=questions.map((q,i)=>
       `<button type="button" class="recall-pill" data-idx="${i}">${escapeHtml(q)}</button>`).join('');
     return `<div class="recall-pills"><div class="recall-pills-label">Active-recall questions — tap one to answer it</div>${pills}</div>`;
@@ -645,15 +583,16 @@
     });
   }
 
-  // Fetches the lesson for an objective (ONE LLM call, or instant for a stored
-  // canonical lesson). Renders the lesson and its active-recall questions as pills.
-  // The first pill is auto-selected as the gradeable card. Returns the first recall
-  // question ('' if none), so loadBatchStep only falls back to generating a question
-  // when there is genuinely nothing to answer.
+  // Fetches the lesson for an objective (instant for a stored canonical lesson).
+  // Renders the lesson and its active-recall questions as pills. The first pill is
+  // auto-selected as the gradeable card. Returns the first recall question ('' if
+  // none), so loadBatchStep only falls back to generating a question when there is
+  // genuinely nothing to answer.
   //
-  // Stage 11: canonical lessons return {lesson_text, recall_questions:[...]}. The
-  // regex extractor (extractQuestionFromLesson) is now a SAFETY NET only — used when
-  // a runtime lesson comes back with no recall_questions field.
+  // Stage 11: canonical lessons return {lesson_text, recall_questions:[...]}. An
+  // objective with no canonical lesson returns a 'placeholder' response with NO
+  // recall_questions; we render the lesson text and show "none available" rather than
+  // scraping a fake question out of the prose.
   async function loadLesson(objective){
     if(!objective)return '';
     const host=document.getElementById('planLessonHost');if(!host)return '';
@@ -670,15 +609,13 @@
         lessonClean=data.lesson_text||data.lesson||'';
         recallQuestions=data.recall_questions.filter(q=>q&&q.trim());
       }else{
-        // Safety net: a runtime lesson with no recall_questions. Fall back to the
-        // regex extractor that splits the embedded question out of the prose.
-        if(data.lesson_source==='runtime'){
-          console.warn('Stage 11: runtime lesson without recall_questions, '+
-                       'falling back to regex extraction. Run ingest_lessons.py.');
-        }
-        const ex=extractQuestionFromLesson(data.lesson||data.lesson_text||'');
-        lessonClean=ex.lessonClean;
-        recallQuestions=ex.questionText?[ex.questionText]:[];
+        // No structured recall questions -- e.g. a 'placeholder' response for an
+        // objective that has no canonical lesson yet. Show the lesson text as-is and
+        // present NO recall questions. We never scrape questions out of the prose:
+        // that fabricated bogus "Question / Objective N.M" pills from placeholder /
+        // runtime text and is the bug this fix removes.
+        lessonClean=data.lesson_text||data.lesson||'';
+        recallQuestions=[];
       }
 
       host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonClean)}${renderRecallPills(recallQuestions)}</div>`;

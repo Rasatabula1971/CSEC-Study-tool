@@ -320,4 +320,7 @@ def test_teach_named_objective_ignores_generic_query(db):
         chat_fn=_fake_chat,
     )
     assert lesson["objective_id"] == target
-    assert lesson["source_file"] == "syllabus"  # content-statement fallback, no notes
+    # No canonical lesson yet -> placeholder (runtime no longer generates). The key
+    # invariant holds: a named-objective teach resolves EXACTLY the named objective.
+    assert lesson["lesson_source"] == "placeholder"
+    assert lesson["source_file"] is None
