@@ -1027,6 +1027,19 @@ Cost-bounded test batch (NOT a full regen — pending user approval after review
     `pob_sample_lessons.txt` for review. **Full --regenerate deferred** to user
     sign-off after reading the samples (~$20 for all 116 / all subjects).
 
+  - **Tiered word floor (follow-up):** the flat 300-word floor wrongly queued
+    POB-3.1 ("Define the term entrepreneur") — an honest Define lesson runs ~265–300
+    words, and the prompt forbids padding, so it oscillated at the boundary and
+    failed ~half its runs. Fixed by tiering the floor by command word in
+    `_word_floor_for_objective`, mirroring the prompt's COMMAND-WORD REGISTER:
+    Define/State/List → 180, Draw/Sketch/Illustrate → 250, Explain/Describe +
+    Calculate/Solve/Apply/Use/Construct → 300, Discuss/Analyse/Compare → 350,
+    unrecognised → 300 default; with multiple command words the HIGHEST-demand floor
+    wins. `_validate_lesson_quality` now takes `command_words` (the orchestrator
+    passes `obj["command_words"]`). This matters for the full run and every subject:
+    all seven have short-answer objectives that would false-reject under a flat floor.
+    POB-3.1 then wrote a clean 279-word Define lesson (conf 90). +6 tests; suite 398.
+
 ## /plan jump-to-objective + batch navigation (19 June 2026) — UX only
 
 The /plan page only served objectives in fixed batches starting from the lowest

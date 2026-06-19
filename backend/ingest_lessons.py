@@ -121,7 +121,52 @@ _RECALL_COMMAND_WORDS = (
 )
 
 
-def _validate_lesson_quality(lesson_text, recall_questions):
+# The word floor depends on the objective's command word: a pure "Define" lesson is
+# honestly short, while a "Discuss" lesson needs the most room. These tiers mirror the
+# prompt's own COMMAND-WORD REGISTER section (harder demand -> more room) so the gate
+# never false-rejects an accurate short-answer lesson the way a flat 300 floor did.
+COMMAND_WORD_FLOOR_TIERS = {
+    # Knowledge-tier: precise, brief, memorisable. A pure definition objective is
+    # honestly short -- don't force padding.
+    'define': 180, 'state': 180, 'list': 180,
+    # Understanding-tier: cause-and-effect or step-by-step reasoning.
+    'explain': 300, 'describe': 300,
+    # Application-tier: method + worked example.
+    'calculate': 300, 'solve': 300, 'apply': 300, 'use': 300,
+    'construct': 300,
+    # Discuss-tier: multiple sides or factors weighed -- needs the most room.
+    'discuss': 350, 'analyse': 350, 'analyze': 350, 'compare': 350,
+    # Figure-description tier.
+    'draw': 250, 'sketch': 250, 'illustrate': 250,
+}
+DEFAULT_WORD_FLOOR = 300  # fallback for command words not listed above
+
+
+def _word_floor_for_objective(command_words) -> int:
+    """Pick the word floor from the HIGHEST-demand command word present.
+
+    Matches the prompt's own command-word register logic (harder demand = more room
+    needed). command_words may be a JSON string or an already-parsed list. An empty /
+    absent value, or words not in the tier table, fall back to DEFAULT_WORD_FLOOR.
+    """
+    if isinstance(command_words, str):
+        try:
+            command_words = json.loads(command_words)
+        except (TypeError, ValueError):
+            command_words = []
+    if not command_words:
+        return DEFAULT_WORD_FLOOR
+
+    floors = [
+        COMMAND_WORD_FLOOR_TIERS.get(str(w).strip().lower(), DEFAULT_WORD_FLOOR)
+        for w in command_words
+    ]
+    # "Highest demand" = the largest floor value, since the tiers are ordered by
+    # cognitive demand (Define < Explain < Discuss in required depth and word count).
+    return max(floors)
+
+
+def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
     """Reject semantically-broken lessons the JSON schema can't catch (chat
     boilerplate, hallucinated 'Section N' citations, junk recall questions).
 
@@ -136,8 +181,10 @@ def _validate_lesson_quality(lesson_text, recall_questions):
     bare labels like 'multiple-choice') is rejected.
 
     The lesson format is one question per lesson (PDR v3.2): recall_questions must hold
-    exactly 1 item. lesson_text must also clear a 300-word floor -- anything shorter is
-    a skeleton lesson, queued for a re-attempt rather than served.
+    exactly 1 item. lesson_text must also clear a word floor that is TIERED by the
+    objective's command word (_word_floor_for_objective): a Define/State/List lesson is
+    honestly short, a Discuss/Analyse/Compare lesson needs the most room. command_words
+    may be a JSON string or a parsed list; None falls back to DEFAULT_WORD_FLOOR.
     """
     lower = (lesson_text or "").lower()
     if 'according to section' in lower:
@@ -145,11 +192,12 @@ def _validate_lesson_quality(lesson_text, recall_questions):
     if 'let me know' in lower or 'feel free' in lower or 'clarification' in lower:
         return False, 'lesson_text contains chat boilerplate'
     # Word floor (checked AFTER the lesson_text content checks so a short, boilerplate
-    # lesson still reports the more specific reason). 300 is the hard floor below which
-    # the lesson is too thin to teach honestly.
+    # lesson still reports the more specific reason). The floor is tiered by command
+    # word so a Define lesson is not held to a Discuss lesson's length.
     word_count = len((lesson_text or "").split())
-    if word_count < 300:
-        return False, f'lesson too short ({word_count} words; min 300)'
+    floor = _word_floor_for_objective(command_words)
+    if word_count < floor:
+        return False, f'lesson too short ({word_count} words; min {floor} for this command word)'
     if not isinstance(recall_questions, list) or len(recall_questions) != 1:
         got = len(recall_questions) if isinstance(recall_questions, list) else 'non-list'
         return False, f'recall_questions count != 1 (got {got})'
@@ -581,7 +629,8 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
             # (e2) Quality gate: reject semantically-broken output (chat boilerplate,
             # 'According to Section N' citations, a skeleton lesson under 300 words, a
             # bad/duplicated recall question). A failure is queued, never written.
-            ok, why = _validate_lesson_quality(lesson_text, recall_questions)
+            ok, why = _validate_lesson_quality(lesson_text, recall_questions,
+                                               obj.get("command_words"))
             if not ok:
                 _queue_quality_failed(db, oid, why, dry_run)
                 _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)

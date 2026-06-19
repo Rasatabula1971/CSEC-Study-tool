@@ -454,3 +454,45 @@ def test_validate_accepts_give_command_prompt():
     ok, why = il._validate_lesson_quality(
         _long_body(), ["Give two examples of capital goods."])
     assert ok is True and why is None
+
+
+# --- tiered word floor (_word_floor_for_objective) -------------------------
+def _body_of(n_words: int) -> str:
+    """A clean, boilerplate-free lesson body of exactly n words."""
+    return " ".join(["word"] * n_words)
+
+
+def test_word_floor_define_is_180():
+    assert il._word_floor_for_objective(["Define"]) == 180
+
+
+def test_word_floor_discuss_is_350():
+    assert il._word_floor_for_objective(["Discuss"]) == 350
+
+
+def test_word_floor_highest_demand_wins():
+    # Define(180) + Discuss(350) -> the highest-demand floor, not first-in-list.
+    assert il._word_floor_for_objective(["Define", "Discuss"]) == 350
+    # Works on a JSON string too (objectives.command_words is stored as JSON).
+    assert il._word_floor_for_objective('["Discuss", "Define"]') == 350
+
+
+def test_word_floor_default_for_empty_or_unknown():
+    assert il._word_floor_for_objective([]) == il.DEFAULT_WORD_FLOOR
+    assert il._word_floor_for_objective(None) == il.DEFAULT_WORD_FLOOR
+    assert il._word_floor_for_objective(["Frobnicate"]) == il.DEFAULT_WORD_FLOOR
+    assert il.DEFAULT_WORD_FLOOR == 300
+
+
+def test_validate_accepts_200_word_define_lesson():
+    # A 200-word Define lesson clears the Define-tier floor (180).
+    ok, why = il._validate_lesson_quality(
+        _body_of(200), ["Define the term entrepreneur?"], command_words=["Define"])
+    assert ok is True and why is None
+
+
+def test_validate_rejects_200_word_discuss_lesson():
+    # The same 200 words for a Discuss objective is too short (needs 350).
+    ok, why = il._validate_lesson_quality(
+        _body_of(200), ["Discuss the role of the entrepreneur?"], command_words=["Discuss"])
+    assert ok is False and "too short" in why.lower() and "350" in why
