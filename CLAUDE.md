@@ -941,3 +941,30 @@ The 61 queued are genuine low non-zero model self-reports (conf 1–15, correctl
 capped); the 9 errored are model-call exceptions (retryable). On --regenerate an
 existing lesson is deleted only once a passing replacement is in hand, so the 6
 objectives that errored/queued this run kept their prior (stale) lesson.
+
+## Confidence floor-only fix (19 June 2026) — supersedes the no-signal fix above
+
+Same root cause, second iteration. The no-signal fix only rescued
+`model_conf == 0`; non-zero low self-reports were still capped by
+`min(model_conf, floor)` and queued. Live diagnostic on POB-1.11: 5 notes
+chunks (floor 90), a coherent 1829-char lesson + 3 valid recall questions, but
+`confidence=5` → `min(5, 90) = 5` → below the 30 threshold → queued. llama3.2:3b
+returns 0/5/10 even for good lessons — its self-confidence is uncalibrated noise
+on this task.
+
+Fix (ingest_lessons.py, section (e)): drop the model self-report from the
+final_conf decision entirely — `final_conf = local_confidence_floor(chunks)`.
+The remaining safety nets are unchanged: `confidence_floor=30` still rejects
+zero-notes objectives (floor 30 max), the `_validate_lesson_quality` gate still
+queues malformed lessons (boilerplate / section citations / answer leakage /
+bad recall questions), and a model/JSON failure still errors→retryable. 1 new
+test (test_low_model_confidence_still_uses_source_floor); one legacy assertion
+updated (test_ingest_writes_lesson_when_sources_sufficient now expects the floor
+90, not min(85,90)=85); suite 379.
+
+Re-ran the full `--regenerate` pass: written 112 · queued 4 · skipped 0 ·
+errored 0 · cleared 73. DB after: objective_lessons = 114, all clean, 0 stale,
+all conf=90 → **98.3% lesson coverage (114/116)**. POB-1.11 now WRITTEN at
+conf=90. The only 4 not written are quality_check_failed (answer-leak / bad
+recall question) — the validator gate doing its job, not a confidence problem;
+2 of those kept a prior clean lesson, 2 have none.

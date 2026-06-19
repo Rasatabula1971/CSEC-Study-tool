@@ -493,20 +493,16 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 summary["errored"] += 1
                 continue
 
-            # (e) Confidence: model self-report capped by the local floor.
-            # Small models (llama3.2:3b) often return 0 even when they
-            # composed a good lesson -- treat 0 as "no signal" rather than
-            # "no confidence" and fall back to the source-quality floor.
-            try:
-                model_conf = int(data.get("confidence", 0))
-            except (TypeError, ValueError):
-                model_conf = 0
+            # (e) Confidence: trust the source-quality floor entirely.
+            # Earlier iterations capped final_conf by the model's self-report.
+            # Diagnostic showed llama3.2:3b returns confidence=0 or low values
+            # like 5 even for well-composed lessons (e.g. POB-1.11: returned
+            # conf=5 with a 1829-char coherent lesson and 3 valid recall
+            # questions). The model's self-confidence isn't a calibrated signal
+            # on this task. Remove it from the decision; the source-quality
+            # floor + quality_check_failed gate are the real safety nets.
             floor = local_confidence_floor(chunks)
-            if model_conf <= 0:
-                # Model didn't self-report -- trust the source-quality floor.
-                final_conf = floor
-            else:
-                final_conf = min(model_conf, floor)
+            final_conf = floor
 
             if final_conf < confidence_floor:
                 _queue_insufficient(db, oid, dry_run)

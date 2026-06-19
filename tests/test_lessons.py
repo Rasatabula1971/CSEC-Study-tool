@@ -196,8 +196,9 @@ def test_ingest_writes_lesson_when_sources_sufficient(db):
         "SELECT lesson_text, recall_questions, confidence, source_chunk_ids "
         "FROM objective_lessons WHERE objective_id = ?", (OBJECTIVE,),
     ).fetchone()
-    # 5 notes -> local floor 90; min(85, 90) = 85 stored.
-    assert row["confidence"] == 85
+    # 5 notes -> local floor 90; the model self-report (85) is ignored, the
+    # source-quality floor is stored as the confidence.
+    assert row["confidence"] == 90
     assert row["lesson_text"].strip(), "lesson_text is non-empty"
     recall = json.loads(row["recall_questions"])
     assert isinstance(recall, list) and len(recall) == 3
@@ -224,6 +225,29 @@ def test_zero_model_confidence_uses_source_floor(db):
         "SELECT confidence FROM objective_lessons WHERE objective_id = ?", (OBJECTIVE,),
     ).fetchone()["confidence"]
     # model_conf 0 -> no signal -> fall back to the 5-notes floor of 90.
+    assert stored == 90, "the source-quality floor becomes the stored confidence"
+
+
+def test_low_model_confidence_still_uses_source_floor(db):
+    """Even a non-zero LOW model confidence (e.g. 5) must not block a lesson
+    backed by strong source material. POB-1.11 case: the model returned conf=5
+    on a clean 1829-char lesson with 3 valid recall questions. The model
+    self-report is uncalibrated noise on this task, so it is ignored entirely
+    and the source-quality floor (5 notes -> 90) is the stored confidence."""
+    chat = make_chat(lesson_json(5))
+    summary = il.ingest_lessons_for_subject(
+        db, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
+    )
+
+    assert chat.calls == 1, "the model was called once for the objective"
+    assert lesson_count(db) == 1, "conf=5 must NOT discard a well-sourced lesson"
+    assert queue_count(db) == 0, "nothing queued -- the lesson was written"
+    assert summary["written"] == 1 and summary["queued"] == 0
+
+    stored = db.execute(
+        "SELECT confidence FROM objective_lessons WHERE objective_id = ?", (OBJECTIVE,),
+    ).fetchone()["confidence"]
+    # low model conf 5 ignored -> source floor 90 stored.
     assert stored == 90, "the source-quality floor becomes the stored confidence"
 
 
@@ -258,8 +282,8 @@ def test_regenerate_replaces_existing(db):
     stored = db.execute(
         "SELECT confidence FROM objective_lessons WHERE objective_id = ?", (OBJECTIVE,),
     ).fetchone()["confidence"]
-    # 5 notes -> floor 90; min(92, 90) = 90. The point is it is the freshly computed
-    # value, NOT the pre-existing 40.
+    # 5 notes -> floor 90; the model self-report (92) is ignored. The point is it
+    # is the freshly computed floor value, NOT the pre-existing 40.
     assert stored == 90
     assert stored != 40, "confidence was updated, not left at the old value"
 
@@ -328,7 +352,7 @@ def test_successful_write_clears_the_queue(db):
     db.commit()
     assert queue_count(db) == 1, "precondition: the objective is flagged in the queue"
 
-    chat = make_chat(lesson_json(85))  # 5 notes -> floor 90, min(85,90)=85 -> written
+    chat = make_chat(lesson_json(85))  # 5 notes -> floor 90 (model conf ignored) -> written
     summary = il.ingest_lessons_for_subject(
         db, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
     )
