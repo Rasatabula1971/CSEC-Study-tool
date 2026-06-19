@@ -903,3 +903,17 @@ Fixes (all on `main`):
     (reason='quality_check_failed: pre-existing'). 18 of 20 stored lessons remain.
   - 7 teach tests updated to the placeholder contract; 9 new validator/controller
     tests. Suite 370.
+  - Follow-up: 'name' + 'give' added to the validator's CSEC command-word set (real
+    'Name three…' / 'Give two…' stems). Suite 372.
+
+## Lesson-status page (19 June 2026)
+
+Read-only live view of lesson generation (no new state — pure DB read of
+objective_lessons + lesson_generation_queue):
+  - GET /api/lessons/status/{subject_id} → {total_objectives, lessons_written,
+    lessons_stale, lessons_queued, queue_by_reason (grouped on the reason PREFIX
+    before ':'), recent_activity (lesson_written/staled/queued union, newest-first,
+    ≤10)}.
+  - GET /lessons/status → backend/static/lesson_status.html, auto-refreshes every 5s,
+    updates in place. Discreet "Lesson Status →" link added to welcome.html topbar
+    (ungated — it's just numbers). 5 tests; suite 377.

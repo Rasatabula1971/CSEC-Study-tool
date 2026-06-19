@@ -76,6 +76,7 @@ CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 PLAN_HTML = STATIC_DIR / "study_plan.html"
 UPLOAD_HTML = STATIC_DIR / "upload.html"
+LESSON_STATUS_HTML = STATIC_DIR / "lesson_status.html"
 
 
 # Idempotent runtime migration: ensures tables added after a DB was first created
@@ -889,6 +890,12 @@ def plan_page() -> FileResponse:
 def upload_page() -> FileResponse:
     """Serve the Upload Material page (backend/static/upload.html)."""
     return FileResponse(UPLOAD_HTML)
+
+
+@app.get("/lessons/status")
+def lesson_status_page() -> FileResponse:
+    """Serve the read-only lesson-generation status page (auto-refreshing)."""
+    return FileResponse(LESSON_STATUS_HTML)
 
 
 @app.get("/")
@@ -2193,6 +2200,79 @@ def lessons_stale(subject_id: str, request: Request) -> dict:
     import upload_ingest
     return {"ok": True,
             "stale_lessons": upload_ingest.get_stale_lessons(request.app.state.db, subject_id)}
+
+
+@app.get("/api/lessons/status/{subject_id}")
+def lessons_status(subject_id: str, request: Request) -> dict:
+    """Read-only live snapshot of lesson generation for a subject (no new state).
+
+    Counts come straight from objective_lessons + lesson_generation_queue.
+    queue_by_reason groups on the reason PREFIX (text before the first ':'), so
+    'quality_check_failed: pre-existing' and 'quality_check_failed: <why>' collapse to
+    'quality_check_failed'. recent_activity unions the three timestamped events
+    (lesson_written / staled / queued), newest first, capped at 10.
+    """
+    db = request.app.state.db
+
+    total_objectives = db.execute(
+        "SELECT COUNT(*) FROM objectives WHERE subject_id = ?", (subject_id,)
+    ).fetchone()[0]
+    lessons_written = db.execute(
+        "SELECT COUNT(*) FROM objective_lessons WHERE subject_id = ?", (subject_id,)
+    ).fetchone()[0]
+    lessons_stale = db.execute(
+        "SELECT COUNT(*) FROM objective_lessons WHERE subject_id = ? AND is_stale = 1",
+        (subject_id,),
+    ).fetchone()[0]
+
+    # The queue table is subject-agnostic (objective_id only) -> join to objectives.
+    queue_rows = db.execute(
+        """
+        SELECT q.reason FROM lesson_generation_queue q
+        JOIN   objectives o ON o.objective_id = q.objective_id
+        WHERE  o.subject_id = ?
+        """,
+        (subject_id,),
+    ).fetchall()
+    lessons_queued = len(queue_rows)
+    queue_by_reason: dict = {}
+    for r in queue_rows:
+        prefix = (r["reason"] or "unknown").split(":", 1)[0].strip()
+        queue_by_reason[prefix] = queue_by_reason.get(prefix, 0) + 1
+
+    events = db.execute(
+        """
+        SELECT objective_id, 'lesson_written' AS event, NULL AS reason,
+               generated_at AS timestamp
+        FROM   objective_lessons
+        WHERE  subject_id = ? AND generated_at IS NOT NULL
+        UNION ALL
+        SELECT objective_id, 'staled' AS event, stale_reason AS reason,
+               staled_at AS timestamp
+        FROM   objective_lessons
+        WHERE  subject_id = ? AND is_stale = 1 AND staled_at IS NOT NULL
+        UNION ALL
+        SELECT q.objective_id, 'queued' AS event, q.reason AS reason,
+               q.created_at AS timestamp
+        FROM   lesson_generation_queue q
+        JOIN   objectives o ON o.objective_id = q.objective_id
+        WHERE  o.subject_id = ?
+        ORDER  BY timestamp DESC
+        LIMIT  10
+        """,
+        (subject_id, subject_id, subject_id),
+    ).fetchall()
+    recent_activity = [dict(e) for e in events]
+
+    return {
+        "subject_id": subject_id,
+        "total_objectives": total_objectives,
+        "lessons_written": lessons_written,
+        "lessons_stale": lessons_stale,
+        "lessons_queued": lessons_queued,
+        "queue_by_reason": queue_by_reason,
+        "recent_activity": recent_activity,
+    }
 
 
 @app.post("/api/lessons/{objective_id}/regenerate")

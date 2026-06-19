@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSEC Study Partner · Lesson Status</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+  <style>
+    body { min-height: 100%; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: var(--space-6, 24px) var(--space-5, 20px); }
+    .title { font-family: var(--font-display, serif); font-size: var(--text-2xl, 1.6rem);
+      font-weight: 600; color: var(--paper, #f4efe3); margin: 0 0 var(--space-5, 20px); }
+    .title .subj { color: var(--booklet-bright, #4a82c4); }
+    .card { background: var(--ink-2, #16201b); border: var(--border, 1px solid #2e4039);
+      border-radius: var(--radius-lg, 12px); padding: var(--space-5, 20px); margin-bottom: var(--space-4, 16px); }
+    .stat-line { font-size: var(--text-md, 1rem); color: var(--paper-dim, #b7b3a6); margin-bottom: var(--space-2, 8px); }
+    .stat-line .num { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--paper, #f4efe3); }
+    .bar-track { height: 14px; background: var(--ink-3, #0f1714); border: 1px solid var(--rule, #2e4039);
+      border-radius: var(--radius-pill, 999px); overflow: hidden; margin: var(--space-2, 8px) 0; }
+    .bar-fill { height: 100%; background: var(--tick, #5bbf7b);
+      transition: width 400ms ease; border-radius: var(--radius-pill, 999px); }
+    .bar-pct { font-family: var(--font-mono, monospace); font-size: var(--text-sm, 0.875rem);
+      color: var(--paper-faint, #7c8579); }
+    .row { display: flex; justify-content: space-between; gap: var(--space-3, 12px);
+      font-size: var(--text-sm, 0.875rem); color: var(--paper-dim, #b7b3a6); padding: 2px 0; }
+    .row .num { font-family: var(--font-mono, monospace); color: var(--paper, #f4efe3); font-weight: 700; }
+    .section-label { font-size: var(--text-xs, 0.75rem); text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--paper-faint, #7c8579); margin: 0 0 var(--space-2, 8px); }
+    .breakdown .row { padding-left: var(--space-3, 12px); }
+    .activity { list-style: none; margin: 0; padding: 0; }
+    .activity li { display: grid; grid-template-columns: 52px 1fr auto; gap: var(--space-3, 12px);
+      align-items: baseline; font-family: var(--font-mono, monospace); font-size: var(--text-xs, 0.75rem);
+      color: var(--paper-dim, #b7b3a6); padding: 3px 0; border-bottom: 1px solid var(--rule-soft, #223029); }
+    .activity li:last-child { border-bottom: none; }
+    .activity .ts { color: var(--paper-faint, #7c8579); }
+    .activity .oid { color: var(--booklet-bright, #4a82c4); font-weight: 700; }
+    .ev { font-size: var(--text-xs, 0.75rem); }
+    .ev.lesson_written { color: var(--tick, #5bbf7b); }
+    .ev.queued { color: var(--color-warn, #e8a23d); }
+    .ev.staled { color: var(--red-pen, #e06a5a); }
+    .meta { font-size: var(--text-xs, 0.75rem); color: var(--paper-faint, #7c8579); text-align: center;
+      margin-top: var(--space-4, 16px); }
+    .meta .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--tick, #5bbf7b); margin-right: 6px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .meta .dot { animation: none; } .bar-fill { transition: none; } }
+    .empty { color: var(--paper-faint, #7c8579); font-size: var(--text-sm, 0.875rem); }
+    .err { color: var(--red-pen, #e06a5a); font-size: var(--text-sm, 0.875rem); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">Lesson Status — <span class="subj" id="subjName">…</span></h1>
+
+    <div class="card">
+      <div class="stat-line">Lessons written: <span class="num" id="written">–</span>
+        of <span class="num" id="total">–</span></div>
+      <div class="bar-track"><div class="bar-fill" id="bar" style="width:0%"></div></div>
+      <div class="bar-pct" id="pct">–</div>
+    </div>
+
+    <div class="card">
+      <div class="row"><span>Stale (regenerating?)</span><span class="num" id="stale">–</span></div>
+      <div class="row"><span>Queued</span><span class="num" id="queued">–</span></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Queue breakdown</div>
+      <div class="breakdown" id="breakdown"><div class="empty">…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Recent activity (last 10)</div>
+      <ul class="activity" id="activity"><li class="empty">…</li></ul>
+    </div>
+
+    <div class="meta"><span class="dot"></span><span id="metaText">Auto-refreshes every 5 seconds.</span></div>
+  </div>
+
+<script>
+"use strict";
+const SUBJECT = new URLSearchParams(location.search).get("subject") || "Principles_of_Business";
+const REFRESH_MS = 5000;
+
+function esc(s){const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML;}
+function hhmm(ts){
+  if(!ts) return "—";
+  const m = String(ts).match(/(\d{2}):(\d{2})/);   // pull HH:MM from "YYYY-MM-DD HH:MM:SS"
+  return m ? m[1]+":"+m[2] : esc(ts);
+}
+const EVENT_LABEL = { lesson_written: "lesson_written", queued: "queued", staled: "staled" };
+
+async function refresh(){
+  let data;
+  try {
+    const res = await fetch(`/api/lessons/status/${encodeURIComponent(SUBJECT)}`);
+    data = await res.json();
+  } catch (e) {
+    document.getElementById("metaText").innerHTML =
+      `<span class="err">Couldn't reach the server. Retrying…</span>`;
+    return;
+  }
+  document.getElementById("metaText").textContent = "Auto-refreshes every 5 seconds.";
+
+  document.getElementById("subjName").textContent =
+    (data.subject_id || SUBJECT).replace(/_/g, " ");
+  const written = data.lessons_written || 0, total = data.total_objectives || 0;
+  const pct = total ? Math.round(100 * written / total) : 0;
+  document.getElementById("written").textContent = written;
+  document.getElementById("total").textContent = total;
+  document.getElementById("bar").style.width = pct + "%";
+  document.getElementById("pct").textContent = pct + "%";
+  document.getElementById("stale").textContent = data.lessons_stale || 0;
+  document.getElementById("queued").textContent = data.lessons_queued || 0;
+
+  const bd = data.queue_by_reason || {};
+  const keys = Object.keys(bd).sort((a, b) => bd[b] - bd[a]);
+  document.getElementById("breakdown").innerHTML = keys.length
+    ? keys.map(k => `<div class="row"><span>${esc(k)}</span><span class="num">${bd[k]}</span></div>`).join("")
+    : `<div class="empty">Queue is empty.</div>`;
+
+  const acts = Array.isArray(data.recent_activity) ? data.recent_activity : [];
+  document.getElementById("activity").innerHTML = acts.length
+    ? acts.map(a => {
+        const ev = EVENT_LABEL[a.event] || a.event || "";
+        const reason = a.reason ? ` (${esc(a.reason)})` : "";
+        return `<li><span class="ts">${hhmm(a.timestamp)}</span>` +
+               `<span class="oid">${esc(a.objective_id)}</span>` +
+               `<span class="ev ${esc(a.event)}">← ${esc(ev)}${reason}</span></li>`;
+      }).join("")
+    : `<li class="empty">No activity yet.</li>`;
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
