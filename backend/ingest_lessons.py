@@ -144,6 +144,7 @@ LESSON_SYSTEM = (
 _RECALL_COMMAND_WORDS = (
     "define", "state", "explain", "identify", "describe", "discuss",
     "distinguish", "outline", "list", "calculate", "compare", "contrast",
+    "name", "give",
 )
 
 

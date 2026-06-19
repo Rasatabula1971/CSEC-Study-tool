@@ -403,3 +403,23 @@ def test_validate_accepts_imperative_command_prompt_without_question_mark():
          "Describe the role of capital in a business.",
          "Distinguish between fixed and working capital."])
     assert ok is True and why is None
+
+
+def test_validate_accepts_name_command_prompt():
+    # 'Name three...' is a real CSEC command stem.
+    ok, why = il._validate_lesson_quality(
+        "Factors of production are land, labour, capital and enterprise.",
+        ["Name three factors of production.",
+         "State two functions of management.",
+         "Explain how capital differs from land."])
+    assert ok is True and why is None
+
+
+def test_validate_accepts_give_command_prompt():
+    # 'Give two...' is a real CSEC command stem.
+    ok, why = il._validate_lesson_quality(
+        "Capital goods are man-made resources used to produce other goods.",
+        ["Give two examples of capital goods.",
+         "Define the term capital good.",
+         "Distinguish between capital and consumer goods."])
+    assert ok is True and why is None
