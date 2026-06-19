@@ -27,6 +27,30 @@ import controller  # noqa: E402
 SCHEMA_PATH = ROOT / "backend" / "db" / "schema.sql"
 
 
+def open_migrated_db() -> sqlite3.Connection:
+    """A real in-memory DB with schema.sql + apply_runtime_migrations (so the
+    objective_lessons / lesson_generation_queue tables exist). check_same_thread is
+    off because the TestClient runs sync endpoints in a worker thread."""
+    try:
+        import sqlite_vec
+    except ImportError:
+        pytest.skip("sqlite-vec not installed -- skipping study_plan API tests")
+    import app as app_module
+
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.enable_load_extension(False)
+    db.execute("PRAGMA foreign_keys = ON")
+    db.row_factory = sqlite3.Row
+    for stmt in SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+        if stmt.strip():
+            db.execute(stmt)
+    db.commit()
+    app_module.apply_runtime_migrations(db)
+    return db
+
+
 def open_test_db() -> sqlite3.Connection:
     try:
         import sqlite_vec
@@ -324,3 +348,87 @@ def test_teach_named_objective_ignores_generic_query(db):
     # invariant holds: a named-objective teach resolves EXACTLY the named objective.
     assert lesson["lesson_source"] == "placeholder"
     assert lesson["source_file"] is None
+
+
+# ---------------------------------------------------------------------------
+# /plan page + GET /api/objective/{id}  (backs the "Jump to objective" input)
+#
+# These drive the real FastAPI app against a real in-memory DB. The endpoint
+# routes through controller.handle_request with route='teach', so it shares the
+# canonical-lesson / placeholder code path with the batch loader.
+# ---------------------------------------------------------------------------
+from starlette.testclient import TestClient  # noqa: E402
+import app as app_module  # noqa: E402
+
+
+def _seed_jump(db: sqlite3.Connection) -> None:
+    db.execute(
+        "INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, ?, 1)",
+        (SUBJECT, "Principles of Business"),
+    )
+    db.execute(
+        "INSERT INTO syllabus_sections (section_id, subject_id, title, section_num) "
+        "VALUES ('SEC-3', ?, 'Production', '3')",
+        (SUBJECT,),
+    )
+    # POB-3.1 has a canonical lesson; POB-1.11 deliberately has none (placeholder path).
+    db.execute(
+        "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, "
+        "content_stmt) VALUES ('POB-3.1', 'SEC-3', ?, '3.1', 'Explain the levels of production')",
+        (SUBJECT,),
+    )
+    db.execute(
+        "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, "
+        "content_stmt) VALUES ('POB-1.11', 'SEC-3', ?, '1.11', 'Describe forms of business')",
+        (SUBJECT,),
+    )
+    db.execute(
+        "INSERT INTO objective_lessons (lesson_id, objective_id, subject_id, lesson_text, "
+        "recall_questions, source_chunk_ids, confidence) "
+        "VALUES ('L31', 'POB-3.1', ?, 'Production has primary, secondary and tertiary levels.', "
+        "'[\"Name the three levels of production.\"]', '[\"c1\"]', 90)",
+        (SUBJECT,),
+    )
+    db.commit()
+
+
+@pytest.fixture
+def jump_client():
+    db = open_migrated_db()
+    _seed_jump(db)
+    app_module.app.state.db = db
+    yield TestClient(app_module.app)
+    db.close()
+
+
+def test_plan_page_returns_200(jump_client):
+    res = jump_client.get("/plan")
+    assert res.status_code == 200
+
+
+def test_objective_endpoint_returns_lesson_and_recall(jump_client):
+    res = jump_client.get("/api/objective/POB-3.1")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["objective_id"] == "POB-3.1"
+    assert body["lesson_source"] == "canonical"
+    assert body["lesson_text"]
+    assert body["recall_questions"] == ["Name the three levels of production."]
+
+
+def test_objective_endpoint_404_when_unknown(jump_client):
+    res = jump_client.get("/api/objective/POB-99.99")
+    assert res.status_code == 404
+
+
+def test_objective_endpoint_placeholder_when_no_lesson(jump_client):
+    res = jump_client.get("/api/objective/POB-1.11")
+    assert res.status_code == 200
+    body = res.json()
+    # Existing placeholder contract (CLAUDE.md "Lesson quality fix"): no canonical
+    # lesson -> honest placeholder, no fabricated recall questions, no source.
+    assert body["lesson_source"] == "placeholder"
+    assert body["recall_questions"] == []
+    assert body["source_file"] is None
+    assert body["page"] is None
+    assert body["context_source"] == "syllabus"

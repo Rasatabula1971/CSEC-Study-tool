@@ -968,3 +968,35 @@ all conf=90 → **98.3% lesson coverage (114/116)**. POB-1.11 now WRITTEN at
 conf=90. The only 4 not written are quality_check_failed (answer-leak / bad
 recall question) — the validator gate doing its job, not a confidence problem;
 2 of those kept a prior clean lesson, 2 have none.
+
+## /plan jump-to-objective + batch navigation (19 June 2026) — UX only
+
+The /plan page only served objectives in fixed batches starting from the lowest
+objective_id; there was no way to jump to a specific topic (blocking both the
+builder testing lesson-quality fixes on one objective and a student re-studying a
+topic before a test). Two small additions, no design overhaul:
+
+  - **GET /api/objective/{objective_id}** (app.py): looks up the objective's
+    subject_id, then routes through `controller.handle_request(route='teach')` —
+    the SAME path the batch loader uses — so a stored canonical lesson is served
+    deterministically and an objective with none returns the existing placeholder
+    contract (lesson_source='placeholder', recall_questions=[], source_file=None,
+    page=None, context_source='syllabus'). 404 (HTTPException) when the id is
+    unknown. No new controller logic.
+  - **study_plan.html "Jump to objective"** input above the batch area:
+    normalizeObjectiveId accepts "POB-3.1" / "pob-3.1" / "POB 3.1" / bare "3.1"
+    (bare number gets the subject's objective prefix, learned from
+    /api/objectives). Valid id → single-objective view (lesson + recall questions,
+    display-only) with a "← Back to batch" link that RESUMES an in-progress batch
+    where it left off; invalid/unknown → "Objective not found".
+  - **study_plan.html Previous/Next within a batch**: a "◄ Previous | Question N of
+    M | Next ►" footer on each step; the last step shows "Finish batch". Navigation
+    does NOT submit — it just moves between objectives, and per-step answers are
+    preserved (state.plan.answers) so you can skim, answer some, and come back. The
+    post-grade "Next objective" action now routes through the same navStep().
+  - 4 new tests in tests/test_study_plan.py (real in-memory DB + TestClient:
+    /plan→200, /api/objective returns canonical lesson+recall, unknown→404,
+    no-lesson→placeholder contract). Suite 383. Live-DB verify: POB-3.1 → canonical
+    (3 recall qs), POB-99.99 → 404. NOTE: the dev server runs without --reload, so
+    restart it to pick up the new /api/objective route (static /plan reflects edits
+    immediately).

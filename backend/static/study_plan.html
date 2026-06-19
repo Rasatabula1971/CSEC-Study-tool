@@ -37,6 +37,61 @@
     .plan-due-label { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
     .plan-due-label strong { color: var(--color-warn); font-weight: 600; }
 
+    /* "Jump to objective" box (sits above the batch area) */
+    .plan-jump {
+      display: flex; flex-direction: column; gap: var(--space-2);
+      background: var(--ink-2); border: var(--border);
+      border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+      margin: var(--space-3) 0;
+    }
+    .plan-jump-label {
+      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .plan-jump-row { display: flex; gap: var(--space-2); align-items: center; }
+    .plan-jump-input {
+      flex: 1; min-width: 0; padding: var(--space-2) var(--space-3);
+      background: var(--ink-3); border: var(--border); border-radius: var(--radius-sm);
+      color: var(--paper); font-family: var(--font-mono); font-size: var(--text-sm); outline: none;
+    }
+    .plan-jump-input:focus { border-color: var(--booklet); }
+    .plan-jump-btn {
+      flex-shrink: 0; padding: var(--space-2) var(--space-4);
+      background: var(--booklet); color: var(--paper);
+      font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600;
+      border-radius: var(--radius-sm); cursor: pointer;
+      transition: background-color 120ms ease;
+    }
+    .plan-jump-btn:hover:not(:disabled) { background: var(--booklet-bright); }
+    .plan-jump-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .plan-jump-error { font-size: var(--text-xs); color: var(--red-pen); }
+    .plan-jump-error:empty { display: none; }
+    .plan-jump-back { margin-bottom: var(--space-3); }
+    .plan-jump-back button {
+      background: none; color: var(--booklet-bright);
+      font-family: var(--font-mono); font-size: var(--text-sm); cursor: pointer; padding: 0;
+    }
+    .plan-jump-back button:hover { text-decoration: underline; }
+
+    /* Previous / Next navigation within a batch (a footer to the step) */
+    .plan-step-nav {
+      display: none; align-items: center; justify-content: space-between;
+      gap: var(--space-3); margin-top: var(--space-4);
+      padding-top: var(--space-3); border-top: 1px solid var(--color-border-soft);
+    }
+    .plan-nav-btn {
+      padding: var(--space-2) var(--space-3);
+      background: var(--ink-3); border: var(--border); border-radius: var(--radius-sm);
+      color: var(--paper); font-family: var(--font-mono); font-size: var(--text-sm);
+      cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .plan-nav-btn:hover:not(:disabled) { background: var(--ink-4); border-color: var(--booklet); }
+    .plan-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .plan-nav-count {
+      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+
     .plan-stage-card {
       background: var(--ink-2); border: var(--border);
       border-top: 3px solid var(--booklet);
@@ -217,7 +272,19 @@
         <div class="plan-due-label" id="planDueLabel"></div>
       </div>
 
-      <!-- Stage: start / preview / stepper / summary -->
+      <!-- Jump straight to one objective (skips the batch scheduler) -->
+      <div class="plan-jump" id="planJump">
+        <label class="plan-jump-label" for="jumpInput">Jump to objective</label>
+        <div class="plan-jump-row">
+          <input type="text" id="jumpInput" class="plan-jump-input"
+            placeholder="POB-3.1" autocomplete="off" spellcheck="false"
+            aria-label="Objective id to jump to" />
+          <button type="button" id="jumpBtn" class="plan-jump-btn">Go</button>
+        </div>
+        <div class="plan-jump-error" id="jumpError" role="alert"></div>
+      </div>
+
+      <!-- Stage: start / preview / stepper / summary / single-objective -->
       <div id="planStage"></div>
 
       <!-- Stepper Q&A (reused per step; hidden outside a step) -->
@@ -280,6 +347,9 @@
       <!-- "What you missed" explanation (per-objective steps only) -->
       <div id="missedSection" style="display:none;"></div>
 
+      <!-- Previous / Next navigation within a batch (free navigation; no submit) -->
+      <div class="plan-step-nav" id="planStepNav"></div>
+
       <!-- Contextual action bar (Start / Begin / Next / Summary) -->
       <div id="planActions" style="display:none;"></div>
     </div>
@@ -289,20 +359,29 @@
 <script>
   const API_BASE='http://127.0.0.1:8000';
   const state={subjectId:'',subjectDisplay:'',
+    // Objective-id prefix for the current subject (e.g. "POB"), learned from the
+    // first objective; lets "Jump to objective" accept a bare "3.1".
+    objectivePrefix:'',
     questionId:null,questionStem:'',marksTotal:0,isGrading:false,
     // Per-objective grading sends these instead of a stored question_id: the
     // question text extracted from the lesson, and the objective it belongs to.
     questionText:'',questionFromLesson:false,currentObjectiveId:null,
     // Stage 11: the canonical lesson's active-recall questions (rendered as pills).
     recallQuestions:[],currentObjective:null,
+    // answers: per-step answer text, preserved across Previous/Next navigation.
     plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
-      currentIsSynthesis:false,results:[],synthScore:null,progress:null}};
+      currentIsSynthesis:false,results:[],synthScore:null,progress:null,answers:{}}};
 
   const planStage=document.getElementById('planStage');
   const planProgressLabel=document.getElementById('planProgressLabel');
   const planProgressFill=document.getElementById('planProgressFill');
   const planDueLabel=document.getElementById('planDueLabel');
   const planActions=document.getElementById('planActions');
+  const planStepNav=document.getElementById('planStepNav');
+  const planJump=document.getElementById('planJump');
+  const jumpInput=document.getElementById('jumpInput');
+  const jumpBtn=document.getElementById('jumpBtn');
+  const jumpError=document.getElementById('jumpError');
   const questionSection=document.getElementById('questionSection');
   const answerSection=document.getElementById('answerSection');
   const gradeSection=document.getElementById('gradeSection');
@@ -446,6 +525,9 @@
     questionSection.style.display=show?'':'none';
     answerSection.style.display=show?'':'none';
     gradeSection.style.display=show?'':'none';
+    // The step-nav footer belongs to an active step; hide it whenever Q&A is hidden
+    // (idle / preview / summary / single-objective jump). loadBatchStep re-shows it.
+    if(!show)planStepNav.style.display='none';
   }
   function planActionBtn(label,action,disabled){
     planActions.style.display='flex';
@@ -455,7 +537,7 @@
 
   async function enterPlanMode(){
     state.plan.phase='idle';
-    showPlanQA(false);hideGrade();
+    showPlanQA(false);hideGrade();hideJumpError();
     if(!state.subjectId){
       planProgressFill.style.width='0%';
       planProgressLabel.textContent='No subject selected';
@@ -463,9 +545,23 @@
       planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Choose a subject</div><div class="plan-stage-body">Select a subject above to begin your study plan.</div></div>`;
       hidePlanActions();return;
     }
+    await fetchObjectivePrefix();
     await fetchPlanProgress();
     await fetchDueCount();
     renderPlanIdle();
+  }
+  // Learn the subject's objective-id prefix (e.g. "POB") so a bare "3.1" jump
+  // resolves to "POB-3.1". Read from the first objective; '' if the list is empty.
+  async function fetchObjectivePrefix(){
+    state.objectivePrefix='';
+    try{
+      const res=await fetch(`${API_BASE}/api/objectives/${encodeURIComponent(state.subjectId)}`);
+      if(!res.ok)return;
+      const data=await res.json();
+      if(Array.isArray(data)&&data.length){
+        state.objectivePrefix=String(data[0].objective_id||'').split('-')[0]||'';
+      }
+    }catch{}
   }
   async function fetchPlanProgress(){
     try{
@@ -501,7 +597,7 @@
       state.plan.batchId=data.batch_id;
       state.plan.objectives=data.objectives||[];
       state.plan.n=state.plan.objectives.length;
-      state.plan.step=0;state.plan.results=[];state.plan.synthScore=null;
+      state.plan.step=0;state.plan.results=[];state.plan.synthScore=null;state.plan.answers={};
       setPlanProgress(data.progress);
       renderPlanPreview();
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");renderPlanIdle();}
@@ -531,6 +627,7 @@
     const totalSteps=state.plan.n+1;
     const synBanner=isSyn?`<span class="plan-syn-banner">SYNTHESIS — connects all ${state.plan.n} topics</span>`:'';
     planStage.innerHTML=`<div class="plan-stepper-header"><span class="plan-step-count">Question ${state.plan.step} of ${totalSteps}</span>${synBanner}</div><div id="planLessonHost"></div>`;
+    renderStepNav();   // Previous / Next footer, available immediately (no submit required)
     resetQuestionCard();
     state.questionText='';state.questionFromLesson=false;state.currentObjectiveId=null;
     questionCard.innerHTML=`<div class="question-stem" style="color:var(--color-text-muted)">Generating question…</div>`;
@@ -538,7 +635,7 @@
     // active-recall question as the gradeable card — no separate /api/plan/batch_question.
     let extracted='';
     if(!isSyn)extracted=await loadLesson(state.plan.objectives[state.plan.step-1]);
-    if(extracted)return;   // lesson produced the question card; nothing more to fetch
+    if(extracted){restoreStepAnswer();return;}   // lesson produced the question card; nothing more to fetch
     // Synthesis (no lesson), or a lesson that failed to load -> generate a question.
     try{
       const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)})});
@@ -547,7 +644,48 @@
       if(data.error){showError(`Error: ${data.error}`);return;}
       const label=isSyn?`Synthesis · ${state.plan.n} topics`:`Objective ${data.objective_num||state.plan.step}`;
       showQuestion({questionId:data.question_id,stem:data.stem||'',paper:label,qnum:isSyn?'Synthesis':'',marks:0});
+      restoreStepAnswer();
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
+  }
+
+  // Renders the "◄ Previous | Question N of M | Next ►" footer. The last step shows
+  // "Finish batch" instead of "Next". Previous is disabled on the first step.
+  function renderStepNav(){
+    const total=state.plan.n+1;
+    const step=state.plan.step;
+    const isLast=step>=total;
+    planStepNav.style.display='flex';
+    planStepNav.innerHTML=
+      `<button type="button" class="plan-nav-btn" data-nav="prev"${step<=1?' disabled':''}>◄ Previous</button>`+
+      `<span class="plan-nav-count">Question ${step} of ${total}</span>`+
+      (isLast
+        ?`<button type="button" class="plan-nav-btn" data-nav="finish">Finish batch</button>`
+        :`<button type="button" class="plan-nav-btn" data-nav="next">Next ►</button>`);
+  }
+
+  // Save the answer typed for the current step so navigating away and back keeps it.
+  function saveStepAnswer(){
+    if(state.plan.phase==='step'&&state.plan.step&&!answerTextarea.disabled){
+      state.plan.answers[state.plan.step]=answerTextarea.value;
+    }
+  }
+  // Restore a previously typed answer for the current step (after the card is ready).
+  function restoreStepAnswer(){
+    const saved=state.plan.answers[state.plan.step];
+    if(saved!==undefined&&!answerTextarea.disabled){
+      answerTextarea.value=saved;
+      updateWordCount();updateSubmitBtn();
+    }
+  }
+  // Move to another step WITHOUT submitting. Bounds-checked; saves the current answer
+  // first so it survives the round trip.
+  function navStep(target){
+    if(state.isGrading)return;
+    const total=state.plan.n+1;
+    if(target<1||target>total)return;
+    saveStepAnswer();
+    state.plan.step=target;
+    loadBatchStep();
   }
 
   // Sets one recall question as the gradeable card. Grading goes by objective_id +
@@ -690,7 +828,7 @@
     }
   }
 
-  function advancePlanStep(){state.plan.step+=1;loadBatchStep();}
+  function advancePlanStep(){navStep(state.plan.step+1);}
 
   function renderPlanSummary(){
     state.plan.phase='summary';
@@ -712,6 +850,74 @@
     planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Batch complete</div><div class="plan-summary-rows">${rows}</div>${synBlock}</div>`;
     fetchDueCount();
     planActionBtn('Start next batch','start',false);
+  }
+
+  // ===== Jump to objective ================================================
+  function showJumpError(msg){jumpError.textContent=msg;}
+  function hideJumpError(){jumpError.textContent='';}
+
+  // Normalise free-typed input to a canonical objective_id. Accepts "POB-3.1",
+  // "pob-3.1", "POB 3.1" and a bare "3.1" (which gets the current subject prefix).
+  // Returns '' when it cannot form an id (e.g. bare number with no known prefix).
+  function normalizeObjectiveId(raw){
+    if(!raw)return '';
+    let s=raw.trim().toUpperCase().replace(/\s+/g,'-').replace(/-+/g,'-');
+    if(!s)return '';
+    if(/^\d/.test(s)){
+      const prefix=state.objectivePrefix;
+      if(!prefix)return '';
+      s=`${prefix}-${s}`;
+    }
+    return s;
+  }
+
+  async function jumpToObjective(){
+    hideJumpError();
+    if(!state.subjectId){showJumpError('Select a subject first.');return;}
+    const oid=normalizeObjectiveId(jumpInput.value);
+    if(!oid){showJumpError('Objective not found');return;}
+    jumpBtn.disabled=true;
+    try{
+      const res=await fetch(`${API_BASE}/api/objective/${encodeURIComponent(oid)}`);
+      if(res.status===404){showJumpError('Objective not found');return;}
+      if(!res.ok){showJumpError(`Couldn't load objective (${res.status}).`);return;}
+      const data=await res.json();
+      renderSingleObjective(oid,data);
+    }catch{showJumpError("Couldn't reach the study system. Make sure the server is running.");}
+    finally{jumpBtn.disabled=false;}
+  }
+
+  // Single-objective view (skips the batch scheduler entirely): the lesson + its
+  // recall questions, with a "Back to batch" link. Display-only — grading lives in
+  // the batch flow (which has the question_id + mark scheme the grader needs).
+  function renderSingleObjective(objectiveId,data){
+    state.plan.phase='jump';
+    showPlanQA(false);hideGrade();hideError();clearMissed();hidePlanActions();
+    const lessonBody=(data&&(data.lesson_text||data.lesson))||'';
+    const recall=(Array.isArray(data&&data.recall_questions)?data.recall_questions:[]).filter(q=>q&&q.trim());
+    const recallHtml=recall.length
+      ?`<div class="recall-pills"><div class="recall-pills-label">Active-recall questions</div>${recall.map(q=>`<div class="recall-pill" style="cursor:default">${escapeHtml(q)}</div>`).join('')}</div>`
+      :`<div class="recall-pills"><div class="recall-pills-label">No recall questions available for this lesson.</div></div>`;
+    const note=(data&&data.lesson_source==='placeholder')
+      ?`<div class="plan-stage-body" style="margin-bottom:var(--space-3)">No canonical lesson yet — showing the syllabus statement.</div>`:'';
+    planStage.innerHTML=
+      `<div class="plan-jump-back"><button type="button" id="backToBatchBtn">← Back to batch</button></div>`+
+      `<div class="plan-stepper-header"><span class="plan-step-count">Objective ${escapeHtml(objectiveId)}</span></div>`+
+      note+
+      `<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonBody)}${recallHtml}</div>`;
+    document.getElementById('backToBatchBtn').addEventListener('click',backToBatch);
+  }
+
+  // Return from a jump to the scheduler-driven batch view, resuming an in-progress
+  // batch where we left off (jumping never discards batch state) or, with no batch
+  // open, the idle "Start next batch" view.
+  function backToBatch(){
+    if(state.plan.batchId&&state.plan.objectives.length){
+      if(state.plan.step>=1)loadBatchStep();
+      else renderPlanPreview();
+    }else{
+      enterPlanMode();
+    }
   }
 
   async function fetchSubjects(){
@@ -740,6 +946,15 @@
     else if(a==='next')advancePlanStep();
     else if(a==='summary')renderPlanSummary();
   });
+  planStepNav.addEventListener('click',(e)=>{
+    const btn=e.target.closest('button[data-nav]');if(!btn||btn.disabled)return;
+    const nav=btn.dataset.nav;
+    if(nav==='prev')navStep(state.plan.step-1);
+    else if(nav==='next')navStep(state.plan.step+1);
+    else if(nav==='finish')renderPlanSummary();
+  });
+  jumpBtn.addEventListener('click',jumpToObjective);
+  jumpInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();jumpToObjective();}});
   answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
   submitBtn.addEventListener('click',submitBatchAnswer);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitBatchAnswer();}});

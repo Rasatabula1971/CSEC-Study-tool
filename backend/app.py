@@ -1372,6 +1372,32 @@ def chat(body: ChatRequest, request: Request) -> dict:
     return _shape_for_ui(result)
 
 
+@app.get("/api/objective/{objective_id}")
+def objective_lesson(objective_id: str, request: Request) -> dict:
+    """One objective's lesson + recall questions, for the /plan 'Jump to objective'
+    input. The objective's subject_id is looked up from the objectives table (the
+    caller supplies only the objective_id), then the request is routed through the
+    SAME controller teach path the batch loader uses (route='teach'), so a stored
+    canonical lesson is served deterministically and an objective with none returns
+    the existing placeholder contract (lesson_source='placeholder', recall_questions=[],
+    source_file=None, page=None, context_source='syllabus'). 404 if the id is unknown.
+    """
+    db = request.app.state.db
+    row = db.execute(
+        "SELECT subject_id FROM objectives WHERE objective_id = ?",
+        (objective_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="objective not found")
+    req = {
+        "route": "teach",
+        "subject_id": row["subject_id"],
+        "objective_id": objective_id,
+        "query": "Teach me this objective",
+    }
+    return _shape_for_ui(handle_request(db, req))
+
+
 @app.post("/api/feedback")
 def feedback(body: FeedbackRequest, request: Request, response: Response) -> dict:
     """Log one 👍/👎/🤔 tap after a lesson or graded answer (Stage 12).
