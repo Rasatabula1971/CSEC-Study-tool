@@ -917,3 +917,27 @@ objective_lessons + lesson_generation_queue):
   - GET /lessons/status → backend/static/lesson_status.html, auto-refreshes every 5s,
     updates in place. Discreet "Lesson Status →" link added to welcome.html topbar
     (ungated — it's just numbers). 5 tests; suite 377.
+
+## Confidence=0 no-signal fix (19 June 2026)
+
+ingest_lessons.py discarded good lessons when the model self-reported
+confidence=0. llama3.2:3b often returns 0 even after composing a complete,
+valid lesson, and the old code computed `final_conf = min(model_conf, floor)`
+→ `min(0, 90) = 0` → below the floor → queued as insufficient_sources. Verified
+live against POB-3.13 (1119-char lesson + 3 clean recall questions, conf=0,
+discarded).
+
+Fix (ingest_lessons.py, section (e)): treat `model_conf <= 0` as "no signal"
+and fall back to the local source-quality floor; a genuine non-zero
+self-report still gets the `min()` cap as before. The floor still rejects
+truly weak material (0 notes → floor 30 max). 1 new test
+(test_zero_model_confidence_uses_source_floor); suite 378.
+
+Re-ran `ingest_lessons.py --subject Principles_of_Business --regenerate` (full
+116-objective pass, not just the stale set): written 46 · queued 61 · errored 9
+· cleared 46. objective_lessons went ~18 → 53 (47 clean, 6 still stale). Stored
+confidence distribution: 43×90, 7×80, 1×75, 2×60 (no low-conf garbage written).
+The 61 queued are genuine low non-zero model self-reports (conf 1–15, correctly
+capped); the 9 errored are model-call exceptions (retryable). On --regenerate an
+existing lesson is deleted only once a passing replacement is in hand, so the 6
+objectives that errored/queued this run kept their prior (stale) lesson.

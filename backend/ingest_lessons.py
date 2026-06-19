@@ -494,12 +494,19 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 continue
 
             # (e) Confidence: model self-report capped by the local floor.
+            # Small models (llama3.2:3b) often return 0 even when they
+            # composed a good lesson -- treat 0 as "no signal" rather than
+            # "no confidence" and fall back to the source-quality floor.
             try:
                 model_conf = int(data.get("confidence", 0))
             except (TypeError, ValueError):
                 model_conf = 0
             floor = local_confidence_floor(chunks)
-            final_conf = min(model_conf, floor)
+            if model_conf <= 0:
+                # Model didn't self-report -- trust the source-quality floor.
+                final_conf = floor
+            else:
+                final_conf = min(model_conf, floor)
 
             if final_conf < confidence_floor:
                 _queue_insufficient(db, oid, dry_run)

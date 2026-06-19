@@ -205,6 +205,28 @@ def test_ingest_writes_lesson_when_sources_sufficient(db):
     assert json.loads(row["source_chunk_ids"]), "source chunk ids recorded"
 
 
+def test_zero_model_confidence_uses_source_floor(db):
+    """Model returning confidence=0 should not block a lesson backed by strong
+    source material. llama3.2:3b often reports 0 even when it composed a good
+    lesson, so 0 is treated as 'no signal' and the source-quality floor becomes
+    the final confidence (5 notes chunks -> floor 90)."""
+    chat = make_chat(lesson_json(0))
+    summary = il.ingest_lessons_for_subject(
+        db, SUBJECT, chat_fn=chat, embed_fn=fake_embed, verbose=False,
+    )
+
+    assert chat.calls == 1, "the model was called once for the objective"
+    assert lesson_count(db) == 1, "confidence=0 must NOT discard a well-sourced lesson"
+    assert queue_count(db) == 0, "nothing queued -- the lesson was written"
+    assert summary["written"] == 1 and summary["queued"] == 0
+
+    stored = db.execute(
+        "SELECT confidence FROM objective_lessons WHERE objective_id = ?", (OBJECTIVE,),
+    ).fetchone()["confidence"]
+    # model_conf 0 -> no signal -> fall back to the 5-notes floor of 90.
+    assert stored == 90, "the source-quality floor becomes the stored confidence"
+
+
 def test_insufficient_sources_queue_rather_than_write():
     """Zero source chunks -> queued (insufficient_sources), nothing written."""
     conn = open_test_db()
