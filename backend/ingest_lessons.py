@@ -166,6 +166,36 @@ def _word_floor_for_objective(command_words) -> int:
     return max(floors)
 
 
+# Chat-boilerplate detection. The pollution we guard against is the model breaking
+# character to ADDRESS THE READER conversationally (usually a closing line) -- not the
+# mere appearance of words like "feel free" or "clarification", which are legitimate
+# TEACHING CONTENT in a communication lesson (the POB-2.13 false positive). So we match
+# phrase-level, reader-addressed patterns, not bare keywords. Note the "feel free to
+# ask" pattern excludes a third-party object ("ask the customer/your manager") so
+# genuine communication advice passes while "feel free to ask (me/if you...)" is caught.
+CONVERSATIONAL_BREAK_PATTERNS = [
+    r'\blet me know if\b',
+    r'\bfeel free to ask\b(?!\s+(?:the|your|a|an|our|their|his|her|each)\b)',
+    r'\bif you (?:need|want|have)\b.{0,20}\b(?:clarification|examples|help)\b',
+    r'\bdo you (?:have|need) any questions\b',
+    r'\bI hope this helps\b',
+    r"\bI'm happy to\b",
+]
+_CONVERSATIONAL_BREAK_RE = [re.compile(p, re.IGNORECASE) for p in CONVERSATIONAL_BREAK_PATTERNS]
+
+
+def _has_conversational_break(text) -> bool:
+    """True if the text addresses the reader conversationally (assistant-voice break).
+
+    Phrase-level, not bare-keyword: 'feel free to ask the customer for clarification'
+    (teaching content) passes; 'Let me know if you'd like more clarification' (the
+    model chatting) is caught.
+    """
+    if not text:
+        return False
+    return any(rx.search(text) for rx in _CONVERSATIONAL_BREAK_RE)
+
+
 def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
     """Reject semantically-broken lessons the JSON schema can't catch (chat
     boilerplate, hallucinated 'Section N' citations, junk recall questions).
@@ -189,7 +219,10 @@ def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
     lower = (lesson_text or "").lower()
     if 'according to section' in lower:
         return False, 'lesson_text cites chunk section'
-    if 'let me know' in lower or 'feel free' in lower or 'clarification' in lower:
+    # Contextual boilerplate check (phrase-level, reader-addressed) -- NOT bare
+    # keywords, so a communication lesson using "feel free"/"clarification" as content
+    # is not false-flagged (POB-2.13).
+    if _has_conversational_break(lesson_text):
         return False, 'lesson_text contains chat boilerplate'
     # Word floor (checked AFTER the lesson_text content checks so a short, boilerplate
     # lesson still reports the more specific reason). The floor is tiered by command
@@ -208,7 +241,7 @@ def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
         if len(qs) < 15:
             return False, 'recall_question too short'
         ql = qs.lower()
-        if 'let me know' in ql or 'feel free' in ql or 'clarification' in ql:
+        if _has_conversational_break(qs):
             return False, 'recall_question contains chat boilerplate'
         # Answer leakage: the model appended the answer in parentheses, e.g.
         # "What is the term...? (Answer: Transportation)" (the POB-10.13 pattern).
@@ -439,18 +472,47 @@ def _parse_lesson_json(raw: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+# Tool-use schema for lesson composition. Passing this (rather than schema=None)
+# routes anthropic_chat through Anthropic's tool-use path, which returns
+# json.dumps(block.input) -- structurally valid JSON the SDK serialises, so literal
+# quotes/newlines in lesson_text can no longer break parsing (the POB-6.6 failure
+# class). A single object covers BOTH output shapes: 'ok' fills lesson_text /
+# active_recall_question / sources_used; 'insufficient_source' fills reason. Only the
+# three always-present fields are required so the model can omit the rest per status.
+LESSON_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["ok", "insufficient_source"]},
+        "subject": {"type": "string"},
+        "objective_ref": {"type": "string"},
+        "lesson_text": {"type": "string"},
+        "active_recall_question": {"type": "string"},
+        "sources_used": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "reason": {"type": "string"},
+    },
+    "required": ["status", "subject", "objective_ref"],
+}
+
+
 def _compose_lesson(subject_id: str, objective: dict, chunks: list[dict],
                     chat_fn) -> dict | None:
     """Ask Claude Sonnet (via chat_fn) to compose the lesson from the source chunks.
 
     The Lesson Structurer prompt is the system prompt; the user message is the input
-    JSON the prompt documents. No `schema` is passed: the prompt emits one of two JSON
-    shapes (status 'ok' / 'insufficient_source') that a single tool schema can't
-    capture, so the reply is parsed with _parse_lesson_json. None on parse failure.
+    JSON the prompt documents. LESSON_OUTPUT_SCHEMA is passed so anthropic_chat uses
+    Anthropic's TOOL-USE path -- the SDK then returns structurally valid JSON
+    (json.dumps of the tool input), so a lesson that legitimately quotes a phrase
+    (e.g. 'two for the price of one.') no longer breaks json.loads on unescaped
+    quotes. _parse_lesson_json still runs (it cleanly parses the valid JSON, and the
+    fence/brace-slice fallbacks stay as defence for the Ollama-fallback path).
+    None on parse failure.
     """
     lesson_input = _build_lesson_input(subject_id, objective, chunks)
     raw = chat_fn([{"role": "user", "content": json.dumps(lesson_input)}],
-                  system=LESSON_STRUCTURER_PROMPT, schema=None)
+                  system=LESSON_STRUCTURER_PROMPT, schema=LESSON_OUTPUT_SCHEMA)
     return _parse_lesson_json(raw)
 
 

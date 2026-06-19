@@ -496,3 +496,28 @@ def test_validate_rejects_200_word_discuss_lesson():
     ok, why = il._validate_lesson_quality(
         _body_of(200), ["Discuss the role of the entrepreneur?"], command_words=["Discuss"])
     assert ok is False and "too short" in why.lower() and "350" in why
+
+
+# --- contextual boilerplate filter (_has_conversational_break) -------------
+def test_validate_accepts_feel_free_as_domain_content():
+    # A communication lesson legitimately using "feel free to ask the customer for
+    # clarification" must PASS -- teaching content, not an assistant-voice break.
+    body = ("Always feel free to ask the customer for clarification on their order. "
+            + _body_of(310))
+    ok, why = il._validate_lesson_quality(
+        body, ["Outline two communication strategies?"], command_words=["Outline"])
+    assert ok is True and why is None
+
+
+def test_validate_rejects_let_me_know_boilerplate():
+    ok, why = il._validate_lesson_quality(
+        "A business supplies goods. Let me know if you'd like more clarification or examples!",
+        ["What is a business?"])
+    assert ok is False and "boilerplate" in why.lower()
+
+
+def test_validate_rejects_hope_this_helps_boilerplate():
+    ok, why = il._validate_lesson_quality(
+        "A business supplies goods. I hope this helps you understand the concept.",
+        ["What is a business?"])
+    assert ok is False and "boilerplate" in why.lower()

@@ -1040,6 +1040,27 @@ Cost-bounded test batch (NOT a full regen — pending user approval after review
     all seven have short-answer objectives that would false-reject under a flat floor.
     POB-3.1 then wrote a clean 279-word Define lesson (conf 90). +6 tests; suite 398.
 
+  - **Robustness fixes (follow-up, branch `lesson-robustness-fixes`):** the full POB
+    regen surfaced two failure classes that would recur across the 7-subject rollout.
+    (1) **Tool-use JSON.** `_compose_lesson` now passes `LESSON_OUTPUT_SCHEMA` instead
+    of `schema=None`, so `anthropic_chat` uses Anthropic's tool-use path and the SDK
+    returns structurally valid JSON (`json.dumps(block.input)`). A lesson that
+    legitimately quotes a phrase (POB-6.6: `"two for the price of one."`) no longer
+    breaks `json.loads` on unescaped quotes — the entire failure class is gone, not
+    just the instance. The schema is one object covering BOTH shapes (status enum;
+    only status/subject/objective_ref required, so 'insufficient_source' omits the
+    rest). (2) **Contextual boilerplate filter.** Bare-substring checks
+    (`'clarification' in lower`) false-flagged a communication lesson (POB-2.13). New
+    `_has_conversational_break` matches phrase-level, reader-addressed regex
+    (`CONVERSATIONAL_BREAK_PATTERNS`: `let me know if`, `feel free to ask` [excluding a
+    third-party object so "ask the customer" passes], `I hope this helps`, …) — so
+    domain vocabulary passes and only assistant-voice breaks are caught. Re-ran the 4
+    stuck objectives: **POB-2.13, POB-1.7, POB-6.11 wrote** (442/452/422 words, conf
+    90); only **POB-1.14** stayed `insufficient_source` (careers content genuinely
+    absent). insufficient_source is a non-deterministic model judgment — POB-1.7/6.11
+    declined on the full run, composed cleanly now. **POB coverage: 115/116 fresh v2.**
+    +6 tests; suite **404**.
+
 ## /plan jump-to-objective + batch navigation (19 June 2026) — UX only
 
 The /plan page only served objectives in fixed batches starting from the lowest
