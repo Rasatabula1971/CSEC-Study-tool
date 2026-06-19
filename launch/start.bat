@@ -29,7 +29,10 @@ if errorlevel 1 (
 )
 echo Starting FastAPI...
 cd /d "%~dp0.."
-start "" python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+REM --reload: pick up code/route changes without a manual restart. Prevents the
+REM "endpoint added on disk but the running process never registered it" gotcha
+REM (e.g. GET /api/objective returning 404 from a stale process).
+start "" python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 timeout /t 2 /nobreak >nul
 curl -s http://127.0.0.1:8000/health >nul 2>&1
 if errorlevel 1 (
