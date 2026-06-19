@@ -43,23 +43,20 @@ def fake_embed(text: str) -> list[float]:
     return [0.0] * EMBED_DIM
 
 
-# A valid lesson payload, parameterised by confidence.
-def lesson_json(confidence: int) -> str:
+# A valid NEW-format (PDR v3.2) lesson payload: status='ok', lesson_text over the
+# 300-word floor ending in a 'Q: ' line, and ONE active_recall_question. The
+# `confidence` argument is accepted but ignored -- the v2 prompt no longer
+# self-reports a confidence; the source-quality floor is what gets stored.
+def lesson_json(confidence: int | None = None) -> str:
+    body = ("A business is an organisation that supplies goods and services to "
+            "satisfy the needs and wants of consumers. ") * 30   # ~540 words, > floor
     return json.dumps({
-        "lesson_text": "A business supplies goods and services to satisfy needs. "
-                       "It uses resources to produce things people want.",
-        "key_terms": [
-            {"term": "business", "definition": "an organisation that supplies goods or services"},
-            {"term": "resources", "definition": "the inputs used to produce goods"},
-        ],
-        "worked_examples": ["A bakery uses flour and labour to make bread to sell."],
-        "common_mistakes": "Students often confuse a business with a charity.",
-        "recall_questions": [
-            "Define a business in your own words.",
-            "List two resources a business uses.",
-            "Explain why a business needs to make a profit.",
-        ],
-        "confidence": confidence,
+        "status": "ok",
+        "subject": SUBJECT,
+        "objective_ref": "1.1",
+        "lesson_text": body + "\nQ: What is a business and why does it use resources?",
+        "active_recall_question": "What is a business and why does it use resources?",
+        "sources_used": ["E:\\KB\\notes.pdf:1"],
     })
 
 
@@ -201,7 +198,9 @@ def test_ingest_writes_lesson_when_sources_sufficient(db):
     assert row["confidence"] == 90
     assert row["lesson_text"].strip(), "lesson_text is non-empty"
     recall = json.loads(row["recall_questions"])
-    assert isinstance(recall, list) and len(recall) == 3
+    # v2 format: exactly ONE active-recall question, stored as a one-element list.
+    assert isinstance(recall, list) and len(recall) == 1
+    assert recall[0] == "What is a business and why does it use resources?"
     # source_chunk_ids cite the chunks the lesson was composed from.
     assert json.loads(row["source_chunk_ids"]), "source chunk ids recorded"
 
@@ -382,90 +381,76 @@ def test_requeuing_is_idempotent():
 
 
 # --- _validate_lesson_quality (defence-in-depth quality gate) ---------------
-def _clean_questions():
-    return ["What is a business?",
-            "State two functions of an entrepreneur.",
-            "Explain how capital is used in production."]
+# v2 format: lesson_text must clear a 300-word floor and carry EXACTLY ONE recall
+# question. _long_body() is a clean lesson comfortably over the floor.
+def _long_body() -> str:
+    return ("A business is an organisation that supplies goods and services to "
+            "satisfy the needs and wants of consumers. ") * 30
 
 
 def test_validate_rejects_section_citation():
+    # Section check fires before the word floor, so the short body still reports it.
     ok, why = il._validate_lesson_quality(
-        "According to Section 2, a business supplies goods.", _clean_questions())
+        "According to Section 2, a business supplies goods.", ["What is a business?"])
     assert ok is False and "section" in why.lower()
 
 
 def test_validate_rejects_boilerplate_in_lesson_text():
     ok, why = il._validate_lesson_quality(
         "A business supplies goods. Let me know if you'd like more clarification!",
-        _clean_questions())
+        ["What is a business?"])
     assert ok is False and "boilerplate" in why.lower()
 
 
 def test_validate_rejects_wrong_question_count():
+    # The v2 format is exactly ONE recall question; the legacy 3 is now rejected.
     ok, why = il._validate_lesson_quality(
-        "A clean lesson body about business.", ["Only one question here?"])
-    assert ok is False and "count != 3" in why
+        _long_body(),
+        ["What is a business?", "State two functions.", "Explain capital use."])
+    assert ok is False and "count != 1" in why
 
 
 def test_validate_rejects_too_short_question():
-    ok, why = il._validate_lesson_quality(
-        "A clean lesson body about business.",
-        ["What is a business?", "OK?", "Explain capital use in production."])
+    ok, why = il._validate_lesson_quality(_long_body(), ["OK?"])
     assert ok is False and "too short" in why.lower()
 
 
 def test_validate_rejects_answer_leakage():
     # The model appended the answer to the question (the POB-10.13 pattern).
     ok, why = il._validate_lesson_quality(
-        "A clean lesson body about logistics.",
-        ["What is the movement of goods called? (Answer: Transportation)",
-         "State two modes of transport.", "Explain why transport matters."])
+        _long_body(),
+        ["What is the movement of goods called? (Answer: Transportation)"])
     assert ok is False and "leak" in why.lower()
 
 
 def test_validate_rejects_non_question_non_command():
-    # No '?' and not a command-word prompt -> rejected (this is the junk case, e.g.
-    # 'multiple-choice' or a leaked-answer fragment).
+    # No '?' and not a command-word prompt -> rejected (the junk case).
     ok, why = il._validate_lesson_quality(
-        "A clean lesson body about business.",
-        ["What is a business?", "State two functions of management.",
-         "The answer here is taxation and revenue."])
+        _long_body(), ["The answer here is taxation and revenue."])
     assert ok is False and "not a question or command" in why.lower()
 
 
 def test_validate_accepts_clean_response():
-    ok, why = il._validate_lesson_quality(
-        "A business supplies goods and services to satisfy needs and wants.",
-        _clean_questions())
+    ok, why = il._validate_lesson_quality(_long_body(), ["What is a business?"])
     assert ok is True and why is None
 
 
 def test_validate_accepts_imperative_command_prompt_without_question_mark():
-    # CSEC recall prompts are often imperatives that do not end in '?'. These are
-    # valid and must NOT be rejected.
+    # CSEC recall prompts are often imperatives that do not end in '?'. Valid.
     ok, why = il._validate_lesson_quality(
-        "A business supplies goods and services.",
-        ["Identify two roles of an entrepreneur.",
-         "Describe the role of capital in a business.",
-         "Distinguish between fixed and working capital."])
+        _long_body(), ["Identify two roles of an entrepreneur."])
     assert ok is True and why is None
 
 
 def test_validate_accepts_name_command_prompt():
     # 'Name three...' is a real CSEC command stem.
     ok, why = il._validate_lesson_quality(
-        "Factors of production are land, labour, capital and enterprise.",
-        ["Name three factors of production.",
-         "State two functions of management.",
-         "Explain how capital differs from land."])
+        _long_body(), ["Name three factors of production."])
     assert ok is True and why is None
 
 
 def test_validate_accepts_give_command_prompt():
     # 'Give two...' is a real CSEC command stem.
     ok, why = il._validate_lesson_quality(
-        "Capital goods are man-made resources used to produce other goods.",
-        ["Give two examples of capital goods.",
-         "Define the term capital good.",
-         "Distinguish between capital and consumer goods."])
+        _long_body(), ["Give two examples of capital goods."])
     assert ok is True and why is None

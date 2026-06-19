@@ -59,6 +59,39 @@ def chat_local(messages: list, system: str, schema: dict | None = None) -> str:
     return ollama_chat(messages, system, schema)
 
 
+def chat_for_lesson_composition(messages: list, system: str,
+                                schema: dict | None = None) -> str:
+    """Route a lesson-composition call to Anthropic Claude Sonnet.
+
+    ROUTING POLICY (v3.2 architecture decision)
+    Lesson composition is build-time only. PHASE: build.
+
+    Routes to Anthropic Claude Sonnet (chosen for prompt adherence
+    and structured-output quality at low total volume).
+    Costs ~$0.05 per lesson x ~800 lessons across all subjects
+    = ~$20 one-time build cost.
+
+    Falls back to Ollama when ANTHROPIC_API_KEY is absent (e.g. on
+    student's machine -- but student should never be running
+    build-time scripts).
+
+    Does NOT fall back to Gemini. Gemini is reserved for student-
+    side classification (free tier, no API key required).
+    """
+    from anthropic_client import anthropic_chat, is_anthropic_available
+
+    if is_anthropic_available():
+        return anthropic_chat(messages, system, schema)
+
+    logger.warning(
+        "ANTHROPIC_API_KEY not set. Lesson composition falling "
+        "back to Ollama. Quality will be substantially lower. "
+        "This is expected on the student's machine but unexpected "
+        "on the builder's machine."
+    )
+    return ollama_chat(messages, system, schema)
+
+
 def chat_for_classification(messages: list, system: str,
                             schema: dict | None = None) -> str:
     """Route an upload-classification call by CLOUD_MODE (read at call time).

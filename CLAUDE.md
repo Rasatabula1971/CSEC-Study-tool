@@ -969,6 +969,64 @@ conf=90. The only 4 not written are quality_check_failed (answer-leak / bad
 recall question) — the validator gate doing its job, not a confidence problem;
 2 of those kept a prior clean lesson, 2 have none.
 
+## Lesson prompt v2 — Sonnet for build (19 June 2026, PDR v3.2)
+
+Architectural cost-separation decision (by environment + who pays):
+  - **Lesson composition** (build-time, once per objective) → Claude **Sonnet**
+    via the Anthropic API on the BUILDER's machine. Builder pays Anthropic
+    (~$20 one-time for all seven subjects' lessons).
+  - **Classification** of student-uploaded files → Gemini **free tier**
+    (student-side, no API key for the student to manage). Unchanged.
+  - **Grading** (runtime, every answer) → **Ollama** only. Offline guarantee
+    intact and unchanged.
+
+Implementation (branch `lesson-prompt-v2-sonnet`):
+  - `backend/anthropic_client.py` (PHASE: build) mirrors gemini_client:
+    `anthropic_chat(messages, system, schema)` (schema → Anthropic tool-use,
+    returns the tool input as a JSON string), `is_anthropic_available()`. Reads
+    `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` (default `claude-sonnet-4-6`).
+    **Both `.strip()`ed** — a pasted key with a trailing newline made the HTTP
+    Authorization header illegal (httpx LocalProtocolError); caught by a 1-call
+    preflight before the paid batch.
+  - `llm_router.chat_for_lesson_composition` → Anthropic when a key is set, else
+    Ollama (loud warning). **Never Gemini.** anthropic is imported LAZILY inside
+    the function, so no PHASE: runtime module imports a cloud client (VAL-01 holds;
+    llm_router stays PHASE: dual). requirements: `anthropic>=0.39.0`.
+  - `prompts/lesson_structurer.txt` — the authored, version-controlled Lesson
+    Structurer prompt (per-subject rules + per-subject word bands inlined). New
+    lesson format: `lesson_text` ends with a single `Q: ` line; the model returns
+    `status: ok|insufficient_source`, `active_recall_question` (ONE, was 3),
+    `sources_used`. Word bands: narrative (POB/Econ/English/IT) 350–650, calc
+    (Maths/POA) 400–800, Integrated_Science 400–700; **hard floor 300**.
+  - `backend/ingest_lessons.py`: default `chat_fn=chat_for_lesson_composition`;
+    `_normalize_subject_id` guard (canonical id, raises on unknown);
+    `_build_lesson_input` (JSON the prompt documents, incl. section_title /
+    objective_num / exam_weight / source_excerpts) + `_parse_lesson_json`
+    (fence-tolerant); `status='insufficient_source'` → queued, never written;
+    `active_recall_question` wrapped as a 1-element `recall_questions` list;
+    worked_examples/key_terms/common_mistakes no longer separate (embedded in
+    lesson_text, stored empty). `_validate_lesson_quality`: exactly **1** recall
+    question (was 3) + **300-word floor**. New `--objectives POB-1.11,POB-3.1,…`
+    flag for targeted regeneration. The old inline LESSON_SYSTEM/LESSON_SCHEMA
+    removed.
+  - `backend/static/study_plan.html`: `renderRecallPills` renders a single recall
+    question directly (no "pick one" header); legacy 3-question lessons keep the
+    tap-to-choose header. Both shapes handled during the transition.
+  - Tests: `tests/test_lesson_prompt_v2.py` (9: subject-guard ×3, routing ×3 —
+    Anthropic/Ollama-fallback/not-Gemini, validator ×3 — 1-question + 300 floor);
+    `tests/test_lessons.py` updated to the v2 format (1 question, ≥300-word fakes).
+    Suite **392** (no regressions; VAL-01 still passes).
+
+Cost-bounded test batch (NOT a full regen — pending user approval after review):
+  - Backup `csec_…_pre_sonnet_test_batch.sqlite` taken first.
+  - `--regenerate --objectives` on 10 POB objectives: **written 9, queued 1,
+    errored 0**. POB-3.1's Sonnet lesson came back 265 words (< 300 floor) →
+    quality_check_failed → queued; its prior lesson is untouched (regenerate only
+    deletes once a passing replacement is in hand). POB-1.11 (the original bug
+    case) is now a clean 417-word legal+ethical lesson. Samples written to
+    `pob_sample_lessons.txt` for review. **Full --regenerate deferred** to user
+    sign-off after reading the samples (~$20 for all 116 / all subjects).
+
 ## /plan jump-to-objective + batch navigation (19 June 2026) — UX only
 
 The /plan page only served objectives in fixed batches starting from the lowest

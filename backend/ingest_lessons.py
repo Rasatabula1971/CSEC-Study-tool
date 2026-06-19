@@ -10,10 +10,14 @@ in objective_lessons, and let the runtime teach route serve it deterministically
 the regex-based active-recall extraction the UI used to do client-side.
 
 Non-negotiable constraints (CLAUDE.md + the v3.1 non-expert-builder anchor):
-  * Offline build step. Composes with ollama_chat / MODEL_CHAT. CLOUD_MODE has no
-    effect here -- this is offline source-grounded composition, not a gap-fill.
+  * Build-time only (PHASE: build). Composition routes through
+    llm_router.chat_for_lesson_composition -> Claude Sonnet via the Anthropic API
+    on the BUILDER's machine (PDR v3.2 cost-separation decision). It falls back to
+    Ollama only when no ANTHROPIC_API_KEY is present. The student's machine never
+    runs this script; runtime stays Ollama-only and offline.
   * The model REWRITES the supplied SOURCE MATERIAL for a Form 5 student. It never
-    invents concepts, examples, or terminology absent from the source chunks.
+    invents concepts, examples, or terminology absent from the source chunks; when
+    the source is too thin it returns status='insufficient_source' instead.
   * No source, no lesson. An objective with zero source chunks is queued in
     lesson_generation_queue (reason='insufficient_sources'), never written blind.
   * Confidence is floored locally -- the model's self-reported confidence is
@@ -31,6 +35,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -46,6 +51,43 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 from ollama_client import ollama_chat, ollama_embed  # noqa: E402
 from retrieval import serialize_vec  # noqa: E402
 from db.backup import backup_first  # noqa: E402
+from llm_router import chat_for_lesson_composition  # noqa: E402
+
+# The Lesson Structurer system prompt lives in prompts/lesson_structurer.txt (PDR
+# v3.2): it is the authored, version-controlled prompt for Claude Sonnet, not inline
+# Python. Loaded once at import.
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
+
+
+def _load_structurer_prompt() -> str:
+    return (PROMPTS_DIR / "lesson_structurer.txt").read_text(encoding="utf-8")
+
+
+LESSON_STRUCTURER_PROMPT = _load_structurer_prompt()
+
+# The seven canonical subject_id strings the Lesson Structurer prompt branches on.
+CANONICAL_SUBJECTS = {
+    "Principles_of_Business", "Economics", "Mathematics", "English",
+    "Principles_of_Accounts", "Integrated_Science", "Information_Technology",
+}
+
+
+def _normalize_subject_id(subject: str) -> str:
+    """Normalise a subject input to one of the seven canonical subject_id strings.
+
+    The Lesson Structurer prompt branches on `subject`, and the DB stores objectives
+    under the canonical id, so the value must resolve exactly. Accepts minor variants
+    (case, spaces instead of underscores) and raises ValueError on anything that does
+    not resolve -- a guard so a typo never silently composes an off-syllabus lesson
+    or queries the wrong subject.
+    """
+    if not subject or not isinstance(subject, str):
+        raise ValueError(f"unknown subject: {subject!r}")
+    cleaned = subject.strip().replace(" ", "_")
+    for canon in CANONICAL_SUBJECTS:
+        if cleaned.lower() == canon.lower():
+            return canon
+    raise ValueError(f"unknown subject: {subject!r}")
 
 # Notes are the primary source. When fewer than MIN_NOTES_CHUNKS come back the
 # composer also pulls past papers and mark schemes so the lesson still has
@@ -66,75 +108,6 @@ SOURCE_NAMES = {
 
 DEFAULT_CONFIDENCE_FLOOR = 30
 QUEUE_REASON = "insufficient_sources"
-
-
-# One object: the full lesson. recall_questions is pinned to exactly 3; the model
-# cannot return a single boilerplate question or an unbounded list.
-LESSON_SCHEMA = {
-    "type": "object",
-    "required": ["lesson_text", "key_terms", "worked_examples",
-                 "common_mistakes", "recall_questions", "confidence"],
-    "properties": {
-        "lesson_text": {"type": "string"},
-        "key_terms": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["term", "definition"],
-                "properties": {
-                    "term": {"type": "string"},
-                    "definition": {"type": "string"},
-                },
-            },
-        },
-        "worked_examples": {
-            "type": "array",
-            "items": {"type": "string"},
-        },
-        "common_mistakes": {"type": "string"},
-        "recall_questions": {
-            "type": "array",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": {"type": "string"},
-        },
-        "confidence": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100,
-        },
-    },
-}
-
-LESSON_SYSTEM = (
-    "You are writing a study lesson for a CSEC Form 5 student aged\n"
-    "15-16. Your job is to rewrite the provided source material into\n"
-    "a clear, simple lesson. You are not generating new content; you\n"
-    "are recomposing what is already in the SOURCE MATERIAL section\n"
-    "below.\n\n"
-    "STRICT RULES:\n"
-    "- Keep every factual claim that appears in the source material.\n"
-    "- Do not introduce concepts, examples, terminology, or facts\n"
-    "  that do not appear in the source material.\n"
-    "- Use short sentences. Aim for 200-350 words in lesson_text.\n"
-    "- Avoid jargon unless it appears in the source material; when\n"
-    "  used, define it the first time.\n"
-    "- Produce exactly 3 active-recall questions that an examiner\n"
-    "  could ask on this objective. Questions must require the\n"
-    "  student to recall or apply, not just recognise.\n"
-    "- common_mistakes: 1-2 sentences naming what examiners often\n"
-    "  penalise on this kind of question.\n"
-    "- worked_examples: 0-3 worked examples drawn from the source.\n\n"
-    "CRITICAL OUTPUT RULES:\n"
-    "- Recall questions must be complete questions ending in '?'.\n"
-    "- Never write 'let me know', 'feel free to ask', 'clarification',\n"
-    "  or any conversational closing in any field.\n"
-    "- Never cite chunk section numbers as if they are authoritative\n"
-    "  ('According to Section 2'). The chunks are source material, not\n"
-    "  citable references. Refer to concepts directly.\n"
-    "- Each recall question must require specific recall or explanation,\n"
-    "  not generic placeholders like 'Explain objective X'."
-)
 
 
 # A recall prompt is valid if it ENDS in '?' or BEGINS with one of these CSEC command
@@ -161,15 +134,25 @@ def _validate_lesson_quality(lesson_text, recall_questions):
     so requiring a literal '?' would wrongly reject good questions while still letting
     junk through. Everything else (boilerplate, too-short, non-string, leaked answers,
     bare labels like 'multiple-choice') is rejected.
+
+    The lesson format is one question per lesson (PDR v3.2): recall_questions must hold
+    exactly 1 item. lesson_text must also clear a 300-word floor -- anything shorter is
+    a skeleton lesson, queued for a re-attempt rather than served.
     """
     lower = (lesson_text or "").lower()
     if 'according to section' in lower:
         return False, 'lesson_text cites chunk section'
     if 'let me know' in lower or 'feel free' in lower or 'clarification' in lower:
         return False, 'lesson_text contains chat boilerplate'
-    if not isinstance(recall_questions, list) or len(recall_questions) != 3:
+    # Word floor (checked AFTER the lesson_text content checks so a short, boilerplate
+    # lesson still reports the more specific reason). 300 is the hard floor below which
+    # the lesson is too thin to teach honestly.
+    word_count = len((lesson_text or "").split())
+    if word_count < 300:
+        return False, f'lesson too short ({word_count} words; min 300)'
+    if not isinstance(recall_questions, list) or len(recall_questions) != 1:
         got = len(recall_questions) if isinstance(recall_questions, list) else 'non-list'
-        return False, f'recall_questions count != 3 (got {got})'
+        return False, f'recall_questions count != 1 (got {got})'
     for q in recall_questions:
         if not isinstance(q, str):
             return False, 'non-string in recall_questions'
@@ -239,14 +222,21 @@ def ensure_lesson_tables(db: sqlite3.Connection) -> None:
 
 
 def locked_subject_objectives(db: sqlite3.Connection, subject_id: str) -> list[dict]:
-    """Every objective in a LOCKED subject, ordered by id."""
+    """Every objective in a LOCKED subject, ordered by id.
+
+    Carries the full set of fields the Lesson Structurer prompt expects as input
+    (objective_num, exam_weight, and the parent section_title), so _compose_lesson
+    can build the input JSON without further queries.
+    """
     rows = db.execute(
         """
-        SELECT o.objective_id, o.content_stmt, o.command_words, o.skill_type
+        SELECT o.objective_id, o.content_stmt, o.command_words, o.skill_type,
+               o.objective_num, o.exam_weight, sec.title AS section_title
         FROM   objectives o
-        JOIN   subjects s ON s.subject_id = o.subject_id
+        JOIN   subjects subj ON subj.subject_id = o.subject_id
+        LEFT   JOIN syllabus_sections sec ON sec.section_id = o.section_id
         WHERE  o.subject_id = ?
-          AND  s.syllabus_locked = 1
+          AND  subj.syllabus_locked = 1
         ORDER  BY o.objective_id
         """,
         (subject_id,),
@@ -317,17 +307,15 @@ def candidate_chunks(db: sqlite3.Connection, subject_id: str, objective: dict,
     return chunks
 
 
-def _command_word_list(command_words) -> str:
-    """JSON command_words array -> comma list for the prompt; '' when absent."""
+def _command_words_array(command_words) -> list:
+    """objectives.command_words (a JSON array string) -> Python list ([] if absent)."""
     if not command_words:
-        return ""
+        return []
     try:
         parsed = json.loads(command_words)
-        if isinstance(parsed, list):
-            return ", ".join(str(c) for c in parsed)
+        return parsed if isinstance(parsed, list) else [str(parsed)]
     except (json.JSONDecodeError, TypeError):
-        pass
-    return str(command_words)
+        return []
 
 
 def local_confidence_floor(chunks: list[dict]) -> int:
@@ -356,25 +344,66 @@ def local_confidence_floor(chunks: list[dict]) -> int:
     return max(base, 30)
 
 
-def _compose_lesson(objective: dict, chunks: list[dict], chat_fn) -> dict | None:
-    """Ask the model to compose the lesson from the source chunks. None on parse failure."""
-    cw = _command_word_list(objective.get("command_words"))
-    skill = objective.get("skill_type") or "(unspecified)"
-    source_material = "\n---\n".join(c["chunk_text"] for c in chunks)
-    user = (
-        f"SYLLABUS OBJECTIVE: {objective.get('content_stmt', '')}\n"
-        f"COMMAND WORDS: {cw}\n"
-        f"SKILL TYPE: {skill}\n\n"
-        f"SOURCE MATERIAL:\n{source_material}\n\n"
-        "Respond ONLY with a valid JSON object matching the schema."
-    )
-    try:
-        raw = chat_fn([{"role": "user", "content": user}],
-                      system=LESSON_SYSTEM, schema=LESSON_SCHEMA)
-        data = json.loads(raw)
-    except (json.JSONDecodeError, KeyError, TypeError):
+def _build_lesson_input(subject_id: str, objective: dict, chunks: list[dict]) -> dict:
+    """Assemble the JSON input the Lesson Structurer prompt documents."""
+    return {
+        "subject": _normalize_subject_id(subject_id),
+        "section_title": objective.get("section_title") or "",
+        "objective_id": objective.get("objective_id") or "",
+        "objective_num": objective.get("objective_num") or "",
+        "content_stmt": objective.get("content_stmt") or "",
+        "skill_type": objective.get("skill_type") or "",
+        "command_words": _command_words_array(objective.get("command_words")),
+        "exam_weight": objective.get("exam_weight") or "",
+        "source_excerpts": [
+            {
+                "text": c.get("chunk_text", ""),
+                "source_file": c.get("source_file") or "",
+                "page": c.get("page"),
+            }
+            for c in chunks
+        ],
+    }
+
+
+def _parse_lesson_json(raw: str) -> dict | None:
+    """Parse the model's JSON reply, tolerating ```json fences / surrounding prose.
+
+    Returns the dict, or None if no JSON object can be recovered.
+    """
+    if not raw or not isinstance(raw, str):
         return None
+    s = raw.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```[a-zA-Z0-9]*\s*", "", s)
+        s = re.sub(r"\s*```$", "", s).strip()
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError:
+        # Last resort: slice between the first '{' and the last '}'.
+        i, j = s.find("{"), s.rfind("}")
+        if i == -1 or j == -1 or j <= i:
+            return None
+        try:
+            data = json.loads(s[i:j + 1])
+        except json.JSONDecodeError:
+            return None
     return data if isinstance(data, dict) else None
+
+
+def _compose_lesson(subject_id: str, objective: dict, chunks: list[dict],
+                    chat_fn) -> dict | None:
+    """Ask Claude Sonnet (via chat_fn) to compose the lesson from the source chunks.
+
+    The Lesson Structurer prompt is the system prompt; the user message is the input
+    JSON the prompt documents. No `schema` is passed: the prompt emits one of two JSON
+    shapes (status 'ok' / 'insufficient_source') that a single tool schema can't
+    capture, so the reply is parsed with _parse_lesson_json. None on parse failure.
+    """
+    lesson_input = _build_lesson_input(subject_id, objective, chunks)
+    raw = chat_fn([{"role": "user", "content": json.dumps(lesson_input)}],
+                  system=LESSON_STRUCTURER_PROMPT, schema=None)
+    return _parse_lesson_json(raw)
 
 
 def _queue_insufficient(db: sqlite3.Connection, objective_id: str,
@@ -391,6 +420,25 @@ def _queue_insufficient(db: sqlite3.Connection, objective_id: str,
             "VALUES (?, ?) "
             "ON CONFLICT(objective_id, reason) DO UPDATE SET created_at = datetime('now')",
             (objective_id, QUEUE_REASON),
+        )
+
+
+def _queue_insufficient_source(db: sqlite3.Connection, objective_id: str,
+                               reason: str, dry_run: bool) -> None:
+    """Queue an objective whose composed lesson came back status='insufficient_source'.
+
+    Distinct from the zero-chunks case (reason 'insufficient_sources'): here the model
+    SAW source material but judged it too thin to teach honestly. The model's one-line
+    reason is folded into the queue reason ('insufficient_source: <reason>').
+    Idempotent upsert on (objective_id, reason).
+    """
+    if not dry_run:
+        full_reason = "insufficient_source: " + (reason or "model judged source insufficient")
+        db.execute(
+            "INSERT INTO lesson_generation_queue (objective_id, reason) "
+            "VALUES (?, ?) "
+            "ON CONFLICT(objective_id, reason) DO UPDATE SET created_at = datetime('now')",
+            (objective_id, full_reason),
         )
 
 
@@ -422,9 +470,15 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
     regenerate only the stale lessons the user asked for). Returns a summary dict.
     Side-effect free under dry_run.
     """
+    # Canonical subject id for both the DB query and the prompt input (raises on a
+    # bad subject -- fail fast rather than silently composing nothing).
+    subject_id = _normalize_subject_id(subject_id)
     ensure_lesson_tables(db)
     if chat_fn is None:
-        chat_fn = ollama_chat
+        # Default: route to Claude Sonnet via the Anthropic API (PDR v3.2). Falls
+        # back to Ollama inside the router when no ANTHROPIC_API_KEY is present.
+        # Tests inject their own chat_fn, so this default never runs under test.
+        chat_fn = chat_for_lesson_composition
 
     objectives = locked_subject_objectives(db, subject_id)
     if objective_ids is not None:
@@ -482,10 +536,11 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 summary["queued"] += 1
                 continue
 
-            # (c)/(d) Compose from the source material. A network/timeout error on ONE
-            # objective must not abort the whole subject pass -- record it and move on.
+            # (c)/(d) Compose from the source material via Claude Sonnet. A network/
+            # timeout/parse error on ONE objective must not abort the whole subject
+            # pass -- record it and move on.
             try:
-                data = _compose_lesson(obj, chunks, chat_fn)
+                data = _compose_lesson(subject_id, obj, chunks, chat_fn)
             except Exception:
                 data = None
             if data is None:
@@ -493,14 +548,27 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 summary["errored"] += 1
                 continue
 
-            # (e) Confidence: trust the source-quality floor entirely.
-            # Earlier iterations capped final_conf by the model's self-report.
-            # Diagnostic showed llama3.2:3b returns confidence=0 or low values
-            # like 5 even for well-composed lessons (e.g. POB-1.11: returned
-            # conf=5 with a 1829-char coherent lesson and 3 valid recall
-            # questions). The model's self-confidence isn't a calibrated signal
-            # on this task. Remove it from the decision; the source-quality
-            # floor + quality_check_failed gate are the real safety nets.
+            # (d2) The model saw source but judged it too thin to teach honestly
+            # (prompt rule 2). Queue with the model's reason; never write thin prose.
+            if data.get("status") == "insufficient_source":
+                reason = (data.get("reason") or "model judged source insufficient").strip()
+                _queue_insufficient_source(db, oid, reason, dry_run)
+                _record(summary, oid, len(chunks), sources, None, "queued", verbose)
+                summary["queued"] += 1
+                if verbose:
+                    print(f"    {oid}: insufficient_source -- {reason}")
+                continue
+
+            # New lesson format (PDR v3.2): lesson_text ends with a 'Q: ' line and the
+            # single active-recall question is returned separately. Wrap it in a
+            # one-element list for the existing recall_questions JSON column (the UI
+            # handles both the new 1-question and legacy 3-question shapes).
+            lesson_text = data.get("lesson_text", "") or ""
+            recall_q = (data.get("active_recall_question") or "").strip()
+            recall_questions = [recall_q] if recall_q else []
+
+            # (e) Confidence: the source-quality floor (the model no longer self-reports
+            # a confidence in this format). The floor only ever LOWERS, never inflates.
             floor = local_confidence_floor(chunks)
             final_conf = floor
 
@@ -510,12 +578,10 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 summary["queued"] += 1
                 continue
 
-            # (e2) Quality gate: reject semantically-broken output the JSON schema
-            # cannot catch (chat boilerplate, 'According to Section N' citations, junk
-            # recall questions). A failure is queued for re-attempt, never written.
-            ok, why = _validate_lesson_quality(
-                data.get("lesson_text", ""), data.get("recall_questions", [])
-            )
+            # (e2) Quality gate: reject semantically-broken output (chat boilerplate,
+            # 'According to Section N' citations, a skeleton lesson under 300 words, a
+            # bad/duplicated recall question). A failure is queued, never written.
+            ok, why = _validate_lesson_quality(lesson_text, recall_questions)
             if not ok:
                 _queue_quality_failed(db, oid, why, dry_run)
                 _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)
@@ -548,11 +614,14 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        lesson_id, oid, subject_id, data.get("lesson_text", ""),
-                        json.dumps(data.get("worked_examples", [])),
-                        json.dumps(data.get("key_terms", [])),
-                        data.get("common_mistakes", ""),
-                        json.dumps(data.get("recall_questions", [])),
+                        lesson_id, oid, subject_id, lesson_text,
+                        # worked_examples / key_terms / common_mistakes are not
+                        # separate fields in the v2 format -- worked examples are
+                        # embedded in lesson_text. Stored empty for schema compatibility.
+                        json.dumps([]),
+                        json.dumps([]),
+                        "",
+                        json.dumps(recall_questions),
                         json.dumps(source_chunk_ids),
                         final_conf, generated_at,
                     ),
@@ -635,9 +704,17 @@ def main() -> None:
     parser.add_argument("--confidence-floor", type=int,
                         default=DEFAULT_CONFIDENCE_FLOOR,
                         help="Lessons below this final confidence are queued, not written.")
+    parser.add_argument("--objectives",
+                        help="Comma-separated objective_ids to restrict the run to "
+                             "(targeted regeneration), e.g. POB-1.11,POB-3.1. "
+                             "Omit to run every objective in the subject.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print what would happen; change nothing.")
     args = parser.parse_args()
+
+    objective_ids = None
+    if args.objectives:
+        objective_ids = [o.strip() for o in args.objectives.split(",") if o.strip()]
 
     db = _open_live_db()
     try:
@@ -646,6 +723,7 @@ def main() -> None:
             regenerate=args.regenerate,
             confidence_floor=args.confidence_floor,
             dry_run=args.dry_run,
+            objective_ids=objective_ids,
         )
     finally:
         db.close()

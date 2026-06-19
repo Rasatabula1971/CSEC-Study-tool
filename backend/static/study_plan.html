@@ -707,9 +707,15 @@
     if(!questions.length){
       return `<div class="recall-pills"><div class="recall-pills-label">No recall questions available for this lesson.</div></div>`;
     }
+    // v2 lessons (PDR v3.2) carry ONE recall question -> render it directly as THE
+    // question, no "pick one" header. Legacy 3-question lessons keep the tap-to-choose
+    // header. Either way the pills stay tappable (the first is auto-selected upstream).
+    const label=questions.length===1
+      ? 'Active-recall question'
+      : 'Active-recall questions — tap one to answer it';
     const pills=questions.map((q,i)=>
       `<button type="button" class="recall-pill" data-idx="${i}">${escapeHtml(q)}</button>`).join('');
-    return `<div class="recall-pills"><div class="recall-pills-label">Active-recall questions — tap one to answer it</div>${pills}</div>`;
+    return `<div class="recall-pills"><div class="recall-pills-label">${escapeHtml(label)}</div>${pills}</div>`;
   }
   function wireRecallPills(objective){
     document.querySelectorAll('.recall-pill').forEach(el=>{
