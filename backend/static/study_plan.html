@@ -368,6 +368,10 @@
     questionText:'',questionFromLesson:false,currentObjectiveId:null,
     // Stage 11: the canonical lesson's active-recall questions (rendered as pills).
     recallQuestions:[],currentObjective:null,
+    // Jump-to-objective grades through /api/plan/grade_batch, which needs a valid
+    // batch_id as a subject/scope carrier. When no batch is in progress we open one
+    // lightweight context batch and cache its id here for the session.
+    jumpBatchId:null,
     // answers: per-step answer text, preserved across Previous/Next navigation.
     plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
       currentIsSynthesis:false,results:[],synthScore:null,progress:null,answers:{}}};
@@ -775,21 +779,29 @@
     if(!state.questionId)return;
     const text=answerTextarea.value.trim();
     if(countWords(text)<10)return;
+    const isJump=state.plan.phase==='jump';
+    // Jump mode reuses this exact grading call but needs a batch_id (see ensureJumpBatch).
+    const gradeBatchId=isJump?await ensureJumpBatch():state.plan.batchId;
+    if(isJump&&!gradeBatchId){showError("Couldn't start a grading session. Is the FastAPI server running?");return;}
     state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';
     hideError();startGradeStatus();
     try{
       // Per-objective extracted question -> grade by objective_id + question_text (no
       // stored question to resolve). Synthesis / generated fallback -> grade by question_id.
       const body=(!state.plan.currentIsSynthesis&&state.questionFromLesson)
-        ?{batch_id:state.plan.batchId,objective_id:state.currentObjectiveId,question_text:state.questionText,answer:text}
-        :{batch_id:state.plan.batchId,question_id:state.questionId,answer:text};
+        ?{batch_id:gradeBatchId,objective_id:state.currentObjectiveId,question_text:state.questionText,answer:text}
+        :{batch_id:gradeBatchId,question_id:state.questionId,answer:text};
       const res=await fetch(`${API_BASE}/api/plan/grade_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||'Check that the FastAPI server is running.'}`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}
       renderGrade(data);
       if(data.progress)setPlanProgress(data.progress);
-      if(state.plan.currentIsSynthesis){
+      if(isJump){
+        // Single-objective study: grade + teach-the-missed, but no batch summary or
+        // step advance. The "Back to batch" link stays the only way onward.
+        showMissed(state.currentObjectiveId||data.objective_id,data.points||[]);
+      }else if(state.plan.currentIsSynthesis){
         state.plan.synthScore={awarded:data.awarded??0,total:data.total??0,score_pct:data.score_pct??0};
         planActionBtn('See batch summary','summary',false);
       }else{
@@ -888,30 +900,66 @@
       if(res.status===404){showJumpError('Objective not found');return;}
       if(!res.ok){showJumpError(`Couldn't load objective (${res.status}).`);return;}
       const data=await res.json();
-      renderSingleObjective(oid,data);
+      await renderSingleObjective(oid,data);
     }catch{showJumpError("Couldn't reach the study system. Make sure the server is running.");}
     finally{jumpBtn.disabled=false;}
   }
 
-  // Single-objective view (skips the batch scheduler entirely): the lesson + its
-  // recall questions, with a "Back to batch" link. Display-only — grading lives in
-  // the batch flow (which has the question_id + mark scheme the grader needs).
-  function renderSingleObjective(objectiveId,data){
-    state.plan.phase='jump';
-    showPlanQA(false);hideGrade();hideError();clearMissed();hidePlanActions();
-    const lessonBody=(data&&(data.lesson_text||data.lesson))||'';
-    const recall=(Array.isArray(data&&data.recall_questions)?data.recall_questions:[]).filter(q=>q&&q.trim());
-    const recallHtml=recall.length
-      ?`<div class="recall-pills"><div class="recall-pills-label">Active-recall questions</div>${recall.map(q=>`<div class="recall-pill" style="cursor:default">${escapeHtml(q)}</div>`).join('')}</div>`
-      :`<div class="recall-pills"><div class="recall-pills-label">No recall questions available for this lesson.</div></div>`;
+  // Single-objective view (skips the batch scheduler entirely). Reuses the EXACT
+  // SAME interactive flow the batch view uses: loadLesson renders the lesson + the
+  // tappable recall pills, auto-selects the first as the gradeable card, and enables
+  // the shared answer textarea + Submit button (submitBatchAnswer grades it). The
+  // only differences from a batch step are the single objective, the "Back to batch"
+  // link on top, and no Previous/Next/summary navigation. (Earlier this view was
+  // display-only — it hid the answer section and drew the recall questions as inert
+  // text — so a jumped-to objective could be read but never answered or graded.)
+  async function renderSingleObjective(objectiveId,data){
+    state.plan.phase='jump';state.plan.currentIsSynthesis=false;
+    hideGrade();hideError();clearMissed();hidePlanActions();
+    showPlanQA(true);                 // reveal the shared question/answer/grade sections
+    planStepNav.style.display='none'; // Previous/Next footer belongs to a batch only
+    resetQuestionCard();
+    state.questionText='';state.questionFromLesson=false;state.currentObjectiveId=null;
+
     const note=(data&&data.lesson_source==='placeholder')
       ?`<div class="plan-stage-body" style="margin-bottom:var(--space-3)">No canonical lesson yet — showing the syllabus statement.</div>`:'';
     planStage.innerHTML=
       `<div class="plan-jump-back"><button type="button" id="backToBatchBtn">← Back to batch</button></div>`+
       `<div class="plan-stepper-header"><span class="plan-step-count">Objective ${escapeHtml(objectiveId)}</span></div>`+
       note+
-      `<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonBody)}${recallHtml}</div>`;
+      `<div id="planLessonHost"></div>`;
     document.getElementById('backToBatchBtn').addEventListener('click',backToBatch);
+
+    // Reuse the batch loader's lesson renderer. Build an objective object with the
+    // num derived from the id ("POB-3.1" -> "3.1") so the card label reads
+    // "Objective 3.1" without an extra round-trip. loadLesson renders into
+    // #planLessonHost, wires the recall pills, and (if there's a recall question)
+    // calls showQuestion -> enables the textarea, returning the first question.
+    const objective={objective_id:objectiveId,
+      objective_num:objectiveId.split('-').slice(1).join('-')};
+    const first=await loadLesson(objective);
+    // A placeholder / no-recall objective has nothing gradeable: show the lesson in
+    // planStage but hide the empty question + answer sections (honest placeholder).
+    if(!first)showPlanQA(false);
+  }
+
+  // Grading routes through /api/plan/grade_batch, which requires a valid batch_id.
+  // A per-objective grade is scored against the objective itself (grade_against_
+  // syllabus), independent of which objectives the batch contains, so the batch is
+  // only a subject/scope carrier here. Reuse an in-progress batch when one exists;
+  // otherwise open one lightweight context batch and cache it. Returns the batch_id
+  // or null if a batch could not be opened.
+  async function ensureJumpBatch(){
+    if(state.plan.batchId)return state.plan.batchId;
+    if(state.jumpBatchId)return state.jumpBatchId;
+    try{
+      const res=await fetch(`${API_BASE}/api/plan/start_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});
+      if(!res.ok)return null;
+      const data=await res.json();
+      if(data.error)return null;
+      state.jumpBatchId=data.batch_id;
+      return state.jumpBatchId;
+    }catch{return null;}
   }
 
   // Return from a jump to the scheduler-driven batch view, resuming an in-progress

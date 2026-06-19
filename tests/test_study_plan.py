@@ -432,3 +432,38 @@ def test_objective_endpoint_placeholder_when_no_lesson(jump_client):
     assert body["source_file"] is None
     assert body["page"] is None
     assert body["context_source"] == "syllabus"
+
+
+# ---------------------------------------------------------------------------
+# Jump-to-objective answer-submission wiring (structural HTML checks)
+#
+# The bug: the jump view loaded the lesson + recall question but rendered its own
+# display-only template (it hid the answer section and drew the recall questions as
+# inert text), so a jumped-to objective could be read but never answered or graded.
+# Full JS interaction isn't exercised by this Python suite, so these assert the
+# served /plan markup now wires the jump view into the SAME interactive answer flow
+# the batch view uses (shared answer textarea + Submit + the submitBatchAnswer grade
+# call), instead of the old display-only path. (Matches the structural-check pattern
+# used in tests/test_panel_shell.py.)
+# ---------------------------------------------------------------------------
+def test_jump_view_reuses_shared_answer_flow(jump_client):
+    html = jump_client.get("/plan").text
+    # The single-objective renderer is now async and reuses the batch loader's
+    # lesson/answer renderer (loadLesson) instead of drawing an inert template.
+    assert "async function renderSingleObjective" in html
+    assert "const first=await loadLesson(objective)" in html
+    # Grading reuses the same /api/plan/grade_batch call, with a batch_id obtained
+    # for the jump (a batch is only a subject/scope carrier for a per-objective grade).
+    assert "async function ensureJumpBatch" in html
+    assert "isJump?await ensureJumpBatch()" in html
+    # The shared answer textarea + Submit button both still exist in the served page.
+    assert 'id="answerTextarea"' in html
+    assert 'id="submitBtn"' in html
+
+
+def test_jump_view_no_longer_display_only(jump_client):
+    html = jump_client.get("/plan").text
+    # The old display-only contract is gone: no "grading lives in the batch flow"
+    # rationale comment, and no non-interactive (cursor:default) recall pills.
+    assert "Display-only" not in html
+    assert "cursor:default" not in html

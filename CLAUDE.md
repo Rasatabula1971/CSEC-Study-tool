@@ -1092,3 +1092,39 @@ topic before a test). Two small additions, no design overhaul:
     (3 recall qs), POB-99.99 → 404. NOTE: the dev server runs without --reload, so
     restart it to pick up the new /api/objective route (static /plan reflects edits
     immediately).
+
+## /plan jump-to-objective missing answer submission (19 June 2026) — bug fix
+
+The jump-to-objective view loaded the lesson + recall question but had NO answer
+textarea or Submit button — it could be read, never answered or graded. Root cause
+was a SEPARATE, incomplete template: `renderSingleObjective` called `showPlanQA(false)`
+(hiding the shared answer section) and rendered the recall questions as inert
+`cursor:default` text, by design ("Display-only — grading lives in the batch flow").
+The batch view, by contrast, drives the one shared answer block (`#answerTextarea` +
+`#submitBtn`, toggled by `showPlanQA`) via `loadLesson` → recall pills →
+`setActiveRecallQuestion`/`showQuestion` → `submitBatchAnswer` → `POST
+/api/plan/grade_batch`.
+
+Fix (frontend only — `backend/static/study_plan.html`):
+  - `renderSingleObjective` is now async and reuses the EXACT SAME renderer the batch
+    view uses: `showPlanQA(true)` + a `#planLessonHost` div + `await loadLesson(objective)`
+    (objective built as `{objective_id, objective_num}` from the id, no extra round-trip).
+    loadLesson draws the lesson, tappable recall pills, auto-selects the first as the
+    gradeable card and enables the shared textarea + Submit. The "← Back to batch" link
+    stays on top; Previous/Next footer stays hidden (batch-only). A placeholder /
+    no-recall objective falls back to `showPlanQA(false)` (lesson shown, nothing to grade).
+  - Grading reuses `submitBatchAnswer` unchanged except a jump branch: `/api/plan/grade_batch`
+    needs a `batch_id`, but a per-objective grade is scored by `grade_against_syllabus`
+    independent of the batch's objective list, so the batch is only a subject/scope carrier.
+    New `ensureJumpBatch()` reuses an in-progress batch's id, else opens ONE lightweight
+    context batch (`/api/plan/start_batch`) and caches it in `state.jumpBatchId`. Post-grade
+    in jump mode renders the grade + teach-the-missed (`showMissed`) but skips the batch
+    summary/step-advance; jump mode is detected via `state.plan.phase==='jump'`. No backend
+    change.
+  - 2 structural tests in tests/test_study_plan.py (served /plan reuses the shared flow:
+    async renderSingleObjective + `await loadLesson(objective)` + ensureJumpBatch + the
+    grade call + textarea/submit present; old `Display-only`/`cursor:default` markers gone).
+    Suite 406. Live verify: GET /plan serves the new wiring (no old markers);
+    /api/objective/POB-3.2 → canonical lesson + recall question; the jump grade path
+    (start_batch → grade_batch with objective_id+question_text) returned score 100%, 3/3,
+    3 mark points — identical shape to the batch view's renderGrade.
