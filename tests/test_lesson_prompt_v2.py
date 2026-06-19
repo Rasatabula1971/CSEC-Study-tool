@@ -14,6 +14,7 @@ No network: anthropic / ollama / gemini are all monkeypatched. No DB needed.
 Run: pytest tests/test_lesson_prompt_v2.py -v
 """
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -135,3 +136,66 @@ def test_validate_rejects_lesson_under_300_words():
 def test_validate_accepts_500_word_lesson():
     ok, why = il._validate_lesson_quality(_clean_body(500), ["What is a business?"])
     assert ok is True and why is None
+
+
+# ---------------------------------------------------------------------------
+# Tool-use composition: _compose_lesson passes a schema, so the SDK guarantees
+# valid JSON (the POB-6.6 unescaped-quote failure class is eliminated).
+# ---------------------------------------------------------------------------
+def _objective(oid="POB-1.1", cmd='["Define"]', stmt="Define a business"):
+    return {"objective_id": oid, "content_stmt": stmt, "command_words": cmd,
+            "skill_type": "Knowledge", "objective_num": "1.1", "exam_weight": "P1",
+            "section_title": "Nature of Business"}
+
+
+def test_compose_lesson_passes_tool_use_schema():
+    """_compose_lesson must pass a schema (not None) so anthropic_chat uses tool-use."""
+    captured = {}
+
+    def fake_chat(messages, system, schema=None):
+        captured["schema"] = schema
+        return json.dumps({"status": "ok", "subject": "Principles_of_Business",
+                           "objective_ref": "1.1", "lesson_text": "body",
+                           "active_recall_question": "Define a business?",
+                           "sources_used": []})
+
+    out = il._compose_lesson("Principles_of_Business", _objective(), [], fake_chat)
+    assert captured["schema"] is not None
+    assert captured["schema"] == il.LESSON_OUTPUT_SCHEMA
+    assert out["status"] == "ok" and out["lesson_text"] == "body"
+
+
+def test_compose_lesson_handles_literal_quotes_via_tool_use():
+    """POB-6.6 class: a lesson legitimately quoting a phrase. Tool-use returns
+    json.dumps(...) with quotes escaped, so parsing succeeds and quotes survive --
+    under the old schema=None text path this broke json.loads."""
+    lesson = 'Bundling, for example, "two for the price of one." encourages buying more.'
+
+    def fake_chat(messages, system, schema=None):
+        # Mirror anthropic_chat's tool-use return: json.dumps of the structured dict.
+        return json.dumps({"status": "ok", "subject": "Principles_of_Business",
+                           "objective_ref": "6.6", "lesson_text": lesson,
+                           "active_recall_question": "Describe two sales methods?",
+                           "sources_used": []})
+
+    out = il._compose_lesson(
+        "Principles_of_Business",
+        _objective("POB-6.6", '["Describe"]', "Describe methods of promoting sales"),
+        [], fake_chat)
+    assert out is not None and out["status"] == "ok"
+    assert out["lesson_text"] == lesson  # literal quotes preserved; parse not broken
+
+
+def test_compose_lesson_handles_insufficient_source_shape():
+    """The dual-shape schema also covers status='insufficient_source' (no lesson_text)."""
+    def fake_chat(messages, system, schema=None):
+        return json.dumps({"status": "insufficient_source",
+                           "subject": "Principles_of_Business", "objective_ref": "1.7",
+                           "reason": "source lacks the distinguishing characteristics"})
+
+    out = il._compose_lesson(
+        "Principles_of_Business",
+        _objective("POB-1.7", '["Distinguish"]', "Distinguish economic systems"),
+        [], fake_chat)
+    assert out["status"] == "insufficient_source"
+    assert "source" in out["reason"].lower()
