@@ -1335,3 +1335,42 @@ reading, retry-with-missed-points, and a real Builder console.
     untouched). Backup csec_…_pre_ui_session_3_test.sqlite taken first. NOTE: live LLM
     grading not re-run here (covered by tests); the grade endpoints were verified to
     serve, the retry is_retry wiring by integration test.
+
+## Launcher: retire the bypassing .vbs + harden Continue (20 June 2026)
+
+Three live symptoms (stale "open Task Manager / end python.exe" dialog, a silent
+~20s startup that caused repeat double-clicks, and a Continue button that hung)
+all traced to ONE thing the prior foreground-`start.bat` fix never touched: the
+**desktop shortcut ran `C:\Users\ricky\Desktop\CSEC Study Partner.vbs`**, a
+separate launcher created at setup that bypassed `start.bat` entirely — it ran
+`shell.Run "...uvicorn...", 0, False` (hidden + detached, so the orphan problem
+persisted and there was no window to close) and showed the Task Manager MsgBox.
+`start.bat` was correct; she just never ran it.
+
+Fixes:
+  - **Desktop shortcut repointed** to `launch\start.bat` (Normal window, Start-in
+    the repo). `.vbs` renamed → `.vbs.old` → deleted after live verify; a second
+    shortcut under `OneDrive\Videos\Desktop` that also pointed at the `.vbs` was
+    repointed to `start.bat` too. (A pre-existing `CSEC Study Partner.vbs.bak` on
+    the Desktop and a stale repo copy at
+    `OneDrive\Dokumente\Workflow\CSEC-Study-tool.inspect` were left for manual
+    cleanup — not in the run path.)
+  - **`start.bat` now self-loads `SSD_ROOT` from `.env`** when it isn't already in
+    the environment (the `.vbs` read `.env` via Python and never needed the shell
+    var; a plain double-click otherwise died at the SSD gate since `SSD_ROOT` is set
+    nowhere on this machine). `.env` stays the single source of truth.
+  - **`start.bat` prints an explicit "starting up — ~20 seconds, the page will look
+    blank, that's normal, just wait" message** during the cold-start window that was
+    previously silent. The ~20s is FastAPI lifespan's pre-warm `ollama_chat` loading
+    `llama3.2:3b` (measured: ~19.6s cold / ~2-3s warm); the delay is unavoidable, the
+    invisibility was the bug.
+  - **`first_launch.html` Continue button hardened**: the `welcome-seen` POST is now
+    time-boxed by an `AbortController` (5s) and navigation lives in a `finally`, so a
+    POST that hangs during cold start (a plain `fetch` only rejects on a connection
+    error, not a slow response) can never trap her on the message screen again. Worst
+    case on a true failure: the flag isn't set and she sees the message once more.
+  - tests/test_first_launch.py +2 (served-markup guards: timeout/finally present, old
+    no-timeout pattern gone). Suite **445**. Live: launched via the shortcut → visible
+    console + startup message + uvicorn as the console's child; closing the window
+    stopped the server (uvicorn gone, :8000 free, Ollama left running); `GET /` served
+    first_launch with the hardened handler.

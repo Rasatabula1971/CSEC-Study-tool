@@ -79,3 +79,39 @@ def test_transition_from_first_launch_to_welcome():
     after = client.get("/")
     assert "next best thing" not in after.text
     assert "Continue studying" in after.text
+
+
+def test_continue_button_timeboxes_post_and_always_advances():
+    """The Continue handler must time-box the welcome-seen POST AND guarantee forward
+    progress regardless of its outcome, so a hung POST during the server's ~20s cold
+    start can never trap the student on this screen again (the original live bug).
+
+    Verified at the served-markup layer: this repo has no JS test runner, so the
+    timeout/finally logic is asserted in the actual HTML the server returns. The live
+    'click Continue immediately during cold start' path is covered by the manual
+    Task 4 walkthrough -- an acceptable substitute for client-side JS in this setup.
+    """
+    client = _client()
+    html = client.get("/").text
+    assert "next best thing" in html  # confirm this IS first_launch.html
+
+    # 1. The POST is aborted after 5 seconds (cannot hang indefinitely).
+    assert "new AbortController()" in html
+    assert "setTimeout(() => controller.abort(), 5000)" in html
+    assert "signal: controller.signal" in html
+
+    # 2. Navigation is in a `finally`, so it runs whether the POST succeeds, errors,
+    #    or times out -- forward progress is unconditional.
+    assert "} finally {" in html
+    finally_block = html[html.index("} finally {"):]
+    assert "clearTimeout(timeoutId)" in finally_block
+    assert "window.location.href = '/'" in finally_block
+
+
+def test_continue_button_old_hanging_pattern_is_gone():
+    """Regression guard: the original handler awaited an un-timed fetch and only
+    navigated on the happy path. That exact shape must not return."""
+    client = _client()
+    html = client.get("/").text
+    # The original one-line, signal-less POST that could hang forever.
+    assert "await fetch('/api/state/welcome-seen', { method: 'POST' });" not in html

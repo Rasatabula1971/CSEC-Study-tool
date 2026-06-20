@@ -71,12 +71,29 @@
     const btn = document.getElementById('continueBtn');
     btn.addEventListener('click', async () => {
       btn.disabled = true;
+      btn.textContent = 'Loading…';
+
+      // Time-box the POST. If the server is still in its ~20s cold start, a plain
+      // fetch() can hang indefinitely (it only rejects on a connection error, not a
+      // slow response) -- which is exactly what trapped her on this screen before.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       try {
-        await fetch('/api/state/welcome-seen', { method: 'POST' });
-      } catch (e) {
-        /* offline / server hiccup -- proceed anyway */
+        await fetch('/api/state/welcome-seen', {
+          method: 'POST',
+          signal: controller.signal
+        });
+      } catch (err) {
+        // Network error, timeout, or server still starting up -- log it, but DO NOT
+        // block her. The welcome-seen flag not being set is minor and recoverable
+        // (worst case: she sees this message once more next launch). It must never
+        // be the reason she is stuck on this screen.
+        console.warn('welcome-seen POST failed or timed out:', err);
+      } finally {
+        clearTimeout(timeoutId);
+        window.location.href = '/';
       }
-      window.location.href = '/';
     });
   </script>
 </body>
