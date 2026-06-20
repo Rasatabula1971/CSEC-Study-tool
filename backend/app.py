@@ -53,6 +53,7 @@ from ollama_client import ollama_health, ollama_chat, ollama_embed  # noqa: E402
 # not import a cloud client (PDR v3.1 VAL-01, enforced by tests/test_pdr_v3_1_compliance).
 from llm_router import is_gemini_available  # noqa: E402
 from controller import handle_request  # noqa: E402
+import app_state as app_state_store  # noqa: E402  -- avoid clashing with app.state
 from schedule import get_due_objectives  # noqa: E402
 from study_plan import get_plan_progress  # noqa: E402
 from export_progress import export_progress, fetch_progress  # noqa: E402
@@ -492,6 +493,27 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """,
     )
 
+    # m017 (UI overhaul session 1): app-level singleton state + a retry flag on
+    # study_sessions. app_state is a generic key-value table (sticky subject +
+    # welcome-seen flag) -- appropriate for a single-student, no-accounts app.
+    # is_retry distinguishes a re-attempt (1) from the first try (0) so the original
+    # attempt is preserved in history while the retry overwrites the visible result.
+    # On a DB built from the updated schema.sql these already exist, so the bundled
+    # ALTER raises 'duplicate column name' and _run_migration records m017
+    # [pre-existing]; on the live E: DB (predates both) they are created here.
+    _run_migration(
+        db, "m017_ui_overhaul_state",
+        "App-level state: subject preference, welcome-seen flag; study_sessions.is_retry",
+        """
+        CREATE TABLE IF NOT EXISTS app_state (
+            key         TEXT PRIMARY KEY,
+            value       TEXT,
+            updated_at  TEXT DEFAULT (datetime('now'))
+        );
+        ALTER TABLE study_sessions ADD COLUMN is_retry INTEGER DEFAULT 0
+        """,
+    )
+
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
     # normalising, so each pass runs every startup. The WHERE clauses make a re-run a
@@ -746,6 +768,10 @@ class ChatRequest(BaseModel):
     year: int | None = None
     question_num: str | None = None
     content_type: str | None = None
+    # UI overhaul session 1: a grade turn sets this on a re-attempt of a recall
+    # question so the controller flags the study_sessions row and overwrites the
+    # Leitner decision while keeping the first attempt in history.
+    is_retry: bool = False
 
 
 class StartBatchRequest(BaseModel):
@@ -847,6 +873,12 @@ class FeedbackRequest(BaseModel):
     notes: Optional[str] = None
     context_json: Optional[str] = None
     session_id: Optional[int] = None
+
+
+class SubjectStateRequest(BaseModel):
+    """Set the sticky subject (UI overhaul session 1). Validated against
+    syllabus_locked at the store layer -- an unlocked/unknown subject -> 400."""
+    subject_id: str = Field(min_length=1)
 
 
 # ---------------------------------------------------------------------------
@@ -1428,6 +1460,40 @@ def feedback(body: FeedbackRequest, request: Request, response: Response) -> dic
         response.status_code = 500
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "feedback_id": cur.lastrowid}
+
+
+# ---------------------------------------------------------------------------
+# App-level state (UI overhaul session 1): sticky subject + first-launch flag
+# ---------------------------------------------------------------------------
+@app.get("/api/state/subject")
+def get_subject_state(request: Request) -> dict:
+    """The sticky subject_id (defaults to the first locked subject if unset)."""
+    return {"subject_id": app_state_store.get_current_subject(request.app.state.db)}
+
+
+@app.post("/api/state/subject")
+def set_subject_state(body: SubjectStateRequest, request: Request,
+                      response: Response) -> dict:
+    """Persist the sticky subject. 400 if it does not exist or is not locked."""
+    try:
+        app_state_store.set_current_subject(request.app.state.db, body.subject_id)
+    except ValueError as exc:
+        response.status_code = 400
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "subject_id": body.subject_id}
+
+
+@app.get("/api/state/welcome-seen")
+def get_welcome_seen(request: Request) -> dict:
+    """Whether the first-launch welcome message has been shown."""
+    return {"seen": app_state_store.has_seen_welcome_message(request.app.state.db)}
+
+
+@app.post("/api/state/welcome-seen")
+def set_welcome_seen(request: Request) -> dict:
+    """Mark the first-launch welcome message seen (one-way; no body needed)."""
+    app_state_store.mark_welcome_message_seen(request.app.state.db)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

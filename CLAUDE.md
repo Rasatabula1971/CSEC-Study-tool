@@ -1159,3 +1159,48 @@ for POB-1.6 (the bug-report objective) renders as a formatted canonical lesson w
 paragraph breaks + the trailing recall Q, not a raw JSON dump. Smoke-test recon also
 re-confirmed full lesson coverage: 116/116 objective_lessons (POB-1.14 a genuine
 1635-char lesson, conf 90).
+
+## UI overhaul — session 1 of 3: backend foundations (19 June 2026, branch `ui-overhaul-backend`)
+
+First of three sessions building the UI overhaul the student requested after her
+first real use of the system (sticky subject across pages, a one-time first-launch
+welcome message, retry-rescore for recall questions). Session 1 is backend-only —
+no frontend changes; sessions 2 (Welcome + upload + first-launch) and 3 (Study +
+Quiz + Builder) build on these endpoints. Branch left open, NOT merged.
+
+  - **m017** (`apply_runtime_migrations`, Layer 1 version-tracked) adds the generic
+    `app_state` key-value table (single-student, no-accounts app: keys
+    `current_subject_id` + `welcome_message_seen`) and `study_sessions.is_retry`
+    (1 = re-attempt, 0 = first try). Both are ALSO added to `schema.sql` (the
+    source of truth for fresh test DBs) so the controller's `is_retry` INSERT works
+    on a schema-built DB without a migration call; on the live E: DB (predates both)
+    m017 creates them, and on a fresh schema DB the bundled ALTER raises duplicate-
+    column → recorded `[pre-existing]`. Applied to live E: DB. (Lesson: inline `;`
+    in a `schema.sql` comment breaks the tests' naive `split(";")` — keep comments
+    semicolon-free.)
+  - `backend/app_state.py` (PHASE: runtime): `get_state`/`set_state` (upsert),
+    `get_current_subject` (defaults to the first `syllabus_locked=1` subject
+    alphabetically when unset), `set_current_subject` (raises ValueError unless the
+    subject is locked — never strands the student on a gated subject),
+    `has_seen_welcome_message`/`mark_welcome_message_seen`.
+  - **Retry-rescore.** `grade.grade_answer` gained `is_retry=False` and echoes it
+    into the result, but does NOT itself persist — the `study_sessions` write (shared
+    by the mark-scheme AND syllabus-fallback grade paths) lives in
+    `controller._handle_grade`, which now reads `is_retry` from the request, passes it
+    to `grade_answer`, and flags the `study_sessions` row (`is_retry` column).
+    `ChatRequest` gained `is_retry: bool = False` so the /api/chat grade turn carries
+    it. Confirmed this session: `weakness.log_weakness` already UPSERTS by
+    objective_id (SELECT existing → UPDATE score/box/next_review, else INSERT — one
+    row per objective), so a retry overwrites the visible result + the Leitner
+    decision while the original attempt stays in `study_sessions` history. NO change
+    to weakness.py. (Caveat for a later session: the retry's new box is
+    `update_leitner(box_left_by_first_attempt, retry_score)`, so a fail-then-pass
+    retry recomputes from box 1, not the pre-attempt box — a value upsert, not a stack.)
+  - New endpoints in `app.py`: `GET/POST /api/state/subject` (POST validates via
+    `set_current_subject` → 400 `{ok:false,error}` on unlocked/unknown using the
+    injected-`Response`-status pattern), `GET/POST /api/state/welcome-seen` (POST is a
+    one-way flag, no body).
+  - Tests: `tests/test_app_state.py` (4), `tests/test_grade_retry.py` (3, via the
+    controller grade route with a stubbed examiner — asserts is_retry=0/1 rows both
+    present + weakness reflects the retry score), `tests/test_app_state_api.py` (3).
+    Suite **420**.

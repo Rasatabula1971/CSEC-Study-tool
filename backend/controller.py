@@ -337,6 +337,10 @@ def _handle_grade(db, request, grade_fn, local_fn, embed_fn) -> dict:
 
     question_id = request.get("question_id")
     student_answer = request.get("student_answer", "")
+    # UI overhaul session 1: a retry overwrites the visible result + the Leitner
+    # decision (weakness_log upserts by objective_id) while the first attempt is kept
+    # in study_sessions history (flagged below). Threaded through both grade paths.
+    is_retry = bool(request.get("is_retry"))
 
     # Mark-scheme path is unchanged: if the question has mark_points, grade against
     # them. The mark-scheme grader just matches the answer to GIVEN points, so it
@@ -346,7 +350,8 @@ def _handle_grade(db, request, grade_fn, local_fn, embed_fn) -> dict:
     # without one, or a generated practice question.
     if fetch_mark_points(db, question_id):
         grading = grade_answer(db, question_id, student_answer,
-                               request.get("messages"), chat_fn=local_fn)
+                               request.get("messages"), chat_fn=local_fn,
+                               is_retry=is_retry)
     else:
         resolved = _resolve_question_objective(db, question_id)
         if resolved is None:
@@ -374,15 +379,20 @@ def _handle_grade(db, request, grade_fn, local_fn, embed_fn) -> dict:
             grading["source_file"] = src["source_file"]
             grading["page"] = src["page"]
 
+    # is_retry flags the re-attempt row (1) vs the first try (0). The original
+    # attempt stays in study_sessions; only weakness_log is overwritten (upsert).
     cur = db.execute(
-        "INSERT INTO study_sessions (subject_id, objective_id, mode, outcome, score_pct) "
-        "VALUES (?, ?, 'grade', ?, ?)",
-        (subject_id, objective_id, _outcome(grading["score_pct"]), grading["score_pct"]),
+        "INSERT INTO study_sessions "
+        "(subject_id, objective_id, mode, outcome, score_pct, is_retry) "
+        "VALUES (?, ?, 'grade', ?, ?, ?)",
+        (subject_id, objective_id, _outcome(grading["score_pct"]),
+         grading["score_pct"], 1 if is_retry else 0),
     )
     db.commit()
     session_id = cur.lastrowid
 
     grading["subject_id"] = subject_id
+    grading["is_retry"] = is_retry
     grading["weakness"] = log_weakness(db, grading, session_id)
     grading["session_id"] = session_id
     return grading
