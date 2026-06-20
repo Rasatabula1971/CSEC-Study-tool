@@ -8,9 +8,9 @@ the v1 chunks already in the DB.
 Goal: zero meaningful diffs apart from the new chunks.source_family column. This is
 the check that confirms v2 is non-breaking before the live DB is ever touched.
 
-Un-skip and run explicitly (after removing the @pytest.mark.skip line):
-    set PARITY_DB_PATH=C:\tmp\csec_temp.sqlite   &&  ^
-        pytest tests/test_ingest_v2/test_pob_parity.py -v -s
+Un-skip and run explicitly (after removing the @pytest.mark.skip line), PowerShell:
+    $env:PARITY_DB_PATH = "C:\tmp\csec_temp.sqlite"
+    python -m pytest tests/test_ingest_v2/test_pob_parity.py -v -s
 
 Source DB: PARITY_DB_PATH if set (point it at YOUR temp copy that already has m018
 applied), else DB_PATH from .env. The source DB is copied internally and is NEVER

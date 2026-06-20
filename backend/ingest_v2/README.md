@@ -70,12 +70,37 @@ MCQ that cannot be mapped (the `REVIEW` sentinel) is queued, never inserted.
 
 `m018_mcq_questions` adds the `mcq_questions` table (imported MCQ banks — distinct
 from the runtime-generated `practice_questions` table, which is untouched) and the
-`chunks.source_family` audit column. It is a standalone, file-based migration:
-```
+`chunks.source_family` audit column. It is a standalone, file-based migration applied
+via the shared `schema_migrations` ledger (idempotent). It is **not** wired into the
+app's startup migrations — apply it deliberately.
+
+Every runner invocation requires `--version`. `--status` reports whether a migration
+is already applied without changing anything; `--db <path>` targets a specific DB so a
+temp copy can be migrated without touching the live `DB_PATH`.
+
+```powershell
+# verify only (no change) -- note --status still requires --version:
+python -m backend.db.migrations.runner --version m018_mcq_questions --status --db <path>
+# apply:
 python -m backend.db.migrations.runner --version m018_mcq_questions --db <path>
 ```
-applied via the shared `schema_migrations` ledger (idempotent). It is **not** wired
-into the app's startup migrations — apply it deliberately.
+
+**Apply order — do not skip the parity gate.** Back up first (`launch\backup.bat`),
+apply m018 to a TEMP COPY, run the parity gate against that copy, and only then apply
+to the live DB:
+
+```powershell
+# 1. apply m018 to a temp copy only
+python -m backend.db.migrations.runner --version m018_mcq_questions --db C:\tmp\csec_temp.sqlite
+
+# 2. parity gate against that copy (PowerShell env var; the test never mutates it).
+#    First remove the @pytest.mark.skip line in tests/test_ingest_v2/test_pob_parity.py.
+$env:PARITY_DB_PATH = "C:\tmp\csec_temp.sqlite"
+python -m pytest tests/test_ingest_v2/test_pob_parity.py -v -s
+
+# 3. only if the gate passes, apply to the live DB (uses DB_PATH from .env):
+python -m backend.db.migrations.runner --version m018_mcq_questions
+```
 
 ## Layout
 
