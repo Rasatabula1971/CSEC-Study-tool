@@ -4,28 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CSEC Study Partner</title>
+  <link rel="stylesheet" href="/static/shared.css" />
   <style>
-    /* ============================================================
-       Shared dark/blue palette — UI overhaul sessions 2 & 3 reuse
-       these exact tokens so the redesign stays visually consistent.
-       ============================================================ */
-    :root {
-      --bg-page: #13151a;
-      --bg-card: rgba(255,255,255,0.04);
-      --border-subtle: rgba(255,255,255,0.08);
-      --border-card: rgba(255,255,255,0.1);
-      --text-primary: #f0f1f4;
-      --text-body: #eef2fb;
-      --text-secondary: #c7cad1;
-      --text-muted: #7d8290;
-      --text-faint: #4a4d56;
-      --accent-blue: #5b8def;
-      --accent-blue-text: #0a0f1c;
-      --accent-blue-soft-bg: rgba(91,141,239,0.1);
-      --accent-blue-soft-border: rgba(91,141,239,0.25);
-      --accent-green: #3ddc84;
-      --accent-red: #e24b4a;
-    }
+    /* The dark/blue palette tokens now live in shared.css (UI overhaul
+       addition) so Welcome, Study, Quiz and the Builder console all draw from
+       one definition. This page keeps only its own component styles below. */
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -494,7 +477,7 @@
           body: JSON.stringify({ pin }),
         });
         const data = await res.json().catch(() => ({ ok: false }));
-        if (data.ok) { closePin(); window.location.href = '/builder'; return; }
+        if (data.ok) { sessionStorage.setItem('builder_ok', '1'); closePin(); window.location.href = '/builder'; return; }
       } catch { /* treated as a wrong attempt below */ }
       pinAttempts += 1;
       if (pinAttempts >= 3) {

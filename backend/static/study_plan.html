@@ -3,230 +3,137 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CSEC Study Partner · Study Plan</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Figtree:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <title>CSEC Study Partner · Study</title>
   <link rel="stylesheet" href="/static/shared.css" />
   <style>
-    /* ===== Study-plan-page-specific ===== */
-    html, body { height: 100%; overflow: hidden; }
-    .page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    /* ===== Study page: adopt the UI-overhaul blue palette by re-pointing the
+       shared.css surface/text/accent tokens to the dark/blue ones (defined in
+       shared.css §2b). Existing .question-card / .answer-textarea / etc. rules
+       then render blue without rewriting them. ===== */
+    :root {
+      --ink: var(--bg-page);
+      --ink-2: #1a1d24;
+      --ink-3: #21252e;
+      --ink-4: #2a2f3a;
+      --rule: var(--border-card);
+      --rule-soft: var(--border-subtle);
+      --booklet: var(--accent-blue);
+      --booklet-bright: #7aa5f5;
+      --booklet-dim: #34507e;
+      --paper: var(--text-body);
+      --paper-dim: var(--text-secondary);
+      --paper-faint: var(--text-muted);
+      --color-accent-glow: var(--accent-blue-soft-bg);
+      --highlighter: var(--accent-blue);
+      --highlighter-soft: var(--accent-blue-soft-bg);
+    }
+    html, body { height: 100%; }
+    body { background: var(--bg-page); }
+    .page { display: flex; flex-direction: column; min-height: 100vh; }
 
-    /* Display toggles (shared sheet styles the look; pages own show/hide) */
-    .grade-card { display: none; }
-    .grade-card.visible { display: block; }
-    .error-notice { display: none; }
-    .error-notice.visible { display: block; }
-    .grade-status { display: none; }
-    .grade-status.visible { display: block; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: var(--space-4); padding: 14px 22px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .topbar-back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 14px; }
+    .topbar-back:hover { color: var(--text-body); text-decoration: none; }
+    .topbar-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+    .topbar-link { color: var(--accent-blue); font-size: 14px; }
 
-    /* Progress bar + due line */
-    .plan-progress-wrap { display: flex; flex-direction: column; gap: var(--space-2); }
-    .plan-progress-label { font-size: var(--text-sm); color: var(--color-text-muted); }
-    .plan-progress-label strong {
-      color: var(--paper); font-weight: 600; font-family: var(--font-mono);
-      /* signature: the mastered count is highlighted */
-      background-image: linear-gradient(100deg, transparent 0 4%, var(--highlighter-soft) 4% 96%, transparent 96% 100%);
-      background-repeat: no-repeat;
-      background-size: 100% 58%;
-      background-position: 0 82%;
-      padding: 0 0.2em;
-      border-radius: 0.1em;
-    }
-    .plan-due-label { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
-    .plan-due-label strong { color: var(--color-warn); font-weight: 600; }
+    .content-area { flex: 1; overflow-y: auto; }
+    .content-inner { max-width: 680px; margin: 0 auto; width: 100%; padding: 22px; display: flex; flex-direction: column; gap: 18px; }
 
-    /* "Jump to objective" box (sits above the batch area) */
-    .plan-jump {
-      display: flex; flex-direction: column; gap: var(--space-2);
-      background: var(--ink-2); border: var(--border);
-      border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
-      margin: var(--space-3) 0;
-    }
-    .plan-jump-label {
-      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em;
-    }
-    .plan-jump-row { display: flex; gap: var(--space-2); align-items: center; }
-    .plan-jump-input {
-      flex: 1; min-width: 0; padding: var(--space-2) var(--space-3);
-      background: var(--ink-3); border: var(--border); border-radius: var(--radius-sm);
-      color: var(--paper); font-family: var(--font-mono); font-size: var(--text-sm); outline: none;
-    }
-    .plan-jump-input:focus { border-color: var(--booklet); }
-    .plan-jump-btn {
-      flex-shrink: 0; padding: var(--space-2) var(--space-4);
-      background: var(--booklet); color: var(--paper);
-      font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600;
-      border-radius: var(--radius-sm); cursor: pointer;
-      transition: background-color 120ms ease;
-    }
-    .plan-jump-btn:hover:not(:disabled) { background: var(--booklet-bright); }
-    .plan-jump-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .plan-jump-error { font-size: var(--text-xs); color: var(--red-pen); }
+    /* progress header (derived from the map data so the two never disagree) */
+    .plan-progress-wrap { display: flex; flex-direction: column; gap: 6px; }
+    .plan-progress-label { font-size: 14px; color: var(--text-secondary); }
+    .plan-progress-label strong { color: var(--text-body); font-weight: 700; }
+    .plan-progress-track { height: 6px; border-radius: 999px; background: var(--bg-card); overflow: hidden; }
+    .plan-progress-fill { height: 100%; width: 0%; background: var(--accent-green); border-radius: 999px; transition: width 450ms var(--ease-spring); }
+    .plan-due-label { font-size: 13px; color: var(--text-muted); }
+    .plan-due-label strong { color: #f5b450; font-weight: 600; }
+
+    /* jump-to-objective */
+    .plan-jump { display: flex; flex-direction: column; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 12px 14px; }
+    .plan-jump-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .plan-jump-row { display: flex; gap: 8px; align-items: center; }
+    .plan-jump-input { flex: 1; min-width: 0; padding: 8px 12px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-body); font-family: var(--font-mono); font-size: 14px; outline: none; }
+    .plan-jump-input:focus { border-color: var(--accent-blue); }
+    .plan-jump-btn { flex-shrink: 0; padding: 8px 16px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; }
+    .plan-jump-error { font-size: 12px; color: var(--accent-red); }
     .plan-jump-error:empty { display: none; }
-    .plan-jump-back { margin-bottom: var(--space-3); }
-    .plan-jump-back button {
-      background: none; color: var(--booklet-bright);
-      font-family: var(--font-mono); font-size: var(--text-sm); cursor: pointer; padding: 0;
-    }
-    .plan-jump-back button:hover { text-decoration: underline; }
 
-    /* Previous / Next navigation within a batch (a footer to the step) */
-    .plan-step-nav {
-      display: none; align-items: center; justify-content: space-between;
-      gap: var(--space-3); margin-top: var(--space-4);
-      padding-top: var(--space-3); border-top: 1px solid var(--color-border-soft);
-    }
-    .plan-nav-btn {
-      padding: var(--space-2) var(--space-3);
-      background: var(--ink-3); border: var(--border); border-radius: var(--radius-sm);
-      color: var(--paper); font-family: var(--font-mono); font-size: var(--text-sm);
-      cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease;
-    }
-    .plan-nav-btn:hover:not(:disabled) { background: var(--ink-4); border-color: var(--booklet); }
-    .plan-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .plan-nav-count {
-      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em;
-    }
+    /* stage / lesson / question wrappers */
+    .plan-stage-card { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 14px; padding: 20px; }
+    .plan-stage-title { font-size: 18px; font-weight: 600; color: var(--text-body); margin-bottom: 8px; }
+    .plan-stage-body { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+    .plan-primary-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; border: none; }
+    .plan-primary-btn:hover:not(:disabled) { opacity: 0.92; }
+    .plan-primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #planActions { display: none; justify-content: flex-end; }
 
-    .plan-stage-card {
-      background: var(--ink-2); border: var(--border);
-      border-top: 3px solid var(--booklet);
-      border-radius: var(--radius-lg); padding: var(--space-5);
-      box-shadow: var(--shadow-sm);
-      animation: card-arrive 220ms var(--ease-spring) both;
-    }
-    .plan-stage-title {
-      font-family: var(--font-display); font-size: var(--text-xl);
-      font-weight: 600; letter-spacing: -0.02em; color: var(--paper);
-      margin-bottom: var(--space-2);
-    }
-    .plan-stage-body { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.6; }
-
-    .plan-primary-btn {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      padding: var(--space-3) var(--space-5);
-      background: var(--booklet); color: var(--paper);
-      font-size: var(--text-sm); font-weight: 600;
-      border-radius: var(--radius-md);
-      transition: background-color 120ms ease, transform 80ms var(--ease-spring), opacity 120ms ease;
-      outline: none;
-    }
-    .plan-primary-btn:hover:not(:disabled) { background: var(--booklet-bright); }
-    .plan-primary-btn:active:not(:disabled) { transform: scale(0.97); }
-    .plan-primary-btn:focus-visible { outline: 2px solid var(--booklet-bright); outline-offset: 2px; }
-    .plan-primary-btn:disabled { background: var(--booklet-dim); opacity: 0.55; cursor: not-allowed; }
-    #planActions { display: flex; justify-content: flex-end; }
-
-    .plan-obj-list { display: flex; flex-direction: column; gap: var(--space-3); }
-    .plan-obj-card {
-      display: flex; gap: var(--space-3);
-      background: var(--ink-2); border: var(--border);
-      border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
-      animation: card-arrive 220ms var(--ease-spring) both;
-    }
-    .plan-obj-num {
-      flex-shrink: 0; width: 26px; height: 26px;
-      border-radius: var(--radius-sm);
-      background: var(--color-accent-glow); color: var(--booklet-bright);
-      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-    }
+    .plan-obj-list { display: flex; flex-direction: column; gap: 10px; }
+    .plan-obj-card { display: flex; gap: 12px; background: var(--bg-page); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px 14px; }
+    .plan-obj-num { flex: none; width: 26px; height: 26px; border-radius: 7px; background: var(--accent-blue-soft-bg); color: var(--accent-blue); font-family: var(--font-mono); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .plan-obj-body { flex: 1; min-width: 0; }
-    .plan-obj-section {
-      font-family: var(--font-mono); font-size: var(--text-xs);
-      color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px;
-    }
-    .plan-obj-stmt { font-size: var(--text-sm); color: var(--paper); line-height: 1.5; }
+    .plan-obj-section { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .plan-obj-stmt { font-size: 14px; color: var(--text-body); line-height: 1.5; }
 
-    .plan-stepper-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); gap: var(--space-3); }
-    .plan-step-count {
-      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400;
-      color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em;
-    }
-    .plan-syn-banner {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      padding: 2px var(--space-2); border-radius: var(--radius-sm);
-      font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 700;
-      background: var(--color-warn-bg); color: var(--color-warn);
-      border: 1px solid rgba(232, 162, 61, 0.25); letter-spacing: 0.04em;
-    }
+    .plan-stepper-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 12px; }
+    .plan-step-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .plan-syn-banner { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; background: rgba(245,180,80,0.12); color: #f5b450; }
+    .plan-jump-back button { background: none; color: var(--accent-blue); font-size: 14px; cursor: pointer; padding: 0; border: none; }
+    .plan-jump-back { margin-bottom: 10px; }
 
-    .plan-lesson {
-      background: var(--ink-2); border: var(--border);
-      border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5);
-      margin-bottom: var(--space-5); font-size: var(--text-sm); line-height: 1.7;
-      color: var(--paper); white-space: pre-wrap;
-      animation: card-arrive 220ms var(--ease-spring) both;
-    }
-    .plan-lesson-label {
-      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
-    }
-    /* Stage 11: canonical lesson active-recall questions, rendered as tappable pills. */
-    .recall-pills {
-      white-space: normal; margin-top: var(--space-4);
-      padding-top: var(--space-4); border-top: 1px solid var(--color-border-soft);
-      display: flex; flex-direction: column; gap: var(--space-2);
-    }
-    .recall-pills-label {
-      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-1);
-    }
-    .recall-pill {
-      text-align: left; width: 100%; cursor: pointer;
-      padding: var(--space-3) var(--space-4); min-height: 44px;
-      background: var(--ink-3); border: var(--border); border-radius: var(--radius-md);
-      color: var(--paper); font-size: var(--text-sm); line-height: 1.5;
-      transition: background-color 120ms ease, border-color 120ms ease, transform 80ms var(--ease-spring);
-    }
-    .recall-pill:hover { background: var(--ink-4); border-color: var(--booklet); }
-    .recall-pill:active { transform: scale(0.99); }
-    .recall-pill.active {
-      border-color: var(--booklet); background: var(--ink-4);
-      box-shadow: inset 3px 0 0 var(--booklet);
-    }
-    @media (prefers-reduced-motion: reduce) { .recall-pill { transition: none; } }
+    /* slim footer nav: back / map / next (consistent across batch + jump + map) */
+    .plan-footer { display: none; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+    .plan-footer.visible { display: flex; }
+    .plan-foot-btn { padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-body); font-size: 13px; cursor: pointer; }
+    .plan-foot-btn:hover:not(:disabled) { border-color: var(--accent-blue-soft-border); }
+    .plan-foot-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .plan-summary-rows { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-4) 0; }
-    .plan-summary-row {
-      display: flex; align-items: center; gap: var(--space-3);
-      padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-soft);
-    }
+    /* question / answer (reuse shared.css component classes, re-painted blue) */
+    .section-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .question-card { background: var(--accent-blue-soft-bg); border: 1px solid var(--accent-blue-soft-border); border-radius: 12px; padding: 16px 18px; }
+    .question-stem { font-size: 15px; line-height: 1.6; color: var(--text-body); }
+    .question-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .question-card-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .question-meta-tag { font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+    .marks-badge { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+    .answer-section { display: flex; flex-direction: column; }
+    .answer-textarea { width: 100%; min-height: 150px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 12px; color: var(--text-body); padding: 12px 14px; resize: vertical; line-height: 1.6; outline: none; font-size: 14px; }
+    .answer-textarea:focus { border-color: var(--accent-blue); }
+    .answer-textarea:disabled { opacity: 0.5; }
+    .submit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+    .word-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
+    .word-count.has-words { color: var(--text-muted); }
+    .submit-btn { padding: 11px 22px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; border: none; }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .submit-btn-dots { display: none; }
+    .grade-status { display: none; margin-top: 10px; }
+    .grade-status.visible { display: block; }
+    .grade-status-msg { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+    .grade-status-reassure { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+
+    .error-notice { display: none; background: rgba(226,75,74,0.1); border: 1px solid rgba(226,75,74,0.25); color: var(--accent-red); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+    .error-notice.visible { display: block; }
+
+    /* batch summary */
+    .plan-summary-rows { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+    .plan-summary-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
     .plan-summary-row:last-child { border-bottom: none; }
-    .plan-summary-icon {
-      flex-shrink: 0; width: 20px; height: 20px; border-radius: var(--radius-sm);
-      display: flex; align-items: center; justify-content: center;
-    }
-    .plan-summary-row.awarded .plan-summary-icon { background: rgba(242, 213, 68, 0.18); color: var(--highlighter); }
-    .plan-summary-row.missed .plan-summary-icon { background: var(--color-fail-bg); color: var(--red-pen); }
-    .plan-summary-text { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--paper); }
-    .plan-summary-syn {
-      display: flex; align-items: baseline; justify-content: space-between;
-      padding: var(--space-3) var(--space-4);
-      background: var(--ink-3); border: var(--border);
-      border-radius: var(--radius-md); margin-top: var(--space-3);
-    }
-    .plan-summary-syn-score { font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 700; }
+    .plan-summary-icon { flex: none; width: 20px; height: 20px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .plan-summary-row.awarded .plan-summary-icon { background: rgba(61,220,132,0.16); color: var(--accent-green); }
+    .plan-summary-row.missed .plan-summary-icon { background: rgba(226,75,74,0.16); color: var(--accent-red); }
+    .plan-summary-text { flex: 1; min-width: 0; font-size: 14px; color: var(--text-body); }
+    .plan-summary-syn { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 14px; background: var(--bg-page); border: 1px solid var(--border-subtle); border-radius: 10px; margin-top: 12px; }
+    .plan-summary-syn-score { font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
 
-    /* "What you missed" feedback */
-    .missed-wrap { margin-top: var(--space-4); animation: card-arrive 220ms var(--ease-spring) both; }
-    .missed-label {
-      font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
-      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
-    }
-    .missed-box {
-      background: var(--ink-3); padding: var(--space-4);
-      border-radius: var(--radius-lg); line-height: 1.6;
-      font-size: var(--text-sm); color: var(--paper); white-space: pre-wrap;
-    }
-    .missed-box.missed-placeholder { color: var(--color-text-faint); }
-    .missed-allcovered { font-size: var(--text-sm); color: var(--tick); font-weight: 600; }
+    .question-empty { text-align: center; padding: 20px; color: var(--text-muted); }
+    .question-empty-icon { color: var(--text-faint); margin-bottom: 8px; display: flex; justify-content: center; }
+    .question-empty-title { font-size: 14px; color: var(--text-secondary); }
+    .question-empty-body { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -236,87 +143,57 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
       Back
     </a>
-    <div class="topbar-title">Study Plan</div>
+    <div class="topbar-title">Study</div>
     <div class="topbar-right">
-      <div class="grading-status" id="gradingStatus" role="status" aria-live="polite"
-           style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:.02em;opacity:.85;"></div>
-      <div class="topbar-subject" id="topbarSubject">Select a subject</div>
-      <a href="/quiz" class="topbar-link">Open Quiz →</a>
+      <select class="hdr-subject-select" id="subjectSelect" aria-label="Subject"></select>
+      <a href="/quiz" class="topbar-link">Quiz →</a>
     </div>
   </header>
 
-  <div class="selector-bar">
-    <div class="selector-row">
-      <div class="selector-field">
-        <label class="selector-label" for="subjectSelect">Subject</label>
-        <select class="selector-select" id="subjectSelect" aria-label="Select subject">
-          <option value="">— choose —</option>
-          <option value="Principles_of_Business">Principles of Business</option>
-          <option value="Economics">Economics</option>
-          <option value="Mathematics">Mathematics</option>
-          <option value="English">English</option>
-          <option value="Principles_of_Accounts">Principles of Accounts</option>
-          <option value="Integrated_Science">Integrated Science</option>
-          <option value="Information_Technology">Information Technology</option>
-        </select>
-      </div>
-    </div>
-  </div>
-
   <div class="content-area">
     <div class="content-inner">
-      <!-- Progress bar + due line -->
+
+      <!-- Progress header (numbers derived from the map data) -->
       <div class="plan-progress-wrap">
-        <div class="plan-progress-label" id="planProgressLabel">Loading plan…</div>
+        <div class="plan-progress-label" id="planProgressLabel">Loading…</div>
         <div class="plan-progress-track"><div class="plan-progress-fill" id="planProgressFill"></div></div>
         <div class="plan-due-label" id="planDueLabel"></div>
       </div>
 
-      <!-- Jump straight to one objective (skips the batch scheduler) -->
+      <!-- Jump to objective -->
       <div class="plan-jump" id="planJump">
         <label class="plan-jump-label" for="jumpInput">Jump to objective</label>
         <div class="plan-jump-row">
-          <input type="text" id="jumpInput" class="plan-jump-input"
-            placeholder="POB-3.1" autocomplete="off" spellcheck="false"
-            aria-label="Objective id to jump to" />
+          <input type="text" id="jumpInput" class="plan-jump-input" placeholder="POB-3.1" autocomplete="off" spellcheck="false" aria-label="Objective id to jump to" />
           <button type="button" id="jumpBtn" class="plan-jump-btn">Go</button>
         </div>
         <div class="plan-jump-error" id="jumpError" role="alert"></div>
       </div>
 
-      <!-- Stage: start / preview / stepper / summary / single-objective -->
+      <!-- Objective map (collapsible) -->
+      <div class="map-wrap" id="objectiveMap"></div>
+
+      <!-- Stage: idle / preview / stepper / summary / single-objective -->
       <div id="planStage"></div>
 
-      <!-- Stepper Q&A (reused per step; hidden outside a step) -->
+      <!-- Question (revealed only after "Ready for the question") -->
       <div id="questionSection">
         <div class="section-label">Question</div>
         <div class="question-card" id="questionCard">
           <div class="question-empty">
-            <div class="question-empty-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </div>
             <div class="question-empty-title">No question loaded</div>
-            <div class="question-empty-body">Start a batch to begin your study plan.</div>
+            <div class="question-empty-body">Start a batch or pick an objective to begin.</div>
           </div>
         </div>
       </div>
 
       <div class="answer-section" id="answerSection">
         <div class="section-label">Your Answer</div>
-        <textarea class="answer-textarea" id="answerTextarea" rows="8"
-          placeholder="Write your answer here using full sentences."
-          disabled aria-label="Your answer"></textarea>
+        <textarea class="answer-textarea" id="answerTextarea" rows="8" placeholder="Write your answer here using full sentences." disabled aria-label="Your answer"></textarea>
         <div class="submit-row">
           <span class="word-count" id="wordCount" aria-live="polite">0 words</span>
           <button type="button" class="submit-btn" id="submitBtn" disabled aria-label="Submit answer for grading">
             <span class="submit-btn-label">Submit Answer</span>
-            <span class="submit-btn-dots" aria-hidden="true">
-              <span class="submit-btn-dot"></span>
-              <span class="submit-btn-dot"></span>
-              <span class="submit-btn-dot"></span>
-            </span>
           </button>
         </div>
         <div class="grade-status" id="gradeStatus" aria-live="polite">
@@ -327,104 +204,65 @@
 
       <div class="error-notice" id="errorNotice" role="alert"></div>
 
-      <div id="gradeSection">
-        <div class="section-label" id="gradeLabel" style="display:none;">Result</div>
-        <div class="grade-card" id="gradeCard">
-          <div class="grade-card-header">
-            <span class="grade-card-label">Mark Scheme</span>
-            <div class="grade-score" id="gradeScore">
-              <span class="grade-fraction" id="gradeFraction"></span>
-              <span class="grade-pct" id="gradePct"></span>
-            </div>
-          </div>
-          <div class="grade-points" id="gradePoints"></div>
-          <div class="grade-footer">
-            <div class="grade-leitner" id="gradeLeitner"></div>
-          </div>
-        </div>
-      </div>
+      <!-- Feedback (missed-points component) -->
+      <div id="gradeSection"><div id="feedbackHost"></div></div>
 
-      <!-- "What you missed" explanation (per-objective steps only) -->
-      <div id="missedSection" style="display:none;"></div>
+      <!-- Slim footer nav: back / map / next -->
+      <div class="plan-footer" id="planFooter"></div>
 
-      <!-- Previous / Next navigation within a batch (free navigation; no submit) -->
-      <div class="plan-step-nav" id="planStepNav"></div>
-
-      <!-- Contextual action bar (Start / Begin / Next / Summary) -->
-      <div id="planActions" style="display:none;"></div>
+      <!-- Contextual action bar -->
+      <div id="planActions"></div>
     </div>
   </div>
 </div>
 
+<script src="/static/feedback.js"></script>
 <script>
   const API_BASE='http://127.0.0.1:8000';
-  const state={subjectId:'',subjectDisplay:'',
-    // Objective-id prefix for the current subject (e.g. "POB"), learned from the
-    // first objective; lets "Jump to objective" accept a bare "3.1".
-    objectivePrefix:'',
+  const state={subjectId:'',subjectDisplay:'',objectivePrefix:'',
     questionId:null,questionStem:'',marksTotal:0,isGrading:false,
-    // Per-objective grading sends these instead of a stored question_id: the
-    // question text extracted from the lesson, and the objective it belongs to.
     questionText:'',questionFromLesson:false,currentObjectiveId:null,
-    // Stage 11: the canonical lesson's active-recall questions (rendered as pills).
-    recallQuestions:[],currentObjective:null,
-    // Jump-to-objective grades through /api/plan/grade_batch, which needs a valid
-    // batch_id as a subject/scope carrier. When no batch is in progress we open one
-    // lightweight context batch and cache its id here for the session.
-    jumpBatchId:null,
-    // answers: per-step answer text, preserved across Previous/Next navigation.
+    recallQuestions:[],currentObjective:null,jumpBatchId:null,
+    map:null,                                   // last objective-map response
+    retryUsed:false,isRetryPending:false,       // one-retry-per-question tracking
     plan:{batchId:null,objectives:[],n:0,step:0,phase:'idle',
       currentIsSynthesis:false,results:[],synthScore:null,progress:null,answers:{}}};
 
-  const planStage=document.getElementById('planStage');
-  const planProgressLabel=document.getElementById('planProgressLabel');
-  const planProgressFill=document.getElementById('planProgressFill');
-  const planDueLabel=document.getElementById('planDueLabel');
-  const planActions=document.getElementById('planActions');
-  const planStepNav=document.getElementById('planStepNav');
-  const planJump=document.getElementById('planJump');
-  const jumpInput=document.getElementById('jumpInput');
-  const jumpBtn=document.getElementById('jumpBtn');
-  const jumpError=document.getElementById('jumpError');
-  const questionSection=document.getElementById('questionSection');
-  const answerSection=document.getElementById('answerSection');
-  const gradeSection=document.getElementById('gradeSection');
-  const subjectSelect=document.getElementById('subjectSelect');
-  const topbarSubject=document.getElementById('topbarSubject');
-  const questionCard=document.getElementById('questionCard');
-  const answerTextarea=document.getElementById('answerTextarea');
-  const wordCount=document.getElementById('wordCount');
-  const submitBtn=document.getElementById('submitBtn');
-  const submitBtnLabel=submitBtn.querySelector('.submit-btn-label');
-  const gradeStatus=document.getElementById('gradeStatus');
-  const gradeStatusMsg=document.getElementById('gradeStatusMsg');
-  const gradeStatusReassure=document.getElementById('gradeStatusReassure');
-  const errorNotice=document.getElementById('errorNotice');
-  const gradeCard=document.getElementById('gradeCard');
-  const gradeLabel=document.getElementById('gradeLabel');
-  const gradeScore=document.getElementById('gradeScore');
-  const gradeFraction=document.getElementById('gradeFraction');
-  const gradePct=document.getElementById('gradePct');
-  const gradePoints=document.getElementById('gradePoints');
-  const gradeLeitner=document.getElementById('gradeLeitner');
+  const $=(id)=>document.getElementById(id);
+  const planStage=$('planStage'),planProgressLabel=$('planProgressLabel'),planProgressFill=$('planProgressFill');
+  const planDueLabel=$('planDueLabel'),planActions=$('planActions'),planFooter=$('planFooter');
+  const planJump=$('planJump'),jumpInput=$('jumpInput'),jumpBtn=$('jumpBtn'),jumpError=$('jumpError');
+  const questionSection=$('questionSection'),answerSection=$('answerSection'),gradeSection=$('gradeSection');
+  const feedbackHost=$('feedbackHost'),subjectSelect=$('subjectSelect');
+  const questionCard=$('questionCard'),answerTextarea=$('answerTextarea'),wordCount=$('wordCount');
+  const submitBtn=$('submitBtn'),submitBtnLabel=submitBtn.querySelector('.submit-btn-label');
+  const gradeStatus=$('gradeStatus'),gradeStatusMsg=$('gradeStatusMsg'),gradeStatusReassure=$('gradeStatusReassure');
+  const errorNotice=$('errorNotice'),objectiveMap=$('objectiveMap');
 
   function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
   function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
-  // NOTE: extractQuestionFromLesson (a regex that scraped a "question" out of lesson
-  // prose) was REMOVED. Runtime no longer generates freeform lessons with an embedded
-  // question; canonical lessons carry structured recall_questions, and the placeholder
-  // response carries none. Scraping prose fabricated bogus questions, so the UI now
-  // only ever shows server-provided recall_questions (or "none available").
   function updateWordCount(){const n=countWords(answerTextarea.value);wordCount.textContent=n===1?'1 word':`${n} words`;wordCount.className='word-count'+(n>0?' has-words':'');}
   function showError(msg){errorNotice.textContent=msg;errorNotice.classList.add('visible');}
   function hideError(){errorNotice.classList.remove('visible');}
-  function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
-  function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
+  function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionText&&w>=10&&!state.isGrading);}
 
-  function showQuestion({questionId,stem,paper,qnum,marks}){
-    state.questionId=questionId;
-    state.questionStem=stem||'';
-    state.marksTotal=marks||0;
+  // Minimal markdown: escape, then render **bold**. No other markdown is used in
+  // lessons; \n\n paragraph breaks are preserved by white-space:pre-wrap on .lesson-body.
+  function formatLesson(text){
+    let s=escapeHtml(text||'');
+    s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    return s;
+  }
+  function firstSentences(text,n){
+    const clean=(text||'').replace(/\s+/g,' ').trim();
+    const parts=clean.match(/[^.!?]+[.!?]+/g);
+    if(!parts)return clean.slice(0,160);
+    return parts.slice(0,n).join(' ').trim();
+  }
+
+  function clearFeedback(){feedbackHost.innerHTML='';}
+  function showQuestion({stem,paper,qnum,marks}){
+    state.questionStem=stem||'';state.marksTotal=marks||0;
     const qLabel=/^\d/.test(String(qnum||''))?`Q${qnum}`:String(qnum||'');
     questionCard.innerHTML=`
       <div class="question-card-header">
@@ -435,159 +273,119 @@
         ${state.marksTotal?`<span class="marks-badge">${state.marksTotal} mark${state.marksTotal!==1?'s':''}</span>`:''}
       </div>
       <div class="question-stem">${escapeHtml(state.questionStem)}</div>`;
-    questionCard.style.animation='none';
-    requestAnimationFrame(()=>{questionCard.style.animation='';});
-    answerTextarea.disabled=false;
-    answerTextarea.value='';
+    answerTextarea.disabled=false;answerTextarea.value='';
     answerTextarea.placeholder='Write your answer here. Use full sentences and address every part of the question.';
-    answerTextarea.focus();
-    hideGrade();hideError();updateWordCount();updateSubmitBtn();
+    clearFeedback();hideError();updateWordCount();updateSubmitBtn();
   }
-
   function resetQuestionCard(){
-    state.questionId=null;state.questionStem='';state.marksTotal=0;
-    questionCard.innerHTML=`
-      <div class="question-empty">
-        <div class="question-empty-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <div class="question-empty-title">No question loaded</div>
-        <div class="question-empty-body">Start a batch to begin your study plan.</div>
-      </div>`;
-    answerTextarea.disabled=true;answerTextarea.value='';
-    answerTextarea.placeholder='Write your answer here using full sentences.';
-    updateWordCount();updateSubmitBtn();
+    state.questionId=null;state.questionStem='';state.marksTotal=0;state.questionText='';
+    questionCard.innerHTML=`<div class="question-empty"><div class="question-empty-title">No question loaded</div><div class="question-empty-body">Start a batch or pick an objective to begin.</div></div>`;
+    answerTextarea.disabled=true;answerTextarea.value='';updateWordCount();updateSubmitBtn();
   }
 
-  function renderGrade(data){
-    const awarded=data.awarded??0,total=data.total??0,pct=data.score_pct??0;
-    const points=data.points??[],box=data.leitner_box??1,next=data.next_review??'tomorrow';
-    const sc=pct>=70?'pass':pct>=50?'warn':'fail';
-    gradeScore.className=`grade-score ${sc}`;
-    gradeFraction.textContent=`${awarded} / ${total}`;
-    gradePct.textContent=`${pct}%`;
-    gradePoints.innerHTML=points.map((pt,i)=>`
-      <div class="mark-point ${pt.awarded?'awarded':'missed'}" style="animation-delay:${i*60}ms">
-        <div class="mark-point-icon">
-          ${pt.awarded
-            ?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
-            :`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`}
-        </div>
-        <div class="mark-point-body">
-          <div class="mark-point-stmt">${escapeHtml(pt.point_text??pt.mark_point_id??'')}</div>
-          ${pt.evidence?`<div class="mark-point-evidence">${escapeHtml(pt.evidence)}</div>`:''}
-        </div>
-      </div>`).join('');
-    gradeLeitner.innerHTML=`Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(next)}</strong>`;
-    gradeLabel.style.display='block';
-    gradeCard.classList.add('visible');
-    gradeCard.scrollIntoView({behavior:'auto',block:'start'});
-  }
-
-  function hideGrade(){gradeCard.classList.remove('visible');gradeLabel.style.display='none';gradePoints.innerHTML='';}
-
-  // Perceived-latency polish: while the backend grades, cycle a calm status
-  // line every 3s and, past 30s, append a reassurance. Plain text only.
-  const GRADE_STATUS_MESSAGES=[
-    'Reading your answer...',
-    'Checking against mark scheme...',
-    'Identifying which points you covered...',
-    'Computing score...'];
+  // grade-status cycling
+  const GRADE_STATUS_MESSAGES=['Reading your answer...','Checking against mark scheme...','Identifying which points you covered...','Computing score...'];
   let gradeStatusInterval=null,gradeStatusTimeout=null;
+  function startGradeStatus(){let i=0;gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[0];gradeStatusReassure.style.display='none';gradeStatus.classList.add('visible');
+    gradeStatusInterval=setInterval(()=>{i=(i+1)%GRADE_STATUS_MESSAGES.length;gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[i];},3000);
+    gradeStatusTimeout=setTimeout(()=>{gradeStatusReassure.style.display='block';},30000);}
+  function stopGradeStatus(){if(gradeStatusInterval){clearInterval(gradeStatusInterval);gradeStatusInterval=null;}if(gradeStatusTimeout){clearTimeout(gradeStatusTimeout);gradeStatusTimeout=null;}gradeStatus.classList.remove('visible');gradeStatusMsg.textContent='';gradeStatusReassure.style.display='none';}
 
-  function startGradeStatus(){
-    let i=0;
-    gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[0];
-    gradeStatusReassure.style.display='none';
-    gradeStatus.classList.add('visible');
-    gradeStatusInterval=setInterval(()=>{
-      i=(i+1)%GRADE_STATUS_MESSAGES.length;
-      gradeStatusMsg.textContent=GRADE_STATUS_MESSAGES[i];
-    },3000);
-    gradeStatusTimeout=setTimeout(()=>{gradeStatusReassure.style.display='block';},30000);
-  }
-
-  function stopGradeStatus(){
-    if(gradeStatusInterval){clearInterval(gradeStatusInterval);gradeStatusInterval=null;}
-    if(gradeStatusTimeout){clearTimeout(gradeStatusTimeout);gradeStatusTimeout=null;}
-    gradeStatus.classList.remove('visible');
-    gradeStatusMsg.textContent='';
-    gradeStatusReassure.style.display='none';
-  }
-
-  // ===== Study Plan flow ==================================================
-  function setPlanProgress(p){
-    if(!p)return;
-    state.plan.progress=p;
-    const pct=p.percent_mastered??0;
-    planProgressFill.style.width=pct+'%';
-    planProgressLabel.innerHTML=`${escapeHtml(state.subjectDisplay||'Subject')}: <strong>${p.mastered} of ${p.total}</strong> objectives mastered (${pct}%)`;
-  }
-  function showPlanQA(show){
-    questionSection.style.display=show?'':'none';
-    answerSection.style.display=show?'':'none';
-    gradeSection.style.display=show?'':'none';
-    // The step-nav footer belongs to an active step; hide it whenever Q&A is hidden
-    // (idle / preview / summary / single-objective jump). loadBatchStep re-shows it.
-    if(!show)planStepNav.style.display='none';
-  }
-  function planActionBtn(label,action,disabled){
-    planActions.style.display='flex';
-    planActions.innerHTML=`<button type="button" class="plan-primary-btn" data-action="${action}"${disabled?' disabled':''}>${escapeHtml(label)}</button>`;
-  }
+  function showPlanQA(show){questionSection.style.display=show?'':'none';answerSection.style.display=show?'':'none';gradeSection.style.display=show?'':'none';}
+  function planActionBtn(label,action,disabled){planActions.style.display='flex';planActions.innerHTML=`<button type="button" class="plan-primary-btn" data-action="${action}"${disabled?' disabled':''}>${escapeHtml(label)}</button>`;}
   function hidePlanActions(){planActions.style.display='none';planActions.innerHTML='';}
 
+  // ===== Progress (derived from the objective map so header + map agree) =====
+  function setProgressFromMap(map){
+    let total=0,mastered=0;
+    (map.sections||[]).forEach(s=>(s.objectives||[]).forEach(o=>{total++;if(o.status==='mastered')mastered++;}));
+    const pct=total?Math.round(100*mastered/total):0;
+    planProgressFill.style.width=pct+'%';
+    planProgressLabel.innerHTML=`${escapeHtml(state.subjectDisplay||'Subject')}: <strong>${mastered} of ${total}</strong> mastered (${pct}%)`;
+    return {total,mastered,pct};
+  }
+  async function fetchDueCount(){
+    try{const res=await fetch(`${API_BASE}/api/due/${encodeURIComponent(state.subjectId)}`);
+      if(!res.ok){planDueLabel.textContent='';return;}
+      const data=await res.json();const n=Array.isArray(data)?data.length:(data.count??0);
+      planDueLabel.innerHTML=n>0?`<strong>${n}</strong> topic${n!==1?'s':''} due for review`:`No topics due for review`;
+    }catch{planDueLabel.textContent='';}
+  }
+
+  // ===== Objective map =====================================================
+  async function loadObjectiveMap(){
+    if(!state.subjectId){objectiveMap.innerHTML='';return;}
+    try{
+      const res=await fetch(`${API_BASE}/api/objectives/${encodeURIComponent(state.subjectId)}/map`);
+      if(!res.ok){objectiveMap.innerHTML='';return;}
+      state.map=await res.json();
+      setProgressFromMap(state.map);
+      renderObjectiveMap(state.map);
+    }catch{objectiveMap.innerHTML='';}
+  }
+  function dotClass(o){
+    if(o.status==='mastered')return'mastered';
+    if(o.is_next_due)return'is-due';
+    if(o.status==='attempted')return'attempted';
+    return'not-started';
+  }
+  function renderObjectiveMap(map){
+    const sections=map.sections||[];
+    // Auto-expand the section that holds the next-due objective; else none.
+    let openIdx=-1;
+    sections.forEach((s,i)=>{if(openIdx<0&&(s.objectives||[]).some(o=>o.is_next_due))openIdx=i;});
+    const chev='<svg class="map-section-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+    const rowChev='<svg class="map-obj-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+    const html=sections.map((s,i)=>{
+      const objs=s.objectives||[];
+      const mastered=objs.filter(o=>o.status==='mastered').length;
+      const rows=objs.map(o=>`
+        <button type="button" class="map-obj" data-oid="${escapeHtml(o.objective_id)}">
+          <span class="map-dot ${dotClass(o)}"></span>
+          <span class="map-obj-num">${escapeHtml(o.objective_num||'')}</span>
+          <span class="map-obj-title">${escapeHtml(o.content_stmt||o.objective_id)}</span>
+          ${rowChev}
+        </button>`).join('');
+      return `<div class="map-section${i===openIdx?' open':''}">
+        <button type="button" class="map-section-head" data-sec="${i}">
+          ${chev}
+          <span class="map-section-title">${escapeHtml((s.section_num?s.section_num+'. ':'')+(s.title||''))}</span>
+          <span class="map-section-tally">${mastered}/${objs.length}</span>
+        </button>
+        <div class="map-objectives">${rows}</div>
+      </div>`;
+    }).join('');
+    objectiveMap.innerHTML=`
+      <div class="map-head"><div class="map-head-row"><span class="map-title">Objectives</span></div></div>
+      ${html||'<div class="plan-stage-body">No objectives found.</div>'}`;
+    objectiveMap.querySelectorAll('.map-section-head').forEach(btn=>btn.addEventListener('click',()=>{btn.closest('.map-section').classList.toggle('open');}));
+    objectiveMap.querySelectorAll('.map-obj').forEach(btn=>btn.addEventListener('click',()=>openSingleObjective(btn.dataset.oid,'map')));
+  }
+
+  // ===== Plan idle / batch =================================================
   async function enterPlanMode(){
-    state.plan.phase='idle';
-    showPlanQA(false);hideGrade();hideJumpError();
+    state.plan.phase='idle';showPlanQA(false);clearFeedback();hideJumpError();planFooter.classList.remove('visible');
     if(!state.subjectId){
-      planProgressFill.style.width='0%';
-      planProgressLabel.textContent='No subject selected';
-      planDueLabel.textContent='';
-      planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Choose a subject</div><div class="plan-stage-body">Select a subject above to begin your study plan.</div></div>`;
+      planProgressFill.style.width='0%';planProgressLabel.textContent='No subject selected';planDueLabel.textContent='';
+      objectiveMap.innerHTML='';
+      planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Choose a subject</div><div class="plan-stage-body">Select a subject above to begin.</div></div>`;
       hidePlanActions();return;
     }
     await fetchObjectivePrefix();
-    await fetchPlanProgress();
+    await loadObjectiveMap();
     await fetchDueCount();
     renderPlanIdle();
   }
-  // Learn the subject's objective-id prefix (e.g. "POB") so a bare "3.1" jump
-  // resolves to "POB-3.1". Read from the first objective; '' if the list is empty.
   async function fetchObjectivePrefix(){
     state.objectivePrefix='';
-    try{
-      const res=await fetch(`${API_BASE}/api/objectives/${encodeURIComponent(state.subjectId)}`);
-      if(!res.ok)return;
-      const data=await res.json();
-      if(Array.isArray(data)&&data.length){
-        state.objectivePrefix=String(data[0].objective_id||'').split('-')[0]||'';
-      }
+    try{const res=await fetch(`${API_BASE}/api/objectives/${encodeURIComponent(state.subjectId)}`);
+      if(!res.ok)return;const data=await res.json();
+      if(Array.isArray(data)&&data.length)state.objectivePrefix=String(data[0].objective_id||'').split('-')[0]||'';
     }catch{}
-  }
-  async function fetchPlanProgress(){
-    try{
-      const res=await fetch(`${API_BASE}/api/plan/progress/${encodeURIComponent(state.subjectId)}`);
-      if(res.ok)setPlanProgress(await res.json());
-    }catch{}
-  }
-  async function fetchDueCount(){
-    try{
-      const res=await fetch(`${API_BASE}/api/due/${encodeURIComponent(state.subjectId)}`);
-      if(!res.ok){planDueLabel.textContent='';return;}
-      const data=await res.json();
-      const n=Array.isArray(data)?data.length:(data.count??0);
-      planDueLabel.innerHTML=n>0
-        ?`<strong>${n}</strong> topic${n!==1?'s':''} due for review`
-        :`No topics due for review`;
-    }catch{planDueLabel.textContent='';}
   }
   function renderPlanIdle(){
-    state.plan.phase='idle';
-    showPlanQA(false);hideGrade();clearMissed();
-    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Ready to study</div><div class="plan-stage-body">Each batch gives you 5 objectives — a short lesson and one question each — then a synthesis question that connects all five.</div></div>`;
+    state.plan.phase='idle';showPlanQA(false);clearFeedback();planFooter.classList.remove('visible');
+    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Ready to study</div><div class="plan-stage-body">Each batch gives you 5 objectives — a short lesson and one question each — then a synthesis question that connects all five. Or pick any objective from the map above.</div></div>`;
     planActionBtn('Start next 5-objective batch','start',false);
   }
 
@@ -595,417 +393,298 @@
     hideError();planActionBtn('Starting…','start',true);
     try{
       const res=await fetch(`${API_BASE}/api/plan/start_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});
-      if(!res.ok){showError(`Couldn't start a batch (${res.status}). Is the FastAPI server running?`);renderPlanIdle();return;}
+      if(!res.ok){showError(`Couldn't start a batch (${res.status}).`);renderPlanIdle();return;}
       const data=await res.json();
-      if(data.error){showError(data.error==='no_objectives'?'No objectives left to study — every objective is mastered!':`Error: ${data.error}`);renderPlanIdle();return;}
-      state.plan.batchId=data.batch_id;
-      state.plan.objectives=data.objectives||[];
-      state.plan.n=state.plan.objectives.length;
+      if(data.error){showError(data.error==='no_objectives'?'No objectives left — every objective is mastered!':`Error: ${data.error}`);renderPlanIdle();return;}
+      state.plan.batchId=data.batch_id;state.plan.objectives=data.objectives||[];state.plan.n=state.plan.objectives.length;
       state.plan.step=0;state.plan.results=[];state.plan.synthScore=null;state.plan.answers={};
-      setPlanProgress(data.progress);
       renderPlanPreview();
     }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");renderPlanIdle();}
   }
-
   function renderPlanPreview(){
-    state.plan.phase='preview';
-    showPlanQA(false);hideGrade();hideError();clearMissed();
+    state.plan.phase='preview';showPlanQA(false);clearFeedback();hideError();planFooter.classList.remove('visible');
     const cards=state.plan.objectives.map((o,i)=>`
-      <div class="plan-obj-card" style="animation-delay:${i*50}ms">
-        <div class="plan-obj-num">${i+1}</div>
-        <div class="plan-obj-body">
-          <div class="plan-obj-section">${escapeHtml((o.section_num?o.section_num+'. ':'')+(o.section_title||''))}</div>
-          <div class="plan-obj-stmt">${escapeHtml(o.content_stmt||o.objective_id)}</div>
-        </div>
-      </div>`).join('');
-    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">This batch — ${state.plan.n} objective${state.plan.n!==1?'s':''}</div><div class="plan-obj-list" style="margin-top:var(--space-4)">${cards}</div></div>`;
+      <div class="plan-obj-card"><div class="plan-obj-num">${i+1}</div><div class="plan-obj-body">
+        <div class="plan-obj-section">${escapeHtml((o.section_num?o.section_num+'. ':'')+(o.section_title||''))}</div>
+        <div class="plan-obj-stmt">${escapeHtml(o.content_stmt||o.objective_id)}</div></div></div>`).join('');
+    planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">This batch — ${state.plan.n} objective${state.plan.n!==1?'s':''}</div><div class="plan-obj-list" style="margin-top:14px">${cards}</div></div>`;
     planActionBtn('Begin batch','begin',false);
   }
-
   function beginBatch(){state.plan.step=1;loadBatchStep();}
 
   async function loadBatchStep(){
     const isSyn=state.plan.step>state.plan.n;
     state.plan.phase='step';state.plan.currentIsSynthesis=isSyn;
-    hidePlanActions();hideGrade();hideError();clearMissed();showPlanQA(true);
+    hidePlanActions();clearFeedback();hideError();showPlanQA(false);
     const totalSteps=state.plan.n+1;
     const synBanner=isSyn?`<span class="plan-syn-banner">SYNTHESIS — connects all ${state.plan.n} topics</span>`:'';
     planStage.innerHTML=`<div class="plan-stepper-header"><span class="plan-step-count">Question ${state.plan.step} of ${totalSteps}</span>${synBanner}</div><div id="planLessonHost"></div>`;
-    renderStepNav();   // Previous / Next footer, available immediately (no submit required)
+    renderFooter({back:'step',next:'step'});
     resetQuestionCard();
-    state.questionText='';state.questionFromLesson=false;state.currentObjectiveId=null;
-    questionCard.innerHTML=`<div class="question-stem" style="color:var(--color-text-muted)">Generating question…</div>`;
-    // Per-objective: ONE LLM call. loadLesson renders the lesson AND shows its embedded
-    // active-recall question as the gradeable card — no separate /api/plan/batch_question.
-    let extracted='';
-    if(!isSyn)extracted=await loadLesson(state.plan.objectives[state.plan.step-1]);
-    if(extracted){restoreStepAnswer();return;}   // lesson produced the question card; nothing more to fetch
-    // Synthesis (no lesson), or a lesson that failed to load -> generate a question.
+    if(!isSyn){
+      const first=await renderObjectiveLesson(state.plan.objectives[state.plan.step-1],{origin:'batch'});
+      restoreStepAnswer();
+      return;
+    }
+    // Synthesis: no lesson, generate the question and reveal it immediately.
     try{
-      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:isSyn?'synthesis':String(state.plan.step)})});
+      const res=await fetch(`${API_BASE}/api/plan/batch_question`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_id:state.plan.batchId,step:'synthesis'})});
       if(!res.ok){showError(`Couldn't load the question (${res.status}).`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}
-      const label=isSyn?`Synthesis · ${state.plan.n} topics`:`Objective ${data.objective_num||state.plan.step}`;
-      showQuestion({questionId:data.question_id,stem:data.stem||'',paper:label,qnum:isSyn?'Synthesis':'',marks:0});
+      state.questionId=data.question_id;state.questionText=data.stem||'';state.questionFromLesson=false;state.currentObjectiveId=null;
+      showPlanQA(true);showQuestion({stem:data.stem||'',paper:`Synthesis · ${state.plan.n} topics`,qnum:'Synthesis',marks:0});
       restoreStepAnswer();
-    }catch(err){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
+    }catch(err){showError("Couldn't reach the study system.");}
   }
 
-  // Renders the "◄ Previous | Question N of M | Next ►" footer. The last step shows
-  // "Finish batch" instead of "Next". Previous is disabled on the first step.
-  function renderStepNav(){
-    const total=state.plan.n+1;
-    const step=state.plan.step;
-    const isLast=step>=total;
-    planStepNav.style.display='flex';
-    planStepNav.innerHTML=
-      `<button type="button" class="plan-nav-btn" data-nav="prev"${step<=1?' disabled':''}>◄ Previous</button>`+
-      `<span class="plan-nav-count">Question ${step} of ${total}</span>`+
-      (isLast
-        ?`<button type="button" class="plan-nav-btn" data-nav="finish">Finish batch</button>`
-        :`<button type="button" class="plan-nav-btn" data-nav="next">Next ►</button>`);
-  }
-
-  // Save the answer typed for the current step so navigating away and back keeps it.
-  function saveStepAnswer(){
-    if(state.plan.phase==='step'&&state.plan.step&&!answerTextarea.disabled){
-      state.plan.answers[state.plan.step]=answerTextarea.value;
+  // Slim footer (back / map / next) — consistent across batch + jump + map.
+  function renderFooter(cfg){
+    planFooter.classList.add('visible');
+    const inBatch=state.plan.phase==='step';
+    const total=state.plan.n+1,step=state.plan.step;
+    let backLbl='← Back',nextLbl='Next →',nextDisabled='';
+    if(inBatch){
+      backLbl=step<=1?'← Back':'◄ Previous';
+      nextLbl=step>=total?'Finish batch':'Next ►';
+    }else{
+      backLbl='← Back to map';nextLbl='Next →';nextDisabled=' disabled';
     }
-  }
-  // Restore a previously typed answer for the current step (after the card is ready).
-  function restoreStepAnswer(){
-    const saved=state.plan.answers[state.plan.step];
-    if(saved!==undefined&&!answerTextarea.disabled){
-      answerTextarea.value=saved;
-      updateWordCount();updateSubmitBtn();
-    }
-  }
-  // Move to another step WITHOUT submitting. Bounds-checked; saves the current answer
-  // first so it survives the round trip.
-  function navStep(target){
-    if(state.isGrading)return;
-    const total=state.plan.n+1;
-    if(target<1||target>total)return;
-    saveStepAnswer();
-    state.plan.step=target;
-    loadBatchStep();
+    planFooter.innerHTML=
+      `<button type="button" class="plan-foot-btn" data-foot="back">${backLbl}</button>`+
+      `<button type="button" class="plan-foot-btn" data-foot="map">Objectives ▾</button>`+
+      `<button type="button" class="plan-foot-btn" data-foot="next"${nextDisabled}>${nextLbl}</button>`;
   }
 
-  // Sets one recall question as the gradeable card. Grading goes by objective_id +
-  // question_text (no stored question_id) — see submitBatchAnswer.
-  function setActiveRecallQuestion(objective,questionText,idx){
-    state.questionText=questionText;
-    state.questionFromLesson=true;
-    state.currentObjectiveId=objective.objective_id;
-    state.currentObjective=objective;
-    document.querySelectorAll('.recall-pill').forEach((el,i)=>el.classList.toggle('active',i===idx));
-    showQuestion({questionId:`lesson-${state.plan.batchId}-${objective.objective_id}`,
-      stem:questionText,paper:`Objective ${objective.objective_num||state.plan.step}`,qnum:'',marks:0});
+  function saveStepAnswer(){if(state.plan.phase==='step'&&state.plan.step&&!answerTextarea.disabled){state.plan.answers[state.plan.step]=answerTextarea.value;}}
+  function restoreStepAnswer(){const saved=state.plan.answers[state.plan.step];if(saved!==undefined&&!answerTextarea.disabled){answerTextarea.value=saved;updateWordCount();updateSubmitBtn();}}
+  function navStep(target){if(state.isGrading)return;const total=state.plan.n+1;if(target<1||target>total)return;saveStepAnswer();state.plan.step=target;loadBatchStep();}
+
+  function setActiveRecallQuestion(objective,questionText){
+    state.questionText=questionText;state.questionFromLesson=true;state.currentObjectiveId=objective.objective_id;state.currentObjective=objective;
+    state.questionId=`lesson-${state.plan.batchId||'jump'}-${objective.objective_id}`;
+    showQuestion({stem:questionText,paper:`Objective ${objective.objective_num||''}`,qnum:'',marks:0});
   }
 
-  // Renders the active-recall questions as tappable pills below the lesson. Tapping
-  // a pill loads that question into the gradeable card so the student answers it.
-  function renderRecallPills(questions){
-    state.recallQuestions=questions;
-    if(!questions.length){
-      return `<div class="recall-pills"><div class="recall-pills-label">No recall questions available for this lesson.</div></div>`;
-    }
-    // v2 lessons (PDR v3.2) carry ONE recall question -> render it directly as THE
-    // question, no "pick one" header. Legacy 3-question lessons keep the tap-to-choose
-    // header. Either way the pills stay tappable (the first is auto-selected upstream).
-    const label=questions.length===1
-      ? 'Active-recall question'
-      : 'Active-recall questions — tap one to answer it';
-    const pills=questions.map((q,i)=>
-      `<button type="button" class="recall-pill" data-idx="${i}">${escapeHtml(q)}</button>`).join('');
-    return `<div class="recall-pills"><div class="recall-pills-label">${escapeHtml(label)}</div>${pills}</div>`;
-  }
-  function wireRecallPills(objective){
-    document.querySelectorAll('.recall-pill').forEach(el=>{
-      el.addEventListener('click',()=>{
-        const idx=Number(el.dataset.idx);
-        setActiveRecallQuestion(objective,state.recallQuestions[idx]||'',idx);
-        answerTextarea.focus();
-      });
-    });
-  }
-
-  // Fetches the lesson for an objective (instant for a stored canonical lesson).
-  // Renders the lesson and its active-recall questions as pills. The first pill is
-  // auto-selected as the gradeable card. Returns the first recall question ('' if
-  // none), so loadBatchStep only falls back to generating a question when there is
-  // genuinely nothing to answer.
-  //
-  // Stage 11: canonical lessons return {lesson_text, recall_questions:[...]}. An
-  // objective with no canonical lesson returns a 'placeholder' response with NO
-  // recall_questions; we render the lesson text and show "none available" rather than
-  // scraping a fake question out of the prose.
-  async function loadLesson(objective){
-    if(!objective)return '';
-    const host=document.getElementById('planLessonHost');if(!host)return '';
-    host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div><span style="color:var(--color-text-muted)">Loading lesson…</span></div>`;
+  // ===== THE unified single-objective renderer ============================
+  // Reached identically by all three entry points (batch step, jump, map click).
+  // Renders the lesson COLLAPSED (preview + "Read full lesson"), then a "Ready for
+  // the question" gate; the recall question + answer box appear only after Ready.
+  // opts.origin: 'batch' | 'single'  (controls only post-grade chrome). Returns the
+  // first recall question ('' if none → nothing gradeable, e.g. a placeholder lesson).
+  async function renderObjectiveLesson(objective,opts){
+    opts=opts||{origin:'batch'};
+    state.currentObjective=objective;state.recallQuestions=[];
+    state.retryUsed=false;state.isRetryPending=false;
+    showPlanQA(false);clearFeedback();
+    const host=$('planLessonHost');if(!host)return '';
+    host.innerHTML=`<div class="lesson-card"><div class="lesson-eyebrow">Lesson</div><span style="color:var(--text-muted)">Loading lesson…</span></div>`;
     try{
       const res=await fetch(`${API_BASE}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Teach me this objective',subject_id:state.subjectId,route:'teach',objective_id:objective.objective_id})});
       const data=res.ok?await res.json():{};
       const lessonBody=data&&(data.lesson_text||data.lesson);
-      if(!lessonBody){host.innerHTML='';return '';}
-
-      let lessonClean,recallQuestions;
-      if(Array.isArray(data.recall_questions)&&data.recall_questions.length){
-        // Canonical lesson (or any lesson carrying structured recall questions).
-        lessonClean=data.lesson_text||data.lesson||'';
-        recallQuestions=data.recall_questions.filter(q=>q&&q.trim());
-      }else{
-        // No structured recall questions -- e.g. a 'placeholder' response for an
-        // objective that has no canonical lesson yet. Show the lesson text as-is and
-        // present NO recall questions. We never scrape questions out of the prose:
-        // that fabricated bogus "Question / Objective N.M" pills from placeholder /
-        // runtime text and is the bug this fix removes.
-        lessonClean=data.lesson_text||data.lesson||'';
-        recallQuestions=[];
-      }
-
-      host.innerHTML=`<div class="plan-lesson"><div class="plan-lesson-label">Lesson</div>${escapeHtml(lessonClean)}${renderRecallPills(recallQuestions)}</div>`;
-      wireRecallPills(objective);
-
-      const first=recallQuestions[0]||'';
-      if(first)setActiveRecallQuestion(objective,first,0);
-      return first;
+      if(!lessonBody){host.innerHTML=`<div class="lesson-card"><div class="lesson-eyebrow">Lesson</div><div class="lesson-noq">No lesson available for this objective yet.</div></div>`;return '';}
+      const recall=Array.isArray(data.recall_questions)?data.recall_questions.filter(q=>q&&q.trim()):[];
+      state.recallQuestions=recall;
+      renderLessonCard(host,lessonBody,recall,objective,opts);
+      return recall[0]||'';
     }catch{host.innerHTML='';return '';}
   }
 
+  function renderLessonCard(host,lessonBody,recall,objective,opts){
+    const preview=firstSentences(lessonBody,2);
+    const hasMore=preview.length<lessonBody.replace(/\s+/g,' ').trim().length;
+    const readyOrNote=recall.length
+      ?`<div class="ready-row"><button type="button" class="ready-btn" id="readyBtn">Ready for the question →</button></div>`
+      :`<div class="lesson-noq">No recall question available for this lesson.</div>`;
+    host.innerHTML=`
+      <div class="lesson-card">
+        <div class="lesson-eyebrow">Lesson</div>
+        <div class="lesson-body collapsed" id="lessonBody">${formatLesson(preview)}</div>
+        ${hasMore?`<button type="button" class="lesson-toggle" id="lessonToggle">Read full lesson ▾</button>`:''}
+        ${readyOrNote}
+      </div>`;
+    if(hasMore){
+      let expanded=false;const bodyEl=$('lessonBody'),tgl=$('lessonToggle');
+      tgl.addEventListener('click',()=>{
+        expanded=!expanded;
+        bodyEl.classList.toggle('collapsed',!expanded);
+        bodyEl.innerHTML=formatLesson(expanded?lessonBody:preview);
+        tgl.textContent=expanded?'Show less ▴':'Read full lesson ▾';
+      });
+    }
+    const ready=$('readyBtn');
+    if(ready)ready.addEventListener('click',()=>revealQuestion(objective,recall[0]||''));
+  }
+
+  function revealQuestion(objective,first){
+    if(!first)return;
+    setActiveRecallQuestion(objective,first);
+    showPlanQA(true);
+    questionSection.scrollIntoView({behavior:'smooth',block:'start'});
+    answerTextarea.focus();
+  }
+
+  // ===== Grading + retry ==================================================
   async function submitBatchAnswer(){
-    if(!state.questionId)return;
     const text=answerTextarea.value.trim();
-    if(countWords(text)<10)return;
+    if(!state.questionText||countWords(text)<10)return;
     const isJump=state.plan.phase==='jump';
-    // Jump mode reuses this exact grading call but needs a batch_id (see ensureJumpBatch).
     const gradeBatchId=isJump?await ensureJumpBatch():state.plan.batchId;
-    if(isJump&&!gradeBatchId){showError("Couldn't start a grading session. Is the FastAPI server running?");return;}
-    state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';
-    hideError();startGradeStatus();
+    if(!gradeBatchId){showError("Couldn't start a grading session. Is the FastAPI server running?");return;}
+    state.isGrading=true;submitBtn.disabled=true;submitBtnLabel.textContent='Grading…';hideError();startGradeStatus();
     try{
-      // Per-objective extracted question -> grade by objective_id + question_text (no
-      // stored question to resolve). Synthesis / generated fallback -> grade by question_id.
       const body=(!state.plan.currentIsSynthesis&&state.questionFromLesson)
-        ?{batch_id:gradeBatchId,objective_id:state.currentObjectiveId,question_text:state.questionText,answer:text}
-        :{batch_id:gradeBatchId,question_id:state.questionId,answer:text};
+        ?{batch_id:gradeBatchId,objective_id:state.currentObjectiveId,question_text:state.questionText,answer:text,is_retry:state.isRetryPending}
+        :{batch_id:gradeBatchId,question_id:state.questionId,answer:text,is_retry:state.isRetryPending};
       const res=await fetch(`${API_BASE}/api/plan/grade_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||'Check that the FastAPI server is running.'}`);return;}
+      if(!res.ok){const e=await res.text().catch(()=>'');showError(`Grading failed (${res.status}). ${e||''}`);return;}
       const data=await res.json();
       if(data.error){showError(`Error: ${data.error}`);return;}
-      renderGrade(data);
-      if(data.progress)setPlanProgress(data.progress);
-      if(isJump){
-        // Single-objective study: grade + teach-the-missed, but no batch summary or
-        // step advance. The "Back to batch" link stays the only way onward.
-        showMissed(state.currentObjectiveId||data.objective_id,data.points||[]);
-      }else if(state.plan.currentIsSynthesis){
-        state.plan.synthScore={awarded:data.awarded??0,total:data.total??0,score_pct:data.score_pct??0};
-        planActionBtn('See batch summary','summary',false);
-      }else{
-        const obj=state.plan.objectives[state.plan.step-1]||{};
-        state.plan.results.push({objective_id:obj.objective_id,section_title:obj.section_title,
-          content_stmt:obj.content_stmt,objective_num:obj.objective_num,score_pct:data.score_pct??0});
-        // Per-objective step only: teach what was missed (synthesis card has none).
-        showMissed(obj.objective_id||data.objective_id,data.points||[]);
-        planActionBtn(state.plan.step>=state.plan.n?'Begin synthesis question':'Next objective','next',false);
-      }
+      if(data.progress)state.plan.progress=data.progress;
+      const wasRetry=state.isRetryPending;
+      if(wasRetry)state.retryUsed=true;
+      state.isRetryPending=false;
+      onGraded(data,isJump,wasRetry);
     }catch(err){
-      if(err instanceof TypeError&&err.message.includes('fetch')){showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");}
-      else{showError(`Something went wrong: ${err.message}`);}
+      if(err instanceof TypeError&&err.message.includes('fetch'))showError("Couldn't reach the study system. Make sure Ollama and FastAPI are running.");
+      else showError(`Something went wrong: ${err.message}`);
     }finally{state.isGrading=false;stopGradeStatus();submitBtnLabel.textContent='Submit Answer';updateSubmitBtn();}
   }
 
-  function clearMissed(){const h=document.getElementById('missedSection');if(h){h.style.display='none';h.innerHTML='';}}
+  function onGraded(data,isJump,wasRetry){
+    const allowRetry=!state.retryUsed&&!state.plan.currentIsSynthesis;   // one retry per question
+    const isLast=state.plan.step>=state.plan.n;
+    // forward action target
+    let nextFn=null,nextLabel='Next';
+    if(isJump){nextFn=()=>openObjectiveMapFocus();nextLabel='Back to map';}
+    else if(state.plan.currentIsSynthesis){nextFn=()=>renderPlanSummary();nextLabel='See batch summary';}
+    else{nextFn=()=>advancePlanStep();nextLabel=isLast?'Begin synthesis question':'Next objective';}
 
-  // After a per-objective grade: if points were missed, fetch a plain-language
-  // explanation; if all were awarded, say so without an LLM call. Never on synthesis.
-  async function showMissed(objectiveId,points){
-    const host=document.getElementById('missedSection');
-    if(!host)return;
-    const missed=(points||[]).filter(p=>!p.awarded);
-    host.style.display='';
-    if(missed.length===0){
-      host.innerHTML=`<div class="missed-wrap"><div class="missed-allcovered">You covered all the key points.</div></div>`;
-      return;
+    // Record the per-objective result for the batch summary (replace on retry).
+    if(!isJump&&!state.plan.currentIsSynthesis){
+      const obj=state.plan.objectives[state.plan.step-1]||{};
+      const existing=state.plan.results.find(r=>r.objective_id===(obj.objective_id||data.objective_id));
+      const row={objective_id:obj.objective_id||data.objective_id,section_title:obj.section_title,content_stmt:obj.content_stmt,objective_num:obj.objective_num,score_pct:data.score_pct??0};
+      if(existing)Object.assign(existing,row);else state.plan.results.push(row);
     }
-    host.innerHTML=`<div class="missed-wrap"><div class="missed-label">What you missed</div><div class="missed-box missed-placeholder" id="missedBox">Generating explanation…</div></div>`;
-    const box=document.getElementById('missedBox');
-    const missed_points=missed.map(p=>({mark_point_id:p.mark_point_id,expected:p.point_text||'',evidence:p.evidence||''}));
-    try{
-      const res=await fetch(`${API_BASE}/api/plan/explain_missed`,{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({subject_id:state.subjectId,objective_id:objectiveId,missed_points})});
-      const data=res.ok?await res.json():{};
-      if(!box)return;
-      box.classList.remove('missed-placeholder');
-      box.textContent=(data&&data.feedback)?data.feedback:'No explanation available.';
-    }catch{
-      if(box){box.classList.remove('missed-placeholder');box.textContent='Could not load the explanation. Check that Ollama and FastAPI are running.';}
-    }
+    if(state.plan.currentIsSynthesis){state.plan.synthScore={awarded:data.awarded??0,total:data.total??0,score_pct:data.score_pct??0};}
+
+    window.renderMissedFeedback(feedbackHost,data,{
+      onRetry:allowRetry?retryQuestion:null,
+      onNext:nextFn,nextLabel,
+    });
+    feedbackHost.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 
+  function retryQuestion(){
+    // One retry: re-show the question, clear the answer, next submit sends is_retry=true.
+    state.isRetryPending=true;
+    clearFeedback();hideError();
+    answerTextarea.disabled=false;answerTextarea.value='';updateWordCount();updateSubmitBtn();
+    answerTextarea.focus();answerTextarea.scrollIntoView({behavior:'smooth',block:'center'});
+  }
   function advancePlanStep(){navStep(state.plan.step+1);}
 
   function renderPlanSummary(){
-    state.plan.phase='summary';
-    showPlanQA(false);hideGrade();hideError();clearMissed();
+    state.plan.phase='summary';showPlanQA(false);clearFeedback();hideError();planFooter.classList.remove('visible');
     const rows=state.plan.results.map(r=>{
       const ok=(r.score_pct??0)>=70;
-      const icon=ok
-        ?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'
-        :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      return `<div class="plan-summary-row ${ok?'awarded':'missed'}">
-        <div class="plan-summary-icon">${icon}</div>
-        <div class="plan-summary-text">${escapeHtml((r.objective_num?r.objective_num+' — ':'')+(r.content_stmt||r.objective_id))}</div>
-        <div class="plan-summary-text" style="flex:0 0 auto;color:var(--color-text-muted)">${r.score_pct}%</div>
-      </div>`;
+      const icon=ok?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>':'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      return `<div class="plan-summary-row ${ok?'awarded':'missed'}"><div class="plan-summary-icon">${icon}</div><div class="plan-summary-text">${escapeHtml((r.objective_num?r.objective_num+' — ':'')+(r.content_stmt||r.objective_id))}</div><div class="plan-summary-text" style="flex:0 0 auto;color:var(--text-muted)">${r.score_pct}%</div></div>`;
     }).join('');
     const s=state.plan.synthScore;
-    const synColor=s?(s.score_pct>=70?'var(--color-pass)':s.score_pct>=50?'var(--color-warn)':'var(--color-fail)'):'var(--color-text)';
+    const synColor=s?(s.score_pct>=70?'var(--accent-green)':s.score_pct>=50?'#f5b450':'var(--accent-red)'):'var(--text-body)';
     const synBlock=s?`<div class="plan-summary-syn"><div><div class="plan-obj-section">Synthesis</div><div class="plan-summary-text">Connecting all ${state.plan.n} topics</div></div><div class="plan-summary-syn-score" style="color:${synColor}">${s.awarded}/${s.total} · ${s.score_pct}%</div></div>`:'';
     planStage.innerHTML=`<div class="plan-stage-card"><div class="plan-stage-title">Batch complete</div><div class="plan-summary-rows">${rows}</div>${synBlock}</div>`;
-    fetchDueCount();
+    loadObjectiveMap();fetchDueCount();
     planActionBtn('Start next batch','start',false);
   }
 
-  // ===== Jump to objective ================================================
+  // ===== Jump / map single-objective ======================================
   function showJumpError(msg){jumpError.textContent=msg;}
   function hideJumpError(){jumpError.textContent='';}
-
-  // Normalise free-typed input to a canonical objective_id. Accepts "POB-3.1",
-  // "pob-3.1", "POB 3.1" and a bare "3.1" (which gets the current subject prefix).
-  // Returns '' when it cannot form an id (e.g. bare number with no known prefix).
   function normalizeObjectiveId(raw){
-    if(!raw)return '';
-    let s=raw.trim().toUpperCase().replace(/\s+/g,'-').replace(/-+/g,'-');
-    if(!s)return '';
-    if(/^\d/.test(s)){
-      const prefix=state.objectivePrefix;
-      if(!prefix)return '';
-      s=`${prefix}-${s}`;
-    }
+    if(!raw)return '';let s=raw.trim().toUpperCase().replace(/\s+/g,'-').replace(/-+/g,'-');if(!s)return '';
+    if(/^\d/.test(s)){const prefix=state.objectivePrefix;if(!prefix)return '';s=`${prefix}-${s}`;}
     return s;
   }
-
   async function jumpToObjective(){
     hideJumpError();
     if(!state.subjectId){showJumpError('Select a subject first.');return;}
     const oid=normalizeObjectiveId(jumpInput.value);
     if(!oid){showJumpError('Objective not found');return;}
+    await openSingleObjective(oid,'jump');
+  }
+
+  // Unified entry for jump AND map click. Builds the single-objective chrome, then
+  // calls the SAME renderObjectiveLesson the batch step uses.
+  async function openSingleObjective(objectiveId,via){
+    state.plan.phase='jump';state.plan.currentIsSynthesis=false;
+    hideError();clearFeedback();hidePlanActions();showPlanQA(false);
+    resetQuestionCard();
     jumpBtn.disabled=true;
     try{
-      const res=await fetch(`${API_BASE}/api/objective/${encodeURIComponent(oid)}`);
-      if(res.status===404){showJumpError('Objective not found');return;}
-      if(!res.ok){showJumpError(`Couldn't load objective (${res.status}).`);return;}
+      const res=await fetch(`${API_BASE}/api/objective/${encodeURIComponent(objectiveId)}`);
+      if(res.status===404){if(via==='jump')showJumpError('Objective not found');else showError('Objective not found.');return;}
+      if(!res.ok){showError(`Couldn't load objective (${res.status}).`);return;}
       const data=await res.json();
-      await renderSingleObjective(oid,data);
-    }catch{showJumpError("Couldn't reach the study system. Make sure the server is running.");}
+      const note=(data&&data.lesson_source==='placeholder')?`<div class="plan-stage-body" style="margin-bottom:12px">No canonical lesson yet — showing the syllabus statement.</div>`:'';
+      planStage.innerHTML=`<div class="plan-jump-back"><button type="button" id="backToMapBtn">← Back to map</button></div><div class="plan-stepper-header"><span class="plan-step-count">Objective ${escapeHtml(objectiveId)}</span></div>${note}<div id="planLessonHost"></div>`;
+      $('backToMapBtn').addEventListener('click',openObjectiveMapFocus);
+      renderFooter({});
+      const objective={objective_id:objectiveId,objective_num:objectiveId.split('-').slice(1).join('-')};
+      const first=await renderObjectiveLesson(objective,{origin:'single'});
+      if(!first)showPlanQA(false);
+    }catch{if(via==='jump')showJumpError("Couldn't reach the study system.");else showError("Couldn't reach the study system.");}
     finally{jumpBtn.disabled=false;}
   }
 
-  // Single-objective view (skips the batch scheduler entirely). Reuses the EXACT
-  // SAME interactive flow the batch view uses: loadLesson renders the lesson + the
-  // tappable recall pills, auto-selects the first as the gradeable card, and enables
-  // the shared answer textarea + Submit button (submitBatchAnswer grades it). The
-  // only differences from a batch step are the single objective, the "Back to batch"
-  // link on top, and no Previous/Next/summary navigation. (Earlier this view was
-  // display-only — it hid the answer section and drew the recall questions as inert
-  // text — so a jumped-to objective could be read but never answered or graded.)
-  async function renderSingleObjective(objectiveId,data){
-    state.plan.phase='jump';state.plan.currentIsSynthesis=false;
-    hideGrade();hideError();clearMissed();hidePlanActions();
-    showPlanQA(true);                 // reveal the shared question/answer/grade sections
-    planStepNav.style.display='none'; // Previous/Next footer belongs to a batch only
-    resetQuestionCard();
-    state.questionText='';state.questionFromLesson=false;state.currentObjectiveId=null;
-
-    const note=(data&&data.lesson_source==='placeholder')
-      ?`<div class="plan-stage-body" style="margin-bottom:var(--space-3)">No canonical lesson yet — showing the syllabus statement.</div>`:'';
-    planStage.innerHTML=
-      `<div class="plan-jump-back"><button type="button" id="backToBatchBtn">← Back to batch</button></div>`+
-      `<div class="plan-stepper-header"><span class="plan-step-count">Objective ${escapeHtml(objectiveId)}</span></div>`+
-      note+
-      `<div id="planLessonHost"></div>`;
-    document.getElementById('backToBatchBtn').addEventListener('click',backToBatch);
-
-    // Reuse the batch loader's lesson renderer. Build an objective object with the
-    // num derived from the id ("POB-3.1" -> "3.1") so the card label reads
-    // "Objective 3.1" without an extra round-trip. loadLesson renders into
-    // #planLessonHost, wires the recall pills, and (if there's a recall question)
-    // calls showQuestion -> enables the textarea, returning the first question.
-    const objective={objective_id:objectiveId,
-      objective_num:objectiveId.split('-').slice(1).join('-')};
-    const first=await loadLesson(objective);
-    // A placeholder / no-recall objective has nothing gradeable: show the lesson in
-    // planStage but hide the empty question + answer sections (honest placeholder).
-    if(!first)showPlanQA(false);
+  function openObjectiveMapFocus(){
+    // Return to the browsable view: refresh the map (statuses may have changed) and
+    // scroll to it; resume an in-progress batch's stage if one exists.
+    state.plan.phase='idle';showPlanQA(false);clearFeedback();planFooter.classList.remove('visible');
+    if(state.plan.batchId&&state.plan.objectives.length&&state.plan.step>=1){loadBatchStep();}
+    else renderPlanIdle();
+    loadObjectiveMap();
+    objectiveMap.scrollIntoView({behavior:'smooth',block:'start'});
   }
 
-  // Grading routes through /api/plan/grade_batch, which requires a valid batch_id.
-  // A per-objective grade is scored against the objective itself (grade_against_
-  // syllabus), independent of which objectives the batch contains, so the batch is
-  // only a subject/scope carrier here. Reuse an in-progress batch when one exists;
-  // otherwise open one lightweight context batch and cache it. Returns the batch_id
-  // or null if a batch could not be opened.
   async function ensureJumpBatch(){
     if(state.plan.batchId)return state.plan.batchId;
     if(state.jumpBatchId)return state.jumpBatchId;
-    try{
-      const res=await fetch(`${API_BASE}/api/plan/start_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});
-      if(!res.ok)return null;
-      const data=await res.json();
-      if(data.error)return null;
-      state.jumpBatchId=data.batch_id;
-      return state.jumpBatchId;
+    try{const res=await fetch(`${API_BASE}/api/plan/start_batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});
+      if(!res.ok)return null;const data=await res.json();if(data.error)return null;state.jumpBatchId=data.batch_id;return state.jumpBatchId;
     }catch{return null;}
   }
 
-  // Return from a jump to the scheduler-driven batch view, resuming an in-progress
-  // batch where we left off (jumping never discards batch state) or, with no batch
-  // open, the idle "Start next batch" view.
-  function backToBatch(){
-    if(state.plan.batchId&&state.plan.objectives.length){
-      if(state.plan.step>=1)loadBatchStep();
-      else renderPlanPreview();
-    }else{
-      enterPlanMode();
-    }
-  }
-
+  // ===== Subjects (sticky via /api/state/subject) =========================
   async function fetchSubjects(){
-    try{
-      const res=await fetch(`${API_BASE}/api/subjects`);
-      if(!res.ok)return;
-      const data=await res.json();
-      if(!Array.isArray(data)||data.length===0)return;
-      while(subjectSelect.options.length>1)subjectSelect.remove(1);
-      data.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
-    }catch{}
+    let subjects=[];
+    try{const res=await fetch(`${API_BASE}/api/subjects`);if(res.ok)subjects=await res.json();}catch{}
+    if(!Array.isArray(subjects))subjects=[];
+    subjectSelect.innerHTML='';
+    subjects.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
+    let current=null;
+    try{const r=await fetch(`${API_BASE}/api/state/subject`);if(r.ok)current=(await r.json()).subject_id;}catch{}
+    if(!current&&subjects.length)current=subjects[0].subject_id;
+    if(current){subjectSelect.value=current;const opt=subjectSelect.options[subjectSelect.selectedIndex];
+      state.subjectId=current;state.subjectDisplay=opt?opt.textContent.trim():current;}
   }
 
-  subjectSelect.addEventListener('change',()=>{
+  subjectSelect.addEventListener('change',async()=>{
     const opt=subjectSelect.options[subjectSelect.selectedIndex];
-    state.subjectId=opt.value;
-    setSubjectDisplay(opt.value?opt.textContent.trim():'');
+    state.subjectId=opt.value;state.subjectDisplay=opt.value?opt.textContent.trim():'';
     hideError();
+    try{await fetch(`${API_BASE}/api/state/subject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})});}catch{}
+    state.plan.batchId=null;state.plan.objectives=[];state.jumpBatchId=null;
     enterPlanMode();
   });
-  planActions.addEventListener('click',(e)=>{
-    const btn=e.target.closest('button[data-action]');if(!btn||btn.disabled)return;
-    const a=btn.dataset.action;
-    if(a==='start')startBatch();
-    else if(a==='begin')beginBatch();
-    else if(a==='next')advancePlanStep();
-    else if(a==='summary')renderPlanSummary();
-  });
-  planStepNav.addEventListener('click',(e)=>{
-    const btn=e.target.closest('button[data-nav]');if(!btn||btn.disabled)return;
-    const nav=btn.dataset.nav;
-    if(nav==='prev')navStep(state.plan.step-1);
-    else if(nav==='next')navStep(state.plan.step+1);
-    else if(nav==='finish')renderPlanSummary();
+  planActions.addEventListener('click',(e)=>{const btn=e.target.closest('button[data-action]');if(!btn||btn.disabled)return;const a=btn.dataset.action;if(a==='start')startBatch();else if(a==='begin')beginBatch();else if(a==='next')advancePlanStep();else if(a==='summary')renderPlanSummary();});
+  planFooter.addEventListener('click',(e)=>{const btn=e.target.closest('button[data-foot]');if(!btn||btn.disabled)return;const f=btn.dataset.foot;
+    if(f==='map'){objectiveMap.scrollIntoView({behavior:'smooth',block:'start'});}
+    else if(state.plan.phase==='step'){if(f==='back')navStep(state.plan.step-1);else if(f==='next'){const total=state.plan.n+1;if(state.plan.step>=total)renderPlanSummary();else navStep(state.plan.step+1);}}
+    else{if(f==='back')openObjectiveMapFocus();}
   });
   jumpBtn.addEventListener('click',jumpToObjective);
   jumpInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();jumpToObjective();}});
@@ -1013,20 +692,7 @@
   submitBtn.addEventListener('click',submitBatchAnswer);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitBatchAnswer();}});
 
-  async function loadGradingStatus(){
-    const el=document.getElementById('gradingStatus');
-    if(!el)return;
-    try{
-      const res=await fetch(`${API_BASE}/api/status`);
-      if(!res.ok){el.textContent='';return;}
-      const s=await res.json();
-      // Badge mirrors grading_engine (what chat_for_grading will actually use).
-      if(s.grading_engine==='gemini'){el.textContent='Grading: Cloud (Gemini)';el.style.color='#2563eb';}
-      else{el.textContent='Grading: Local (Ollama)';el.style.color='var(--paper-dim)';}
-    }catch{el.textContent='';/* API down — show nothing, never a stale badge */}
-  }
-
-  function init(){fetchSubjects();loadGradingStatus();enterPlanMode();updateSubmitBtn();updateWordCount();}
+  async function init(){await fetchSubjects();enterPlanMode();updateSubmitBtn();updateWordCount();}
   init();
 </script>
 </body>

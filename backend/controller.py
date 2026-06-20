@@ -690,6 +690,21 @@ def _handle_grade_batch_question(db, request, chat_fn) -> dict:
             return grading
         # Keep a stable question_id on the result even on the extracted path.
         grading["question_id"] = question_id or f"lesson-{batch['batch_id']}-{obj_id}"
+        # UI overhaul session 3: record this Study attempt in study_sessions so the
+        # objective map's "attempted" status reflects Study (not just Quiz), and so a
+        # retry preserves the original attempt while flagging the re-attempt. is_retry
+        # comes from the request (session 1's parameter). The first attempt is
+        # is_retry=0; a retry overwrites the visible result + weakness/Leitner (the
+        # upsert in mark_objective_outcome) while this row stays in history.
+        is_retry = bool(request.get("is_retry"))
+        db.execute(
+            "INSERT INTO study_sessions "
+            "(subject_id, objective_id, mode, outcome, score_pct, is_retry) "
+            "VALUES (?, ?, 'grade', ?, ?, ?)",
+            (subject_id, obj_id, _outcome(grading["score_pct"]),
+             grading["score_pct"], 1 if is_retry else 0),
+        )
+        db.commit()
         mark_objective_outcome(db, subject_id, obj_id, grading["score_pct"],
                                update_weakness=True)
 

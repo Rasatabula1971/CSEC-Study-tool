@@ -1262,3 +1262,64 @@ merged — session 3 builds on it). Builds on session 1's app_state endpoints.
     `/welcome` has the dropdown + dropzone; `/builder` → 200; status numbers
     mastered 1 / 116 / due 2 match `/plan`. Backup `csec_…_pre_ui_session_2_test.sqlite`
     taken first; welcome flag left reset to '0' so Rylee's real first launch still shows.
+
+## UI overhaul — session 3 of 3: Study rebuild, Quiz restyle, Builder console (19 June 2026, branch `ui-overhaul-backend`)
+
+Final UI-overhaul session (PR opened for user review — NOT merged). Built from
+Rylee's real first-use feedback: objective map, collapsed lessons, question-after-
+reading, retry-with-missed-points, and a real Builder console.
+
+  - **Task 1 — shared palette.** The dark/blue tokens (`--bg-page`, `--accent-blue`,
+    `--text-body`, …) moved from welcome/first_launch into shared.css §2b (one
+    definition). welcome.html + first_launch.html now `<link>` shared.css and dropped
+    their local `:root`. study_plan.html + quiz.html adopt the palette by re-pointing
+    the legacy surface/text/accent tokens (`--ink`/`--booklet`/`--paper`…) onto the
+    blue ones at page level, so existing shared.css component rules render blue
+    without a rewrite.
+  - **Task 2 — objective map.** New `GET /api/objectives/{subject}/map`: objectives
+    grouped by section, each `status` = mastered (study_plan.status='mastered', the
+    SAME model as get_plan_progress — counting map 'mastered' == progress mastered) /
+    attempted (has a study_sessions row) / not_started, plus `is_next_due`
+    (get_due_objectives). study_plan.html renders it as an in-page collapsible section
+    (sections collapsed except the one holding the next-due objective; status dots
+    green/amber(due)/blue(attempted)/grey-ring; row click → the unified renderer). The
+    progress header numbers are derived FROM the map data so header + map can't disagree.
+  - **Task 3 — unified lesson flow.** ONE renderer `renderObjectiveLesson(objective,
+    {origin})` reached by all three entry points (batch step, jump, map click) —
+    collapses the divergent-render-path bug class. Lesson renders COLLAPSED (2-sentence
+    preview + "Read full lesson ▾", `formatLesson` does **bold** + preserves `\n\n`);
+    the recall question is hidden behind a "Ready for the question →" gate; on submit
+    the shared missed-points feedback shows; **one** retry ("Try again" → is_retry=true
+    → then "Next"; unlimited retries deliberately NOT built — noted per task). A slim
+    back/objectives/next footer is consistent across views; small sticky subject
+    dropdown in the header (POSTs /api/state/subject). To make Study grading record
+    (so the map's "attempted" reflects Study, and retries flag history),
+    `/api/plan/grade_batch` + `_handle_grade_batch_question` gained `is_retry` and now
+    INSERT a per-objective study_sessions row (session 1's parameter, extended to the
+    batch path — synthesis unchanged).
+  - **Task 4 — Quiz restyle (visual only).** Segmented mode toggle, header sticky
+    subject dropdown, question card/answer box styled identically to Study, and the
+    grade card replaced by the SHARED feedback component. New `backend/static/feedback.js`
+    (`renderMissedFeedback`) is `<script src>`-included by BOTH Study and Quiz — a
+    genuine shared partial, not copy-paste. Load Question / Submit logic untouched.
+  - **Task 5 — Builder console.** `backend/static/builder.html` (replaces the
+    placeholder): links to /upload + /lessons/status + a "Reset welcome message"
+    action (`POST /api/state/welcome-reset` → flag '0'). Client-side PIN gate reuses
+    session 2's `/api/builder/verify-pin` (blurred until unlocked; sessionStorage
+    'builder_ok' set by the Welcome modal so it doesn't double-prompt). BUILDER_PIN
+    default 1971.
+  - Tests: test_objective_map.py (3), test_lesson_flow_unified.py (3: shared lesson
+    path + is_retry 0→1 sequence), test_quiz_restyle.py (4), test_builder_console.py
+    (3), test_shared_tokens.py (4); two existing markers in test_study_plan.py updated
+    to the unified renderer (openSingleObjective / renderObjectiveLesson), two existing
+    test_api markers already updated in session 2. Suite **443**.
+  - Live verified on :8000 (port freed by killing a zombie multiprocessing-fork child
+    holding the inherited socket): / served first-launch while unseen → after
+    welcome-seen served Welcome; /plan has the map + ready gate + unified renderer +
+    feedback.js; map endpoint returned 10 sections / 116 objectives with statuses +
+    is_next_due; /quiz has the segmented toggle + shared feedback + header dropdown;
+    PIN 0000→false / 1971→true; /builder serves the gated console; welcome-reset
+    flipped the flag and **welcome_message_seen left at 0** (Rylee's first launch
+    untouched). Backup csec_…_pre_ui_session_3_test.sqlite taken first. NOTE: live LLM
+    grading not re-run here (covered by tests); the grade endpoints were verified to
+    serve, the retry is_retry wiring by integration test.

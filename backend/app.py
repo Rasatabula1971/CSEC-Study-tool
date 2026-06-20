@@ -74,6 +74,7 @@ if not logger.handlers:
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WELCOME_HTML = STATIC_DIR / "welcome.html"
 FIRST_LAUNCH_HTML = STATIC_DIR / "first_launch.html"
+BUILDER_HTML = STATIC_DIR / "builder.html"
 CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 PLAN_HTML = STATIC_DIR / "study_plan.html"
@@ -804,6 +805,10 @@ class GradeBatchRequest(BaseModel):
     objective_id: str | None = None
     question_text: str | None = None
     answer: str = Field(min_length=1)
+    # UI overhaul session 3: a recall-question retry sets this so the per-objective
+    # study_sessions row is flagged is_retry=1 (session 1's scoring), while the
+    # original attempt's row is preserved.
+    is_retry: bool = False
 
 
 class MissedPoint(BaseModel):
@@ -953,11 +958,12 @@ def chat_page() -> FileResponse:
 
 
 @app.get("/builder")
-def builder_page(request: Request) -> FileResponse:
-    """Builder console placeholder (session 3 fills this in). For now the Welcome
-    page's PIN-gated link lands here; serving the existing Upload Material page keeps
-    it useful rather than 404ing. Replaced by the real builder console in session 3."""
-    return FileResponse(UPLOAD_HTML)
+def builder_page() -> FileResponse:
+    """The Builder console (UI overhaul session 3): a minimal utility page linking the
+    staging tool + lesson-status page and exposing the reset-welcome action. Entry is
+    PIN-gated client-side (the session-2 modal on Welcome navigates here after a correct
+    PIN; the page itself re-checks via /api/builder/verify-pin on direct navigation)."""
+    return FileResponse(BUILDER_HTML)
 
 
 @app.get("/welcome")
@@ -1201,6 +1207,69 @@ def objectives(subject_id: str, request: Request) -> list[dict]:
         (subject_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/objectives/{subject_id}/map")
+def objectives_map(subject_id: str, request: Request) -> dict:
+    """Objective map (UI overhaul session 3): objectives grouped by syllabus section,
+    each tagged with a status the Study page colours as a dot.
+
+    Status reuses the SAME mastery model as get_plan_progress (the "X of Y mastered"
+    header): an objective is 'mastered' exactly when its study_plan.status is
+    'mastered' (passed on two distinct days). Otherwise 'attempted' if it has any
+    study_sessions row, else 'not_started'. is_next_due flags objectives in the
+    scheduler's due-today set (get_due_objectives) so the map can highlight them amber.
+
+    Counting map 'mastered' rows therefore yields exactly get_plan_progress()['mastered'].
+    """
+    db = request.app.state.db
+    rows = db.execute(
+        """
+        SELECT o.objective_id, o.section_id, o.objective_num, o.content_stmt,
+               s.title       AS section_title,
+               s.section_num AS section_num,
+               sp.status     AS plan_status,
+               EXISTS(SELECT 1 FROM study_sessions ss
+                      WHERE ss.objective_id = o.objective_id) AS attempted
+        FROM   objectives o
+        JOIN   syllabus_sections s ON s.section_id = o.section_id
+        LEFT   JOIN study_plan sp
+               ON sp.objective_id = o.objective_id AND sp.subject_id = o.subject_id
+        WHERE  o.subject_id = ?
+        ORDER  BY s.section_num, o.objective_num
+        """,
+        (subject_id,),
+    ).fetchall()
+
+    due_ids = {r["objective_id"] for r in get_due_objectives(db, subject_id)}
+
+    sections: list[dict] = []
+    by_section: dict[str, dict] = {}
+    for r in rows:
+        if r["plan_status"] == "mastered":
+            status = "mastered"
+        elif r["attempted"]:
+            status = "attempted"
+        else:
+            status = "not_started"
+        sec = by_section.get(r["section_id"])
+        if sec is None:
+            sec = {
+                "section_id": r["section_id"],
+                "section_num": r["section_num"],
+                "title": r["section_title"],
+                "objectives": [],
+            }
+            by_section[r["section_id"]] = sec
+            sections.append(sec)
+        sec["objectives"].append({
+            "objective_id": r["objective_id"],
+            "objective_num": r["objective_num"],
+            "content_stmt": r["content_stmt"],
+            "status": status,
+            "is_next_due": r["objective_id"] in due_ids,
+        })
+    return {"sections": sections}
 
 
 # ---------------------------------------------------------------------------
@@ -1512,6 +1581,17 @@ def set_welcome_seen(request: Request) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/state/welcome-reset")
+def reset_welcome_seen(request: Request) -> dict:
+    """Flip welcome_message_seen back to '0' (UI overhaul session 3, Builder console).
+
+    Lets the builder re-arm the one-time first-launch message -- e.g. setting the app
+    up fresh for a sibling, or after a DB restore. Builder-only (the link sits behind
+    the PIN gate); never exposed to the student."""
+    app_state_store.set_state(request.app.state.db, "welcome_message_seen", "0")
+    return {"ok": True}
+
+
 @app.post("/api/builder/verify-pin")
 async def builder_verify_pin(request: Request) -> dict:
     """Check the builder PIN for the Welcome page's discreet Builder link.
@@ -1556,6 +1636,7 @@ def plan_grade_batch(body: GradeBatchRequest, request: Request) -> dict:
         "route": "grade_batch_question",
         "batch_id": body.batch_id,
         "answer": body.answer,
+        "is_retry": body.is_retry,
     }
     # Forward only what was supplied: question_id for synthesis/fallback, or
     # objective_id + question_text for the extracted per-objective question.
