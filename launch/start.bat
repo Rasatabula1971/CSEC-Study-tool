@@ -62,8 +62,24 @@ REM the foreground below and never returns, so anything that must
 REM happen "after launch" has to happen here first. The page may be
 REM blank for a few seconds until the server finishes starting --
 REM that is expected.
+REM Open the study app in its OWN dedicated Chrome window (--app):
+REM a single borderless window with NO session-restore and no other
+REM tabs. Plain `start http://...` cold-starts the default browser,
+REM and Chrome set to "Continue where you left off" then restores the
+REM previous session AND opens this URL -- which surfaced as TWO
+REM windows on launch. The app window avoids that entirely. If Chrome
+REM is not installed, fall back to the default browser so launch still
+REM works (it just loses the single-window guarantee).
 echo Opening browser...
-start http://127.0.0.1:8000
+set "CHROME="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not defined CHROME if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+if not defined CHROME if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "CHROME=%LocalAppData%\Google\Chrome\Application\chrome.exe"
+if defined CHROME (
+    start "" "%CHROME%" --app=http://127.0.0.1:8000
+) else (
+    start http://127.0.0.1:8000
+)
 
 echo.
 echo ============================================================
