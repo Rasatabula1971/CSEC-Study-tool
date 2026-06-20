@@ -1374,3 +1374,35 @@ Fixes:
     console + startup message + uvicorn as the console's child; closing the window
     stopped the server (uvicorn gone, :8000 free, Ollama left running); `GET /` served
     first_launch with the hardened handler.
+
+## UI overhaul MERGED + confirmed in real student use (20 June 2026)
+
+PR #17 (`ui-overhaul-backend` → `main`, merge commit 4d0749e) is merged and the
+branch deleted. The three-session UI rebuild is now live on `main`: Welcome page,
+one-time first-launch message, Study with the objective map + collapsed lessons +
+retry-with-missed-points, Quiz restyle (shared feedback partial), Builder console,
+plus the launcher foreground-console + Continue-button hardening.
+
+**Confirmed working end-to-end through Rylee's actual sessions** (server logs
+reviewed directly, not just tests): she loads /plan, sees her real progress on the
+objective map, studies objectives, submits answers, is graded, and the
+retry-with-missed-points flow works. The first-launch message was seen and the
+Continue button (post-timeout-fix) correctly advances. The launcher console shows
+startup status and stops the server on close. Live DB on `main` post-merge:
+`welcome_message_seen='1'` (she dismissed it), **116/116 POB lessons** written,
+suite **445/445** with 0 failures.
+
+**Small known items — logged backlog, NOT active work:**
+  - Jump-to-objective input: grey placeholder text can be mistaken for an
+    already-entered value, causing an empty/invalid search ("Objective not found"
+    when nothing was actually typed).
+  - One observed instance of two browser windows from what felt like one click —
+    not reproduced on clean runs; likely a leftover desktop-icon mixup from the
+    .vbs→.lnk transition, not a script bug. Watch for recurrence only; do not invest
+    further debugging unless it recurs.
+  - `google.generativeai` deprecation warning (pre-existing, harmless; migrate to
+    `google.genai` eventually).
+
+**No further UI/launcher work should be started** unless one of the above recurs or
+Rylee reports something new from actual use. Per PDR v3.2: the next legitimate input
+is reality, not engineering review.
