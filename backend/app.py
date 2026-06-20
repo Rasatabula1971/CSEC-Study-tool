@@ -73,6 +73,7 @@ if not logger.handlers:
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WELCOME_HTML = STATIC_DIR / "welcome.html"
+FIRST_LAUNCH_HTML = STATIC_DIR / "first_launch.html"
 CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 PLAN_HTML = STATIC_DIR / "study_plan.html"
@@ -931,17 +932,32 @@ def lesson_status_page() -> FileResponse:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    """Serves chat.html, the live UI. The Stage 13 panel shell was reverted on
-    2026-06-17 (preserved at chat_panel_shell.html.bak); chat.html is the v1 chat
-    UI again. The Welcome page remains on disk at /welcome."""
-    return FileResponse(CHAT_HTML)
+def index(request: Request) -> FileResponse:
+    """The app's front door (UI overhaul session 2).
+
+    On the FIRST launch ever -- before the welcome message has been marked seen --
+    serve the one-time first-launch message (first_launch.html). On every launch
+    after that, serve the redesigned Welcome page. The check is server-side via
+    app_state (has_seen_welcome_message), so there is no client-side flash of the
+    wrong page. The previous chat UI remains reachable at /chat."""
+    db = request.app.state.db
+    if not app_state_store.has_seen_welcome_message(db):
+        return FileResponse(FIRST_LAUNCH_HTML)
+    return FileResponse(WELCOME_HTML)
 
 
 @app.get("/chat")
 def chat_page() -> FileResponse:
-    """The panel shell, also reachable at /chat (kept for existing bookmarks)."""
+    """The chat UI, reachable at /chat (kept for existing bookmarks)."""
     return FileResponse(CHAT_HTML)
+
+
+@app.get("/builder")
+def builder_page(request: Request) -> FileResponse:
+    """Builder console placeholder (session 3 fills this in). For now the Welcome
+    page's PIN-gated link lands here; serving the existing Upload Material page keeps
+    it useful rather than 404ing. Replaced by the real builder console in session 3."""
+    return FileResponse(UPLOAD_HTML)
 
 
 @app.get("/welcome")
@@ -1496,6 +1512,24 @@ def set_welcome_seen(request: Request) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/builder/verify-pin")
+async def builder_verify_pin(request: Request) -> dict:
+    """Check the builder PIN for the Welcome page's discreet Builder link.
+
+    A deliberately light gate for a single-student local app: it only keeps the
+    student out of the builder console by accident. The PIN is checked SERVER-SIDE
+    against BUILDER_PIN in .env (default '1971') so the value never ships to the
+    browser. Returns {"ok": true|false}; the front end counts its own wrong attempts.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- missing/non-JSON body counts as a wrong PIN
+        body = {}
+    pin = str(body.get("pin", "")) if isinstance(body, dict) else ""
+    expected = os.getenv("BUILDER_PIN", "1971")
+    return {"ok": pin == expected}
+
+
 # ---------------------------------------------------------------------------
 # Study Plan endpoints
 # ---------------------------------------------------------------------------
@@ -1731,6 +1765,25 @@ _UPLOAD_EXT_TO_TYPE = {
     ".png": "image", ".jpg": "image", ".jpeg": "image",  # session 2: image OCR
 }
 
+# Student-upload (UI overhaul session 2) -- the simple drop-a-file affordance on the
+# Welcome page. Auto-accept only when the placement is unambiguous: a confident folder
+# AND exactly one high-confidence objective. Anything else is left for the builder's
+# existing review queue (never a confidence score shown to the student).
+STUDENT_UPLOAD_AUTO_FOLDER_CONF = 85
+STUDENT_UPLOAD_AUTO_OBJ_CONF = 85
+_STUDENT_UPLOAD_ERROR_MSG = (
+    "Something went wrong — try again, or ask your dad to check it later."
+)
+# Plain-language names for the CXC archive folders, for the "Added to ___" message.
+_FOLDER_DISPLAY = {
+    "00_SYLLABUS": "Syllabus",
+    "01_SPECIMEN_PAPERS": "Specimen Papers",
+    "02_PAST_PAPERS": "Past Papers",
+    "03_MARK_SCHEMES": "Mark Schemes",
+    "04_NOTES": "Notes",
+    "UNCERTAIN": "your review pile",
+}
+
 
 def _run_extraction(db: sqlite3.Connection, staging_id: int) -> None:
     """Background-task wrapper around uploads.extract_text. uploads.extract_text
@@ -1796,6 +1849,135 @@ async def upload_material(
 
     background_tasks.add_task(_run_extraction, db, staging_id)
     return {"ok": True, "staging_id": staging_id, "extract_status": "pending"}
+
+
+@app.post("/api/student-upload")
+async def student_upload(
+    request: Request,
+    subject_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+) -> dict:
+    """Student-facing single-file upload (UI overhaul session 2).
+
+    Deliberately SEPARATE from the builder's /api/upload staging workflow: the
+    student just drops one file and gets an automatic outcome -- no review queue, no
+    confidence scores, no technical detail surfaced to her. The flow is synchronous
+    (a single photo/worksheet extracts in seconds, unlike the builder's bulk runs):
+
+      stage (uploads.stage_file) -> extract (uploads.extract_text) ->
+      classify (classify_uploads.single_file_classify, Gemini at build-phase) -> decide.
+
+    Decision:
+      * folder_confidence >= 85 AND exactly one high-confidence objective -> auto-accept
+        and ingest this one file (upload_ingest.ingest_staged_file). -> outcome 'added'.
+      * low confidence / ambiguous classification -> leave it staged, unreviewed, for
+        the builder's existing /upload queue (review_notes='pending_student_upload_review').
+        -> outcome 'needs_review'.
+      * a hard failure (bad type, empty, extraction failed, classification failed) ->
+        outcome 'error' with a short, non-technical message; the real error is logged
+        server-side, never returned. The file (if staged) still surfaces to the builder.
+
+    Always returns HTTP 200; the {ok, outcome} body drives the UI so the front-end
+    never has to branch on status codes. `subject_id` falls back to the sticky state.
+    """
+    db = request.app.state.db
+
+    subject = subject_id or app_state_store.get_current_subject(db)
+    if not subject or not db.execute(
+        "SELECT 1 FROM subjects WHERE subject_id = ? AND syllabus_locked = 1",
+        (subject,),
+    ).fetchone():
+        return {"ok": False, "outcome": "error",
+                "message": "That subject isn't ready yet — ask your dad."}
+
+    ext = Path(file.filename or "").suffix.lower()
+    file_type = _UPLOAD_EXT_TO_TYPE.get(ext)
+    if file_type is None:
+        return {"ok": False, "outcome": "error",
+                "message": "That file type isn't supported. Try a PDF, a photo, or a Word document."}
+
+    data = await file.read()
+    if not data:
+        return {"ok": False, "outcome": "error",
+                "message": "That file looks empty. Try choosing it again."}
+    if len(data) > MAX_UPLOAD_BYTES:
+        return {"ok": False, "outcome": "error",
+                "message": "That file is too big (the limit is 50 MB)."}
+
+    staging_id = None
+    try:
+        # 1-2. Stage to the SSD, then extract synchronously (small single file).
+        staging_id = uploads.stage_file(
+            db, subject, file.filename or f"upload.{file_type}", data, file_type
+        )
+        uploads.extract_text(staging_id, db)
+        srow = db.execute(
+            "SELECT extract_status FROM upload_staging WHERE staging_id = ?",
+            (staging_id,),
+        ).fetchone()
+        if not srow or srow["extract_status"] != "ready":
+            # Extraction did not yield usable text; the file is saved, but there is
+            # nothing to classify on. Surface a quiet error -- the builder can re-extract.
+            logger.warning("student-upload extraction not ready for staging_id=%s", staging_id)
+            return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+        # 3. Classify (lazy import keeps the cloud client off the runtime import path).
+        import classify_uploads
+        classification = classify_uploads.single_file_classify(db, staging_id)
+    except Exception:  # noqa: BLE001 -- log the real cause, never leak it to the student
+        logger.exception("student-upload failed for %r (staging_id=%s)",
+                         file.filename, staging_id)
+        return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+    if not classification or classification.get("classification_status") == "failed":
+        # Gemini unreachable / unparseable after retries. The file is staged and shows
+        # up in the builder's queue; tell the student it didn't sort, without detail.
+        if staging_id is not None:
+            db.execute(
+                "UPDATE upload_classifications SET review_notes = "
+                "'pending_student_upload_review' WHERE staging_id = ?", (staging_id,))
+            db.commit()
+        return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+    folder = classification["recommended_folder"]
+    folder_conf = classification["folder_confidence"] or 0
+    high_objs = [
+        o for o in classification["objectives"]
+        if (o.get("confidence") or 0) >= STUDENT_UPLOAD_AUTO_OBJ_CONF
+    ]
+
+    if folder_conf >= STUDENT_UPLOAD_AUTO_FOLDER_CONF and len(high_objs) == 1:
+        # 4. Confident, unambiguous placement -> accept + ingest this one file.
+        try:
+            db.execute(
+                "UPDATE upload_classifications SET review_decision = 'accepted', "
+                "reviewed_at = datetime('now'), "
+                "review_notes = 'auto_accepted_student_upload' WHERE staging_id = ?",
+                (staging_id,),
+            )
+            db.commit()
+            import upload_ingest
+            upload_ingest.ingest_staged_file(db, staging_id)
+        except Exception:  # noqa: BLE001 -- ingestion failed; keep the file for review
+            logger.exception("student-upload ingest failed for staging_id=%s", staging_id)
+            db.execute(
+                "UPDATE upload_classifications SET review_decision = NULL, "
+                "review_notes = 'pending_student_upload_review' WHERE staging_id = ?",
+                (staging_id,),
+            )
+            db.commit()
+            return {"ok": True, "outcome": "needs_review"}
+        return {"ok": True, "outcome": "added",
+                "section": _FOLDER_DISPLAY.get(folder, folder)}
+
+    # 5. Low confidence / ambiguous -> leave it for the builder's review queue.
+    db.execute(
+        "UPDATE upload_classifications SET review_decision = NULL, "
+        "review_notes = 'pending_student_upload_review' WHERE staging_id = ?",
+        (staging_id,),
+    )
+    db.commit()
+    return {"ok": True, "outcome": "needs_review"}
 
 
 @app.get("/api/staging/{subject_id}")

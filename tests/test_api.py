@@ -487,20 +487,22 @@ def test_explain_missed_empty_returns_empty_without_llm(client, monkeypatch):
 # ---------------------------------------------------------------------------
 # Welcome page routing  (GET /  and  GET /chat)
 # ---------------------------------------------------------------------------
-def test_root_serves_panel_shell(client):
-    """Stage 13: GET / now serves the panel shell (chat.html), not the Welcome page."""
+def test_root_serves_first_launch_when_unseen(client):
+    """UI overhaul session 2: GET / serves the one-time first-launch message until the
+    welcome flag is set. The `client` fixture's MagicMock db reports the flag unset, so
+    the first-launch page is served (a stable marker from its copy)."""
     res = client.get("/")
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
-    assert "<!DOCTYPE html>" in res.text
+    assert "next best thing" in res.text   # first_launch.html marker
 
 
 def test_welcome_page_moved_to_welcome_path(client):
-    """The previous Welcome front door is preserved at /welcome."""
+    """The redesigned Welcome page is served at /welcome (and at / once seen)."""
     res = client.get("/welcome")
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
-    assert "Add Study Notes" in res.text   # a Welcome-page-only marker
+    assert "Continue studying" in res.text   # a Welcome-page-only marker
 
 
 def test_chat_page_served_at_chat_path(client):

@@ -1204,3 +1204,61 @@ Quiz + Builder) build on these endpoints. Branch left open, NOT merged.
     controller grade route with a stubbed examiner — asserts is_retry=0/1 rows both
     present + weakness reflects the retry score), `tests/test_app_state_api.py` (3).
     Suite **420**.
+
+## UI overhaul — session 2 of 3: Welcome page, first-launch, student upload (19 June 2026, branch `ui-overhaul-backend`)
+
+Second of three UI overhaul sessions, on the same branch as session 1 (still NOT
+merged — session 3 builds on it). Builds on session 1's app_state endpoints.
+
+  - **First-launch message** (`backend/static/first_launch.html`): a full-screen,
+    centered, dark (#13151a) one-time message from the builder to his daughter
+    ("…the next best thing — made with love, for you. — Dad"). `GET /` now branches
+    SERVER-SIDE on `app_state.has_seen_welcome_message` (no client flash): unseen →
+    first_launch.html, seen → the Welcome page. Continue POSTs
+    `/api/state/welcome-seen` then navigates to `/`. Shown exactly once, ever; no UI
+    reset (a builder DB edit if ever needed). `GET /` previously served chat.html —
+    chat UI is still at `/chat`.
+  - **welcome.html fully rebuilt** (old design removed; was the greeting/add-notes/
+    nav page). Self-contained vanilla JS + the shared dark/blue CSS custom-property
+    palette (defined at the top of the file; sessions 2-3 reuse the SAME tokens):
+    header subject dropdown (persists via session 1's `/api/state/subject`, reloads
+    only the status section on change), a single hardcoded quote (rotation
+    intentionally deferred, noted in a comment), a live status row (`X of Y mastered
+    · N due today` + circular % badge — reuses the EXACT `/api/plan/progress/{subject}`
+    + `/api/due/{subject}` endpoints the /plan page uses, not a recompute), three
+    actions (Continue studying → `/plan`, Browse all topics → `/plan#topics` placeholder
+    for session 3's objective map, Practice → `/quiz`), a drag-and-drop upload box, and
+    a discreet PIN-gated Builder link.
+  - **`POST /api/student-upload`** (student-facing, DELIBERATELY separate from the
+    builder's `/api/upload` staging workflow): synchronous single file →
+    `uploads.stage_file` → `uploads.extract_text` → `classify_uploads.single_file_classify`
+    (new minimal refactor: a thin wrapper over the existing single-file `classify_uploads`
+    path, used by both the CLI and this endpoint; never touches other files' queue
+    state) → decide. `folder_confidence >= 85` AND exactly one objective at
+    confidence >= 85 → auto-accept (`review_notes='auto_accepted_student_upload'`) +
+    `upload_ingest.ingest_staged_file` → `{outcome:'added', section}`. Otherwise leave
+    it staged + unreviewed (`review_notes='pending_student_upload_review'`) for the
+    builder's existing `/upload` queue → `{outcome:'needs_review'}` (no confidence/
+    technical detail shown to the student). Hard failures (bad type/empty/too large/
+    extraction-failed/classification-failed) → `{outcome:'error', message:<friendly>}`
+    with the real error logged server-side, never returned. Always HTTP 200 so the
+    front end branches on `{ok, outcome}` only. Design note: step 5/6 of the spec
+    overlap on "classification failed"; resolved as — parsed-but-low-confidence →
+    needs_review, hard classification failure (e.g. Gemini unreachable, recorded as
+    status='failed') → error but the file is kept for the builder.
+  - **Builder PIN**: none existed before — built fresh. `POST /api/builder/verify-pin`
+    checks SERVER-SIDE against `BUILDER_PIN` in .env (default '1971'; added to
+    .env.example) so the value never ships to the browser. welcome.html's modal counts
+    its own three wrong attempts then hides until refresh. `GET /builder` is a
+    placeholder (serves the Upload Material page) until session 3 builds the console.
+  - Tests: `tests/test_first_launch.py` (3 — unseen→first-launch, seen→welcome,
+    transition), `tests/test_student_upload.py` (4 — added+ingested, needs_review-not-
+    ingested, clean error with no stack-trace leak, distinct-from-builder-batch). Two
+    existing test_api.py markers updated for the new `GET /` + welcome content. Suite
+    **427**.
+  - Live verify (server on :8001 — a stale dev server held :8000): `GET /` served
+    first_launch ("next best thing") while unseen → POST welcome-seen → `GET /` served
+    Welcome ("Continue studying"); `/api/state/subject` = POB; PIN 0000→false, 1971→true;
+    `/welcome` has the dropdown + dropzone; `/builder` → 200; status numbers
+    mastered 1 / 116 / due 2 match `/plan`. Backup `csec_…_pre_ui_session_2_test.sqlite`
+    taken first; welcome flag left reset to '0' so Rylee's real first launch still shows.
