@@ -448,10 +448,13 @@ def test_objective_endpoint_placeholder_when_no_lesson(jump_client):
 # ---------------------------------------------------------------------------
 def test_jump_view_reuses_shared_answer_flow(jump_client):
     html = jump_client.get("/plan").text
-    # The single-objective renderer is now async and reuses the batch loader's
-    # lesson/answer renderer (loadLesson) instead of drawing an inert template.
-    assert "async function renderSingleObjective" in html
-    assert "const first=await loadLesson(objective)" in html
+    # UI overhaul session 3: jump AND map click both go through one entry
+    # (openSingleObjective) which calls the SAME unified renderer the batch step
+    # uses (renderObjectiveLesson) — the divergent-render-path bug class is gone.
+    assert "async function openSingleObjective" in html
+    assert "await renderObjectiveLesson(objective" in html
+    # The batch step uses the identical unified renderer.
+    assert "renderObjectiveLesson(state.plan.objectives[state.plan.step-1]" in html
     # Grading reuses the same /api/plan/grade_batch call, with a batch_id obtained
     # for the jump (a batch is only a subject/scope carrier for a per-objective grade).
     assert "async function ensureJumpBatch" in html

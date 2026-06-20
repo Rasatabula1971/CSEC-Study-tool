@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Builder Console</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg-page); color: var(--text-body);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 32px 22px 56px; }
+    .title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 28px; }
+    .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      background: var(--bg-card); border: 1px solid var(--border-card);
+      border-radius: 12px; padding: 16px 18px; margin-bottom: 12px;
+      color: var(--text-body); text-decoration: none;
+    }
+    a.row:hover { border-color: var(--accent-blue-soft-border); }
+    .row-label { font-size: 15px; font-weight: 500; }
+    .row-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .chev { color: var(--text-muted); }
+    .btn {
+      border: none; border-radius: 9px; padding: 9px 16px; font-size: 14px;
+      font-weight: 600; cursor: pointer;
+    }
+    .btn-primary { background: var(--accent-blue); color: var(--accent-blue-text); }
+    .btn-warn { background: rgba(226,75,74,0.14); color: var(--accent-red); border: 1px solid rgba(226,75,74,0.3); }
+    .reset-result { margin-top: 8px; font-size: 13px; min-height: 16px; }
+    .reset-result.ok { color: var(--accent-green); }
+    .back { display: inline-block; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+
+    /* PIN gate overlay (shown on direct navigation without a verified session) */
+    #gate {
+      position: fixed; inset: 0; background: var(--bg-page);
+      display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 10;
+    }
+    #gate.hidden { display: none; }
+    .gate-box { width: 100%; max-width: 300px; text-align: center; }
+    .gate-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+    .pin-input {
+      width: 100%; background: var(--bg-card); border: 1px solid var(--border-card);
+      border-radius: 8px; color: var(--text-body); font-size: 18px; letter-spacing: 0.3em;
+      text-align: center; padding: 10px; outline: none;
+    }
+    .pin-error { min-height: 16px; margin-top: 8px; font-size: 12px; color: var(--accent-red); }
+    #console.locked { filter: blur(6px); pointer-events: none; user-select: none; }
+  </style>
+</head>
+<body>
+  <div id="console" class="locked">
+    <div class="wrap">
+      <div class="title">Builder Console</div>
+      <div class="sub">Utility tools for the builder. Not student-facing.</div>
+
+      <a class="row" href="/upload">
+        <div>
+          <div class="row-label">Upload &amp; staging tool</div>
+          <div class="row-desc">Stage, classify, review and ingest source material</div>
+        </div>
+        <span class="chev">→</span>
+      </a>
+
+      <a class="row" href="/lessons/status">
+        <div>
+          <div class="row-label">Lesson generation status</div>
+          <div class="row-desc">Live counts of written / stale / queued lessons</div>
+        </div>
+        <span class="chev">→</span>
+      </a>
+
+      <div class="row" style="display:block;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
+          <div>
+            <div class="row-label">Reset welcome message</div>
+            <div class="row-desc">Re-arm the one-time first-launch message (e.g. fresh setup)</div>
+          </div>
+          <button type="button" class="btn btn-warn" id="resetBtn">Reset</button>
+        </div>
+        <div class="reset-result" id="resetResult" role="status" aria-live="polite"></div>
+      </div>
+
+      <a class="back" href="/">← Back to Welcome</a>
+    </div>
+  </div>
+
+  <!-- PIN gate: shown unless this browser session already verified (from the
+       Welcome modal or a prior unlock here). Reuses /api/builder/verify-pin. -->
+  <div id="gate">
+    <div class="gate-box">
+      <div class="gate-title">Enter builder PIN</div>
+      <input type="password" inputmode="numeric" class="pin-input" id="pinInput" maxlength="12" aria-label="Builder PIN" />
+      <div class="pin-error" id="pinError"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function unlock() {
+      sessionStorage.setItem('builder_ok', '1');
+      $('gate').classList.add('hidden');
+      $('console').classList.remove('locked');
+      $('pinInput').blur();
+    }
+
+    async function tryPin() {
+      const pin = $('pinInput').value.trim();
+      if (!pin) return;
+      try {
+        const res = await fetch('/api/builder/verify-pin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin }),
+        });
+        const data = await res.json().catch(() => ({ ok: false }));
+        if (data.ok) { unlock(); return; }
+      } catch { /* treated as wrong below */ }
+      $('pinError').textContent = 'Incorrect PIN.';
+      $('pinInput').value = '';
+      $('pinInput').focus();
+    }
+
+    // Already verified this session (Welcome modal sets this before navigating)?
+    if (sessionStorage.getItem('builder_ok') === '1') {
+      unlock();
+    } else {
+      $('pinInput').focus();
+      $('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryPin(); });
+    }
+
+    $('resetBtn').addEventListener('click', async () => {
+      const out = $('resetResult');
+      out.className = 'reset-result';
+      out.textContent = 'Resetting…';
+      try {
+        const res = await fetch('/api/state/welcome-reset', { method: 'POST' });
+        const data = await res.json().catch(() => ({ ok: false }));
+        if (data.ok) {
+          out.className = 'reset-result ok';
+          out.textContent = 'Done — the first-launch message will show again next time.';
+        } else {
+          out.textContent = 'Could not reset. Try again.';
+        }
+      } catch {
+        out.textContent = 'Could not reach the server.';
+      }
+    });
+  </script>
+</body>
+</html>

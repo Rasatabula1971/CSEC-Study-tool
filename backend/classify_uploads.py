@@ -381,6 +381,51 @@ def classify_uploads(db: sqlite3.Connection, subject_id: str, *,
     return summary
 
 
+def single_file_classify(db: sqlite3.Connection, staging_id: int,
+                         chat_fn=None) -> dict | None:
+    """Classify ONE staged file by its staging_id and return its classification row.
+
+    Looks up the file's subject, then runs the SAME per-file classification path
+    classify_uploads() uses (force=True, so it re-runs even if already classified).
+    Returns a dict {staging_id, recommended_folder, folder_confidence, objectives,
+    rationale, classification_status} or None if the staging_id is unknown / produced
+    no row. A single-file run never touches OTHER files' queue state (the whole-subject
+    self-heal/skip block in classify_uploads is guarded on `staging_id is None`), so
+    this is safe to call from the synchronous student-upload endpoint without
+    disturbing the builder's batch. Shared by the CLI (--staging-id) and that endpoint.
+    """
+    row = db.execute(
+        "SELECT subject_id FROM upload_staging WHERE staging_id = ?", (staging_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    classify_uploads(db, row["subject_id"], staging_id=staging_id, force=True,
+                     dry_run=False, chat_fn=chat_fn, verbose=False)
+
+    crow = db.execute(
+        "SELECT recommended_folder, folder_confidence, objectives_json, rationale "
+        "FROM upload_classifications WHERE staging_id = ?", (staging_id,)
+    ).fetchone()
+    if crow is None:
+        return None
+    srow = db.execute(
+        "SELECT classification_status FROM upload_staging WHERE staging_id = ?",
+        (staging_id,),
+    ).fetchone()
+    try:
+        objectives = json.loads(crow["objectives_json"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        objectives = []
+    return {
+        "staging_id": staging_id,
+        "recommended_folder": crow["recommended_folder"],
+        "folder_confidence": crow["folder_confidence"],
+        "objectives": objectives,
+        "rationale": crow["rationale"],
+        "classification_status": srow["classification_status"] if srow else None,
+    }
+
+
 def _print_summary(summary: dict) -> None:
     """End-of-run table (TASK 2g columns)."""
     print("\n" + "=" * 72)

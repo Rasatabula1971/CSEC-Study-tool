@@ -29,6 +29,17 @@ REM  work, run uvicorn with --reload yourself from a separate dev
 REM  shell -- do not add it back here.
 REM ============================================================
 
+REM Load SSD_ROOT from .env when it is not already in the environment, so a plain
+REM double-click of the desktop shortcut works without any system env var set.
+REM .env stays the single source of truth for the drive letter (CLAUDE.md SSD rules).
+if "%SSD_ROOT%"=="" (
+    if exist "%~dp0..\.env" (
+        for /f "usebackq eol=# tokens=1,* delims==" %%a in ("%~dp0..\.env") do (
+            if /i "%%a"=="SSD_ROOT" set "SSD_ROOT=%%b"
+        )
+    )
+)
+
 echo Checking SSD...
 if not exist "%SSD_ROOT%" (
     echo ERROR: SSD not mounted at %SSD_ROOT%. Plug in the drive and retry.
@@ -51,16 +62,38 @@ REM the foreground below and never returns, so anything that must
 REM happen "after launch" has to happen here first. The page may be
 REM blank for a few seconds until the server finishes starting --
 REM that is expected.
+REM Open the study app in its OWN dedicated Chrome window (--app):
+REM a single borderless window with NO session-restore and no other
+REM tabs. Plain `start http://...` cold-starts the default browser,
+REM and Chrome set to "Continue where you left off" then restores the
+REM previous session AND opens this URL -- which surfaced as TWO
+REM windows on launch. The app window avoids that entirely. If Chrome
+REM is not installed, fall back to the default browser so launch still
+REM works (it just loses the single-window guarantee).
 echo Opening browser...
-start http://127.0.0.1:8000
+set "CHROME="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not defined CHROME if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+if not defined CHROME if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "CHROME=%LocalAppData%\Google\Chrome\Application\chrome.exe"
+if defined CHROME (
+    start "" "%CHROME%" --app=http://127.0.0.1:8000
+) else (
+    start http://127.0.0.1:8000
+)
 
 echo.
 echo ============================================================
-echo   CSEC Study Partner is starting.
-echo   If the page is blank, wait a few seconds and refresh.
+echo   CSEC Study Partner is starting up.
+echo.
+echo   This takes about 20 seconds the first time, while the
+echo   AI model loads into memory. The browser page will look
+echo   blank or show an error until it finishes -- that is
+echo   normal. Just wait, then refresh the page once.
 echo.
 echo   To stop studying, just close this window.
 echo ============================================================
+echo.
+echo   Loading... (startup messages will appear below)
 echo.
 
 REM Run the server in the FOREGROUND (no `start`, no --reload). This

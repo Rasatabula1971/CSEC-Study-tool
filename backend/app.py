@@ -53,6 +53,7 @@ from ollama_client import ollama_health, ollama_chat, ollama_embed  # noqa: E402
 # not import a cloud client (PDR v3.1 VAL-01, enforced by tests/test_pdr_v3_1_compliance).
 from llm_router import is_gemini_available  # noqa: E402
 from controller import handle_request  # noqa: E402
+import app_state as app_state_store  # noqa: E402  -- avoid clashing with app.state
 from schedule import get_due_objectives  # noqa: E402
 from study_plan import get_plan_progress  # noqa: E402
 from export_progress import export_progress, fetch_progress  # noqa: E402
@@ -72,6 +73,8 @@ if not logger.handlers:
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WELCOME_HTML = STATIC_DIR / "welcome.html"
+FIRST_LAUNCH_HTML = STATIC_DIR / "first_launch.html"
+BUILDER_HTML = STATIC_DIR / "builder.html"
 CHAT_HTML = STATIC_DIR / "chat.html"
 QUIZ_HTML = STATIC_DIR / "quiz.html"
 PLAN_HTML = STATIC_DIR / "study_plan.html"
@@ -492,6 +495,27 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """,
     )
 
+    # m017 (UI overhaul session 1): app-level singleton state + a retry flag on
+    # study_sessions. app_state is a generic key-value table (sticky subject +
+    # welcome-seen flag) -- appropriate for a single-student, no-accounts app.
+    # is_retry distinguishes a re-attempt (1) from the first try (0) so the original
+    # attempt is preserved in history while the retry overwrites the visible result.
+    # On a DB built from the updated schema.sql these already exist, so the bundled
+    # ALTER raises 'duplicate column name' and _run_migration records m017
+    # [pre-existing]; on the live E: DB (predates both) they are created here.
+    _run_migration(
+        db, "m017_ui_overhaul_state",
+        "App-level state: subject preference, welcome-seen flag; study_sessions.is_retry",
+        """
+        CREATE TABLE IF NOT EXISTS app_state (
+            key         TEXT PRIMARY KEY,
+            value       TEXT,
+            updated_at  TEXT DEFAULT (datetime('now'))
+        );
+        ALTER TABLE study_sessions ADD COLUMN is_retry INTEGER DEFAULT 0
+        """,
+    )
+
     # --- Layer 2: idempotent data-normalisation passes (run on EVERY call) ---
     # NOT version-tracked: a later ingestion run inserts fresh rows that still need
     # normalising, so each pass runs every startup. The WHERE clauses make a re-run a
@@ -746,6 +770,10 @@ class ChatRequest(BaseModel):
     year: int | None = None
     question_num: str | None = None
     content_type: str | None = None
+    # UI overhaul session 1: a grade turn sets this on a re-attempt of a recall
+    # question so the controller flags the study_sessions row and overwrites the
+    # Leitner decision while keeping the first attempt in history.
+    is_retry: bool = False
 
 
 class StartBatchRequest(BaseModel):
@@ -777,6 +805,10 @@ class GradeBatchRequest(BaseModel):
     objective_id: str | None = None
     question_text: str | None = None
     answer: str = Field(min_length=1)
+    # UI overhaul session 3: a recall-question retry sets this so the per-objective
+    # study_sessions row is flagged is_retry=1 (session 1's scoring), while the
+    # original attempt's row is preserved.
+    is_retry: bool = False
 
 
 class MissedPoint(BaseModel):
@@ -849,6 +881,12 @@ class FeedbackRequest(BaseModel):
     session_id: Optional[int] = None
 
 
+class SubjectStateRequest(BaseModel):
+    """Set the sticky subject (UI overhaul session 1). Validated against
+    syllabus_locked at the store layer -- an unlocked/unknown subject -> 400."""
+    subject_id: str = Field(min_length=1)
+
+
 # ---------------------------------------------------------------------------
 # UI compatibility shim
 # ---------------------------------------------------------------------------
@@ -899,17 +937,33 @@ def lesson_status_page() -> FileResponse:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    """Serves chat.html, the live UI. The Stage 13 panel shell was reverted on
-    2026-06-17 (preserved at chat_panel_shell.html.bak); chat.html is the v1 chat
-    UI again. The Welcome page remains on disk at /welcome."""
-    return FileResponse(CHAT_HTML)
+def index(request: Request) -> FileResponse:
+    """The app's front door (UI overhaul session 2).
+
+    On the FIRST launch ever -- before the welcome message has been marked seen --
+    serve the one-time first-launch message (first_launch.html). On every launch
+    after that, serve the redesigned Welcome page. The check is server-side via
+    app_state (has_seen_welcome_message), so there is no client-side flash of the
+    wrong page. The previous chat UI remains reachable at /chat."""
+    db = request.app.state.db
+    if not app_state_store.has_seen_welcome_message(db):
+        return FileResponse(FIRST_LAUNCH_HTML)
+    return FileResponse(WELCOME_HTML)
 
 
 @app.get("/chat")
 def chat_page() -> FileResponse:
-    """The panel shell, also reachable at /chat (kept for existing bookmarks)."""
+    """The chat UI, reachable at /chat (kept for existing bookmarks)."""
     return FileResponse(CHAT_HTML)
+
+
+@app.get("/builder")
+def builder_page() -> FileResponse:
+    """The Builder console (UI overhaul session 3): a minimal utility page linking the
+    staging tool + lesson-status page and exposing the reset-welcome action. Entry is
+    PIN-gated client-side (the session-2 modal on Welcome navigates here after a correct
+    PIN; the page itself re-checks via /api/builder/verify-pin on direct navigation)."""
+    return FileResponse(BUILDER_HTML)
 
 
 @app.get("/welcome")
@@ -1153,6 +1207,69 @@ def objectives(subject_id: str, request: Request) -> list[dict]:
         (subject_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/objectives/{subject_id}/map")
+def objectives_map(subject_id: str, request: Request) -> dict:
+    """Objective map (UI overhaul session 3): objectives grouped by syllabus section,
+    each tagged with a status the Study page colours as a dot.
+
+    Status reuses the SAME mastery model as get_plan_progress (the "X of Y mastered"
+    header): an objective is 'mastered' exactly when its study_plan.status is
+    'mastered' (passed on two distinct days). Otherwise 'attempted' if it has any
+    study_sessions row, else 'not_started'. is_next_due flags objectives in the
+    scheduler's due-today set (get_due_objectives) so the map can highlight them amber.
+
+    Counting map 'mastered' rows therefore yields exactly get_plan_progress()['mastered'].
+    """
+    db = request.app.state.db
+    rows = db.execute(
+        """
+        SELECT o.objective_id, o.section_id, o.objective_num, o.content_stmt,
+               s.title       AS section_title,
+               s.section_num AS section_num,
+               sp.status     AS plan_status,
+               EXISTS(SELECT 1 FROM study_sessions ss
+                      WHERE ss.objective_id = o.objective_id) AS attempted
+        FROM   objectives o
+        JOIN   syllabus_sections s ON s.section_id = o.section_id
+        LEFT   JOIN study_plan sp
+               ON sp.objective_id = o.objective_id AND sp.subject_id = o.subject_id
+        WHERE  o.subject_id = ?
+        ORDER  BY s.section_num, o.objective_num
+        """,
+        (subject_id,),
+    ).fetchall()
+
+    due_ids = {r["objective_id"] for r in get_due_objectives(db, subject_id)}
+
+    sections: list[dict] = []
+    by_section: dict[str, dict] = {}
+    for r in rows:
+        if r["plan_status"] == "mastered":
+            status = "mastered"
+        elif r["attempted"]:
+            status = "attempted"
+        else:
+            status = "not_started"
+        sec = by_section.get(r["section_id"])
+        if sec is None:
+            sec = {
+                "section_id": r["section_id"],
+                "section_num": r["section_num"],
+                "title": r["section_title"],
+                "objectives": [],
+            }
+            by_section[r["section_id"]] = sec
+            sections.append(sec)
+        sec["objectives"].append({
+            "objective_id": r["objective_id"],
+            "objective_num": r["objective_num"],
+            "content_stmt": r["content_stmt"],
+            "status": status,
+            "is_next_due": r["objective_id"] in due_ids,
+        })
+    return {"sections": sections}
 
 
 # ---------------------------------------------------------------------------
@@ -1431,6 +1548,69 @@ def feedback(body: FeedbackRequest, request: Request, response: Response) -> dic
 
 
 # ---------------------------------------------------------------------------
+# App-level state (UI overhaul session 1): sticky subject + first-launch flag
+# ---------------------------------------------------------------------------
+@app.get("/api/state/subject")
+def get_subject_state(request: Request) -> dict:
+    """The sticky subject_id (defaults to the first locked subject if unset)."""
+    return {"subject_id": app_state_store.get_current_subject(request.app.state.db)}
+
+
+@app.post("/api/state/subject")
+def set_subject_state(body: SubjectStateRequest, request: Request,
+                      response: Response) -> dict:
+    """Persist the sticky subject. 400 if it does not exist or is not locked."""
+    try:
+        app_state_store.set_current_subject(request.app.state.db, body.subject_id)
+    except ValueError as exc:
+        response.status_code = 400
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "subject_id": body.subject_id}
+
+
+@app.get("/api/state/welcome-seen")
+def get_welcome_seen(request: Request) -> dict:
+    """Whether the first-launch welcome message has been shown."""
+    return {"seen": app_state_store.has_seen_welcome_message(request.app.state.db)}
+
+
+@app.post("/api/state/welcome-seen")
+def set_welcome_seen(request: Request) -> dict:
+    """Mark the first-launch welcome message seen (one-way; no body needed)."""
+    app_state_store.mark_welcome_message_seen(request.app.state.db)
+    return {"ok": True}
+
+
+@app.post("/api/state/welcome-reset")
+def reset_welcome_seen(request: Request) -> dict:
+    """Flip welcome_message_seen back to '0' (UI overhaul session 3, Builder console).
+
+    Lets the builder re-arm the one-time first-launch message -- e.g. setting the app
+    up fresh for a sibling, or after a DB restore. Builder-only (the link sits behind
+    the PIN gate); never exposed to the student."""
+    app_state_store.set_state(request.app.state.db, "welcome_message_seen", "0")
+    return {"ok": True}
+
+
+@app.post("/api/builder/verify-pin")
+async def builder_verify_pin(request: Request) -> dict:
+    """Check the builder PIN for the Welcome page's discreet Builder link.
+
+    A deliberately light gate for a single-student local app: it only keeps the
+    student out of the builder console by accident. The PIN is checked SERVER-SIDE
+    against BUILDER_PIN in .env (default '1971') so the value never ships to the
+    browser. Returns {"ok": true|false}; the front end counts its own wrong attempts.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- missing/non-JSON body counts as a wrong PIN
+        body = {}
+    pin = str(body.get("pin", "")) if isinstance(body, dict) else ""
+    expected = os.getenv("BUILDER_PIN", "1971")
+    return {"ok": pin == expected}
+
+
+# ---------------------------------------------------------------------------
 # Study Plan endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/plan/start_batch")
@@ -1456,6 +1636,7 @@ def plan_grade_batch(body: GradeBatchRequest, request: Request) -> dict:
         "route": "grade_batch_question",
         "batch_id": body.batch_id,
         "answer": body.answer,
+        "is_retry": body.is_retry,
     }
     # Forward only what was supplied: question_id for synthesis/fallback, or
     # objective_id + question_text for the extracted per-objective question.
@@ -1665,6 +1846,25 @@ _UPLOAD_EXT_TO_TYPE = {
     ".png": "image", ".jpg": "image", ".jpeg": "image",  # session 2: image OCR
 }
 
+# Student-upload (UI overhaul session 2) -- the simple drop-a-file affordance on the
+# Welcome page. Auto-accept only when the placement is unambiguous: a confident folder
+# AND exactly one high-confidence objective. Anything else is left for the builder's
+# existing review queue (never a confidence score shown to the student).
+STUDENT_UPLOAD_AUTO_FOLDER_CONF = 85
+STUDENT_UPLOAD_AUTO_OBJ_CONF = 85
+_STUDENT_UPLOAD_ERROR_MSG = (
+    "Something went wrong — try again, or ask your dad to check it later."
+)
+# Plain-language names for the CXC archive folders, for the "Added to ___" message.
+_FOLDER_DISPLAY = {
+    "00_SYLLABUS": "Syllabus",
+    "01_SPECIMEN_PAPERS": "Specimen Papers",
+    "02_PAST_PAPERS": "Past Papers",
+    "03_MARK_SCHEMES": "Mark Schemes",
+    "04_NOTES": "Notes",
+    "UNCERTAIN": "your review pile",
+}
+
 
 def _run_extraction(db: sqlite3.Connection, staging_id: int) -> None:
     """Background-task wrapper around uploads.extract_text. uploads.extract_text
@@ -1730,6 +1930,135 @@ async def upload_material(
 
     background_tasks.add_task(_run_extraction, db, staging_id)
     return {"ok": True, "staging_id": staging_id, "extract_status": "pending"}
+
+
+@app.post("/api/student-upload")
+async def student_upload(
+    request: Request,
+    subject_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+) -> dict:
+    """Student-facing single-file upload (UI overhaul session 2).
+
+    Deliberately SEPARATE from the builder's /api/upload staging workflow: the
+    student just drops one file and gets an automatic outcome -- no review queue, no
+    confidence scores, no technical detail surfaced to her. The flow is synchronous
+    (a single photo/worksheet extracts in seconds, unlike the builder's bulk runs):
+
+      stage (uploads.stage_file) -> extract (uploads.extract_text) ->
+      classify (classify_uploads.single_file_classify, Gemini at build-phase) -> decide.
+
+    Decision:
+      * folder_confidence >= 85 AND exactly one high-confidence objective -> auto-accept
+        and ingest this one file (upload_ingest.ingest_staged_file). -> outcome 'added'.
+      * low confidence / ambiguous classification -> leave it staged, unreviewed, for
+        the builder's existing /upload queue (review_notes='pending_student_upload_review').
+        -> outcome 'needs_review'.
+      * a hard failure (bad type, empty, extraction failed, classification failed) ->
+        outcome 'error' with a short, non-technical message; the real error is logged
+        server-side, never returned. The file (if staged) still surfaces to the builder.
+
+    Always returns HTTP 200; the {ok, outcome} body drives the UI so the front-end
+    never has to branch on status codes. `subject_id` falls back to the sticky state.
+    """
+    db = request.app.state.db
+
+    subject = subject_id or app_state_store.get_current_subject(db)
+    if not subject or not db.execute(
+        "SELECT 1 FROM subjects WHERE subject_id = ? AND syllabus_locked = 1",
+        (subject,),
+    ).fetchone():
+        return {"ok": False, "outcome": "error",
+                "message": "That subject isn't ready yet — ask your dad."}
+
+    ext = Path(file.filename or "").suffix.lower()
+    file_type = _UPLOAD_EXT_TO_TYPE.get(ext)
+    if file_type is None:
+        return {"ok": False, "outcome": "error",
+                "message": "That file type isn't supported. Try a PDF, a photo, or a Word document."}
+
+    data = await file.read()
+    if not data:
+        return {"ok": False, "outcome": "error",
+                "message": "That file looks empty. Try choosing it again."}
+    if len(data) > MAX_UPLOAD_BYTES:
+        return {"ok": False, "outcome": "error",
+                "message": "That file is too big (the limit is 50 MB)."}
+
+    staging_id = None
+    try:
+        # 1-2. Stage to the SSD, then extract synchronously (small single file).
+        staging_id = uploads.stage_file(
+            db, subject, file.filename or f"upload.{file_type}", data, file_type
+        )
+        uploads.extract_text(staging_id, db)
+        srow = db.execute(
+            "SELECT extract_status FROM upload_staging WHERE staging_id = ?",
+            (staging_id,),
+        ).fetchone()
+        if not srow or srow["extract_status"] != "ready":
+            # Extraction did not yield usable text; the file is saved, but there is
+            # nothing to classify on. Surface a quiet error -- the builder can re-extract.
+            logger.warning("student-upload extraction not ready for staging_id=%s", staging_id)
+            return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+        # 3. Classify (lazy import keeps the cloud client off the runtime import path).
+        import classify_uploads
+        classification = classify_uploads.single_file_classify(db, staging_id)
+    except Exception:  # noqa: BLE001 -- log the real cause, never leak it to the student
+        logger.exception("student-upload failed for %r (staging_id=%s)",
+                         file.filename, staging_id)
+        return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+    if not classification or classification.get("classification_status") == "failed":
+        # Gemini unreachable / unparseable after retries. The file is staged and shows
+        # up in the builder's queue; tell the student it didn't sort, without detail.
+        if staging_id is not None:
+            db.execute(
+                "UPDATE upload_classifications SET review_notes = "
+                "'pending_student_upload_review' WHERE staging_id = ?", (staging_id,))
+            db.commit()
+        return {"ok": False, "outcome": "error", "message": _STUDENT_UPLOAD_ERROR_MSG}
+
+    folder = classification["recommended_folder"]
+    folder_conf = classification["folder_confidence"] or 0
+    high_objs = [
+        o for o in classification["objectives"]
+        if (o.get("confidence") or 0) >= STUDENT_UPLOAD_AUTO_OBJ_CONF
+    ]
+
+    if folder_conf >= STUDENT_UPLOAD_AUTO_FOLDER_CONF and len(high_objs) == 1:
+        # 4. Confident, unambiguous placement -> accept + ingest this one file.
+        try:
+            db.execute(
+                "UPDATE upload_classifications SET review_decision = 'accepted', "
+                "reviewed_at = datetime('now'), "
+                "review_notes = 'auto_accepted_student_upload' WHERE staging_id = ?",
+                (staging_id,),
+            )
+            db.commit()
+            import upload_ingest
+            upload_ingest.ingest_staged_file(db, staging_id)
+        except Exception:  # noqa: BLE001 -- ingestion failed; keep the file for review
+            logger.exception("student-upload ingest failed for staging_id=%s", staging_id)
+            db.execute(
+                "UPDATE upload_classifications SET review_decision = NULL, "
+                "review_notes = 'pending_student_upload_review' WHERE staging_id = ?",
+                (staging_id,),
+            )
+            db.commit()
+            return {"ok": True, "outcome": "needs_review"}
+        return {"ok": True, "outcome": "added",
+                "section": _FOLDER_DISPLAY.get(folder, folder)}
+
+    # 5. Low confidence / ambiguous -> leave it for the builder's review queue.
+    db.execute(
+        "UPDATE upload_classifications SET review_decision = NULL, "
+        "review_notes = 'pending_student_upload_review' WHERE staging_id = ?",
+        (staging_id,),
+    )
+    db.commit()
+    return {"ok": True, "outcome": "needs_review"}
 
 
 @app.get("/api/staging/{subject_id}")

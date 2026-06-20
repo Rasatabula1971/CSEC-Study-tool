@@ -94,6 +94,30 @@
   --content-max:   800px;
 }
 
+/* ----- 2b. UI overhaul dark palette (shared.css addition) --------------- */
+/* Single source of truth for the dark/blue palette introduced in the UI
+   overhaul (sessions 2-3). welcome.html, first_launch.html, study_plan.html,
+   quiz.html and the builder console all read these instead of redefining them
+   per-page. Pass/fail green & red and the highlighter are still the booklet
+   tokens above. */
+:root {
+  --bg-page:                #13151a;
+  --bg-card:                rgba(255,255,255,0.04);
+  --border-subtle:          rgba(255,255,255,0.08);
+  --border-card:            rgba(255,255,255,0.1);
+  --text-primary:           #f0f1f4;
+  --text-body:              #eef2fb;
+  --text-secondary:         #c7cad1;
+  --text-muted:             #7d8290;
+  --text-faint:             #4a4d56;
+  --accent-blue:            #5b8def;
+  --accent-blue-text:       #0a0f1c;
+  --accent-blue-soft-bg:    rgba(91,141,239,0.1);
+  --accent-blue-soft-border:rgba(91,141,239,0.25);
+  --accent-green:           #3ddc84;
+  --accent-red:             #e24b4a;
+}
+
 /* ----- 3. Base elements ------------------------------------------------- */
 html, body {
   height: 100%;
@@ -538,3 +562,102 @@ a:focus-visible { outline: 2px solid var(--booklet-bright); outline-offset: 2px;
   padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
 }
+
+/* ----- 16. UI overhaul session 3: shared components --------------------- */
+
+/* Missed-points feedback (rendered by feedback.js in Study + Quiz). */
+.fb { margin-top: var(--space-3); }
+.fb-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-2); }
+.fb-count { font-size: var(--text-sm); color: var(--text-secondary); font-weight: 600; }
+.fb-pct { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); }
+.fb-bar { height: 6px; border-radius: 999px; background: var(--bg-card); overflow: hidden; }
+.fb-bar-fill { height: 100%; background: var(--accent-green); border-radius: 999px; transition: width 450ms var(--ease-spring); }
+.fb-points { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.fb-point { display: flex; gap: var(--space-3); align-items: flex-start; }
+.fb-ico { flex: none; width: 20px; height: 20px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.fb-point.awarded .fb-ico { background: rgba(61,220,132,0.16); color: var(--accent-green); }
+.fb-point.missed .fb-ico { background: rgba(226,75,74,0.16); color: var(--accent-red); }
+.fb-text { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--text-body); line-height: 1.5; }
+.fb-missed-label { color: var(--accent-red); font-weight: 600; }
+.fb-evidence { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+.fb-leitner { margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-muted); }
+.fb-leitner strong { color: var(--text-secondary); }
+.fb-actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); flex-wrap: wrap; }
+.fb-btn { padding: 11px 18px; border-radius: 10px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+.fb-btn.fb-retry { background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-body); }
+.fb-btn.fb-retry:hover { border-color: var(--accent-blue-soft-border); }
+.fb-btn.fb-next { background: var(--accent-blue); color: var(--accent-blue-text); border: none; }
+.fb-btn.fb-next:hover { opacity: 0.92; }
+
+/* Collapsed lesson + "Ready for the question" gate (Study). */
+.lesson-card {
+  background: var(--bg-card); border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4); animation: card-arrive 220ms var(--ease-spring) both;
+}
+.lesson-eyebrow {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2);
+}
+.lesson-body { font-size: var(--text-sm); line-height: 1.7; color: var(--text-body); white-space: pre-wrap; }
+.lesson-body.collapsed { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lesson-body strong { color: var(--text-primary); font-weight: 700; }
+.lesson-toggle {
+  margin-top: var(--space-3); background: none; border: none; cursor: pointer;
+  color: var(--accent-blue); font-size: var(--text-sm); font-weight: 600; padding: 0;
+}
+.lesson-toggle:hover { text-decoration: underline; }
+.ready-row { margin-top: var(--space-4); }
+.ready-btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--accent-blue); color: var(--accent-blue-text);
+  border: none; border-radius: 11px; padding: 12px 22px;
+  font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+}
+.ready-btn:hover { opacity: 0.92; }
+.lesson-noq { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+
+/* Objective map (collapsible sections + status dots). */
+.map-wrap { margin: var(--space-4) 0; }
+.map-head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.map-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.map-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-body); }
+.map-count { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+.map-bar { height: 6px; border-radius: 999px; background: var(--bg-card); overflow: hidden; }
+.map-bar-fill { height: 100%; background: var(--accent-green); border-radius: 999px; transition: width 450ms var(--ease-spring); }
+.map-section { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); margin-bottom: var(--space-2); overflow: hidden; }
+.map-section-head {
+  width: 100%; display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); background: var(--bg-card);
+  cursor: pointer; text-align: left; color: var(--text-body); border: none;
+}
+.map-section-head:hover { background: rgba(255,255,255,0.06); }
+.map-section-chev { flex: none; transition: transform 160ms ease; color: var(--text-muted); }
+.map-section.open .map-section-chev { transform: rotate(90deg); }
+.map-section-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 500; }
+.map-section-tally { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+.map-objectives { display: none; flex-direction: column; }
+.map-section.open .map-objectives { display: flex; }
+.map-obj {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); cursor: pointer;
+  border-top: 1px solid var(--border-subtle); background: transparent;
+  color: var(--text-body); text-align: left; width: 100%; border-left: none; border-right: none; border-bottom: none;
+}
+.map-obj:hover { background: rgba(255,255,255,0.04); }
+.map-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.map-dot.mastered { background: var(--accent-green); }
+.map-dot.is-due { background: #f5b450; }
+.map-dot.not-started { background: transparent; border: 1.5px solid var(--text-faint); }
+.map-dot.attempted { background: var(--accent-blue); }
+.map-obj-num { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); min-width: 38px; }
+.map-obj-title { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--text-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-obj-chev { flex: none; color: var(--text-faint); }
+
+/* Small subject dropdown for page headers (Study / Quiz). */
+.hdr-subject-select {
+  background: var(--bg-card); border: 1px solid var(--border-card);
+  border-radius: 8px; color: var(--text-body); font-size: var(--text-sm);
+  padding: 6px 10px; cursor: pointer; outline: none; max-width: 220px;
+}
+.hdr-subject-select:hover { border-color: var(--accent-blue-soft-border); }

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+  <style>
+    /* Dark/blue palette tokens live in shared.css (UI overhaul addition). */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg-page);
+      color: var(--text-body);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container {
+      max-width: 460px;
+      width: 100%;
+      text-align: center;
+    }
+    .message {
+      font-style: italic;
+      font-size: 17px;
+      line-height: 1.6;
+      color: var(--text-body);
+    }
+    .signature {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .continue-btn {
+      margin-top: 30px;
+      background: var(--accent-blue);
+      color: var(--accent-blue-text);
+      border: none;
+      border-radius: 10px;
+      padding: 11px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    .continue-btn:hover { opacity: 0.92; }
+    .continue-btn:active { transform: translateY(1px); }
+    .continue-btn:disabled { opacity: 0.5; cursor: default; }
+    .continue-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p class="message">
+      Rylee, I built this because I can't always be there to guide you
+      myself. This is the next best thing — made with love, for you.
+    </p>
+    <p class="signature">— Dad</p>
+    <button type="button" class="continue-btn" id="continueBtn">Continue</button>
+  </div>
+
+  <script>
+    // Shown exactly once, ever. On Continue: record the flag server-side, then go to
+    // the regular Welcome page (GET /, which now serves welcome.html since the flag
+    // is set). If the POST fails we still navigate -- the message is not worth blocking on.
+    const btn = document.getElementById('continueBtn');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+
+      // Time-box the POST. If the server is still in its ~20s cold start, a plain
+      // fetch() can hang indefinitely (it only rejects on a connection error, not a
+      // slow response) -- which is exactly what trapped her on this screen before.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        await fetch('/api/state/welcome-seen', {
+          method: 'POST',
+          signal: controller.signal
+        });
+      } catch (err) {
+        // Network error, timeout, or server still starting up -- log it, but DO NOT
+        // block her. The welcome-seen flag not being set is minor and recoverable
+        // (worst case: she sees this message once more next launch). It must never
+        // be the reason she is stuck on this screen.
+        console.warn('welcome-seen POST failed or timed out:', err);
+      } finally {
+        clearTimeout(timeoutId);
+        window.location.href = '/';
+      }
+    });
+  </script>
+</body>
+</html>

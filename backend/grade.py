@@ -377,11 +377,21 @@ def _build_user_message(question_id: str, student_answer: str,
 
 
 def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
-                 messages: list[dict] | None = None, chat_fn=ollama_chat) -> dict:
+                 messages: list[dict] | None = None, chat_fn=ollama_chat,
+                 is_retry: bool = False) -> dict:
     """Grade one answer against its mark scheme. Returns the full scored result.
 
     Result keys: objective_id, question_id, points, score_pct, awarded, total,
-    missed_points. Returns {"error": "no_mark_scheme"} if the question has none.
+    missed_points, is_retry. Returns {"error": "no_mark_scheme"} if the question
+    has none.
+
+    is_retry: marks this attempt as a re-attempt of a recall/quiz question. This
+    function does NOT itself persist to study_sessions -- that write (shared by the
+    mark-scheme and syllabus-fallback grade paths) lives in controller._handle_grade,
+    which reads is_retry from the request and flags the study_sessions row. The flag
+    is echoed into the result here so callers and the UI can observe it; a retry
+    overwrites the visible result and the Leitner decision (weakness_log upserts by
+    objective_id), while the original attempt remains in study_sessions history.
     """
     mark_points = fetch_mark_points(db, question_id)
     if not mark_points:
@@ -436,6 +446,10 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
     # refused). None on a pre-migration DB, in which case the UI omits the line.
     grading["source_rank"] = source_rank
     grading["source_rank_label"] = source_rank_label
+
+    # Echo the retry flag (UI overhaul session 1). The actual study_sessions write
+    # happens in controller._handle_grade; this lets callers/tests see it on the result.
+    grading["is_retry"] = bool(is_retry)
 
     return grading
 

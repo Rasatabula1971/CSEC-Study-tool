@@ -9,34 +9,79 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Figtree:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/shared.css" />
   <style>
-    /* ===== Quiz-page-specific ===== */
+    /* ===== Quiz page: adopt the UI-overhaul blue palette by re-pointing the
+       shared.css tokens (same approach as Study), so the question card, answer
+       box and feedback match Study exactly. ===== */
+    :root {
+      --ink: var(--bg-page);
+      --ink-2: #1a1d24;
+      --ink-3: #21252e;
+      --ink-4: #2a2f3a;
+      --rule: var(--border-card);
+      --rule-soft: var(--border-subtle);
+      --booklet: var(--accent-blue);
+      --booklet-bright: #7aa5f5;
+      --booklet-dim: #34507e;
+      --paper: var(--text-body);
+      --paper-dim: var(--text-secondary);
+      --paper-faint: var(--text-muted);
+      --color-accent-glow: var(--accent-blue-soft-bg);
+      --highlighter: var(--accent-blue);
+      --highlighter-soft: var(--accent-blue-soft-bg);
+    }
     html, body { height: 100%; overflow: hidden; }
+    body { background: var(--bg-page); }
     .page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
-    /* Mode toggle — Past Paper | Syllabus Practice */
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: 14px 22px; border-bottom: 1px solid var(--border-subtle); }
+    .topbar-back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 14px; }
+    .topbar-back:hover { color: var(--text-body); text-decoration: none; }
+    .topbar-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+    .topbar-link { color: var(--accent-blue); font-size: 14px; }
+
+    /* Mode toggle — segmented control (Past Paper | Syllabus Practice) */
     .mode-toggle {
-      display: flex; gap: var(--space-2);
-      padding: var(--space-4) var(--space-6) 0;
-      max-width: var(--content-max); margin: 0 auto; width: 100%;
+      display: inline-flex; gap: 0;
+      background: var(--bg-card); border: 1px solid var(--border-card);
+      border-radius: 10px; padding: 3px;
+      margin: var(--space-4) auto 0; max-width: var(--content-max);
     }
     .mode-pill {
-      padding: var(--space-2) var(--space-4);
-      border-radius: var(--radius-pill);
-      border: var(--border);
-      background: var(--ink-3);
-      color: var(--color-text-muted);
-      font-size: var(--text-sm); font-weight: 600;
-      transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 80ms var(--ease-spring);
+      padding: 7px 16px; border-radius: 7px; border: none; background: transparent;
+      color: var(--text-muted); font-size: var(--text-sm); font-weight: 600;
+      transition: background-color 120ms ease, color 120ms ease;
     }
-    .mode-pill:hover { color: var(--paper); border-color: var(--booklet); }
-    .mode-pill:active { transform: scale(0.97); }
-    .mode-pill:focus-visible { outline: 2px solid var(--booklet-bright); outline-offset: 2px; }
-    /* signature: the active mode reads like a highlighted tab */
-    .mode-pill.active {
-      background: var(--highlighter);
-      color: #1A2017;
-      border-color: var(--highlighter);
-    }
+    .mode-pill:hover { color: var(--text-body); }
+    .mode-pill:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+    .mode-pill.active { background: var(--accent-blue); color: var(--accent-blue-text); }
+
+    /* Question card + answer box — identical to Study's */
+    .content-area { flex: 1; overflow-y: auto; }
+    .content-inner { max-width: 680px; margin: 0 auto; width: 100%; padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+    .section-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .question-card { background: var(--accent-blue-soft-bg); border: 1px solid var(--accent-blue-soft-border); border-radius: 12px; padding: 16px 18px; }
+    .question-stem { font-size: 15px; line-height: 1.6; color: var(--text-body); }
+    .question-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .question-card-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .question-meta-tag { font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+    .marks-badge { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+    .question-empty { text-align: center; padding: 20px; color: var(--text-muted); }
+    .question-empty-icon { color: var(--text-faint); margin-bottom: 8px; display: flex; justify-content: center; }
+    .question-empty-title { font-size: 14px; color: var(--text-secondary); }
+    .question-empty-body { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    .answer-textarea { width: 100%; min-height: 150px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 12px; color: var(--text-body); padding: 12px 14px; resize: vertical; line-height: 1.6; outline: none; font-size: 14px; }
+    .answer-textarea:focus { border-color: var(--accent-blue); }
+    .answer-textarea:disabled { opacity: 0.5; }
+    .submit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+    .word-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
+    .word-count.has-words { color: var(--text-muted); }
+    .submit-btn { padding: 11px 22px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer; border: none; }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .submit-btn-dots { display: none; }
+    .grade-status-msg { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+    .grade-status-reassure { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+    .error-notice { background: rgba(226,75,74,0.1); border: 1px solid rgba(226,75,74,0.25); color: var(--accent-red); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
 
     .selector-row-top { grid-template-columns: 2fr 1fr; }
     .selector-row-bottom { grid-template-columns: 1fr auto; padding-top: 0; }
@@ -103,8 +148,8 @@
     </a>
     <div class="topbar-title">Quiz</div>
     <div class="topbar-right">
-      <div class="topbar-subject" id="topbarSubject">Select a subject</div>
-      <a href="/plan" class="topbar-link">Study Plan →</a>
+      <select class="hdr-subject-select" id="subjectSelect" aria-label="Subject"></select>
+      <a href="/plan" class="topbar-link">Study →</a>
     </div>
   </header>
 
@@ -114,20 +159,7 @@
       <button type="button" class="mode-pill" id="modePractice" role="tab" aria-selected="false">Syllabus Practice</button>
     </div>
     <div class="selector-row selector-row-top">
-      <div class="selector-field">
-        <label class="selector-label" for="subjectSelect">Subject</label>
-        <select class="selector-select" id="subjectSelect" aria-label="Select subject">
-          <option value="">— choose —</option>
-          <option value="Principles_of_Business">Principles of Business</option>
-          <option value="Economics">Economics</option>
-          <option value="Mathematics">Mathematics</option>
-          <option value="English">English</option>
-          <option value="Principles_of_Accounts">Principles of Accounts</option>
-          <option value="Integrated_Science">Integrated Science</option>
-          <option value="Information_Technology">Information Technology</option>
-        </select>
-      </div>
-      <!-- Past Paper mode -->
+      <!-- Subject lives in the header dropdown (sticky). Past Paper mode -->
       <div class="selector-field" id="paperField">
         <label class="selector-label" for="paperSelect">Paper</label>
         <select class="selector-select" id="paperSelect" aria-label="Select paper" disabled>
@@ -214,24 +246,13 @@
 
       <div id="gradeSection">
         <div class="section-label" id="gradeLabel" style="display:none;">Result</div>
-        <div class="grade-card" id="gradeCard">
-          <div class="grade-card-header">
-            <span class="grade-card-label">Mark Scheme</span>
-            <div class="grade-score" id="gradeScore">
-              <span class="grade-fraction" id="gradeFraction"></span>
-              <span class="grade-pct" id="gradePct"></span>
-            </div>
-          </div>
-          <div class="grade-points" id="gradePoints"></div>
-          <div class="grade-footer">
-            <div class="grade-leitner" id="gradeLeitner"></div>
-            <button type="button" class="try-another-btn" id="tryAnotherBtn">Try Another Question</button>
-          </div>
-        </div>
+        <div id="feedbackHost"></div>
       </div>
     </div>
   </div>
 </div>
+
+<script src="/static/feedback.js"></script>
 
 <script>
   const API_BASE='http://127.0.0.1:8000';
@@ -254,7 +275,6 @@
   const objectiveSelect=document.getElementById('objectiveSelect');
   const questionsLoading=document.getElementById('questionsLoading');
   const loadBtn=document.getElementById('loadBtn');
-  const topbarSubject=document.getElementById('topbarSubject');
   const questionCard=document.getElementById('questionCard');
   const answerTextarea=document.getElementById('answerTextarea');
   const wordCount=document.getElementById('wordCount');
@@ -264,14 +284,8 @@
   const gradeStatusMsg=document.getElementById('gradeStatusMsg');
   const gradeStatusReassure=document.getElementById('gradeStatusReassure');
   const errorNotice=document.getElementById('errorNotice');
-  const gradeCard=document.getElementById('gradeCard');
   const gradeLabel=document.getElementById('gradeLabel');
-  const gradeScore=document.getElementById('gradeScore');
-  const gradeFraction=document.getElementById('gradeFraction');
-  const gradePct=document.getElementById('gradePct');
-  const gradePoints=document.getElementById('gradePoints');
-  const gradeLeitner=document.getElementById('gradeLeitner');
-  const tryAnotherBtn=document.getElementById('tryAnotherBtn');
+  const feedbackHost=document.getElementById('feedbackHost');
 
   function escapeHtml(str){if(!str)return'';const d=document.createElement('div');d.textContent=str;return d.innerHTML;}
   function countWords(t){return t.trim().split(/\s+/).filter(Boolean).length;}
@@ -286,7 +300,7 @@
     }
   }
   function updateSubmitBtn(){const w=countWords(answerTextarea.value);submitBtn.disabled=!(state.questionId&&w>=10&&!state.isGrading);}
-  function setSubjectDisplay(d){state.subjectDisplay=d;topbarSubject.innerHTML=d?`Subject: <span>${escapeHtml(d)}</span>`:'Select a subject';}
+  function setSubjectDisplay(d){state.subjectDisplay=d;}
 
   function resetFilters(){
     while(paperSelect.options.length>0)paperSelect.remove(0);
@@ -530,32 +544,15 @@
     updateWordCount();updateSubmitBtn();
   }
 
+  // Render grading feedback with the SHARED missed-points component (feedback.js),
+  // identical to Study. "Try another question" is the forward action.
   function renderGrade(data){
-    const awarded=data.awarded??0,total=data.total??0,pct=data.score_pct??0;
-    const points=data.points??[],box=data.leitner_box??1,next=data.next_review??'tomorrow';
-    const sc=pct>=70?'pass':pct>=50?'warn':'fail';
-    gradeScore.className=`grade-score ${sc}`;
-    gradeFraction.textContent=`${awarded} / ${total}`;
-    gradePct.textContent=`${pct}%`;
-    gradePoints.innerHTML=points.map((pt,i)=>`
-      <div class="mark-point ${pt.awarded?'awarded':'missed'}" style="animation-delay:${i*60}ms">
-        <div class="mark-point-icon">
-          ${pt.awarded
-            ?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
-            :`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`}
-        </div>
-        <div class="mark-point-body">
-          <div class="mark-point-stmt">${escapeHtml(pt.point_text??pt.mark_point_id??'')}</div>
-          ${pt.evidence?`<div class="mark-point-evidence">${escapeHtml(pt.evidence)}</div>`:''}
-        </div>
-      </div>`).join('');
-    gradeLeitner.innerHTML=`Moved to <strong>Box ${box}</strong> — next review <strong>${escapeHtml(next)}</strong>`;
     gradeLabel.style.display='block';
-    gradeCard.classList.add('visible');
-    gradeCard.scrollIntoView({behavior:'auto',block:'start'});
+    window.renderMissedFeedback(feedbackHost,data,{onNext:tryAnother,nextLabel:'Try another question'});
+    feedbackHost.scrollIntoView({behavior:'auto',block:'nearest'});
   }
 
-  function hideGrade(){gradeCard.classList.remove('visible');gradeLabel.style.display='none';gradePoints.innerHTML='';}
+  function hideGrade(){gradeLabel.style.display='none';feedbackHost.innerHTML='';}
 
   // Perceived-latency polish: while the backend grades, cycle a calm status
   // line every 3s and, past 30s, append a reassurance. Plain text only.
@@ -611,15 +608,24 @@
 
   function tryAnother(){answerTextarea.value='';updateWordCount();hideGrade();hideError();updateSubmitBtn();answerTextarea.focus();document.querySelector('.content-area').scrollTop=0;}
 
+  // Populate the header subject dropdown and honour the sticky subject
+  // (/api/state/subject), same as Study. Loads that subject's filters on init.
   async function fetchSubjects(){
-    try{
-      const res=await fetch(`${API_BASE}/api/subjects`);
-      if(!res.ok)return;
-      const data=await res.json();
-      if(!Array.isArray(data)||data.length===0)return;
-      while(subjectSelect.options.length>1)subjectSelect.remove(1);
-      data.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
-    }catch{}
+    let subjects=[];
+    try{const res=await fetch(`${API_BASE}/api/subjects`);if(res.ok)subjects=await res.json();}catch{}
+    if(!Array.isArray(subjects))subjects=[];
+    subjectSelect.innerHTML='';
+    subjects.forEach(s=>{const o=document.createElement('option');o.value=s.subject_id;o.textContent=s.display_name;subjectSelect.appendChild(o);});
+    let current=null;
+    try{const r=await fetch(`${API_BASE}/api/state/subject`);if(r.ok)current=(await r.json()).subject_id;}catch{}
+    if(!current&&subjects.length)current=subjects[0].subject_id;
+    if(current){
+      subjectSelect.value=current;
+      const opt=subjectSelect.options[subjectSelect.selectedIndex];
+      state.subjectId=current;setSubjectDisplay(opt?opt.textContent.trim():current);
+      if(state.mode==='practice')fetchSections(current);else fetchFilters(current);
+      updateLoadBtn();
+    }
   }
 
   modePastPaper.addEventListener('click',()=>setMode('pastpaper'));
@@ -629,6 +635,8 @@
     const opt=subjectSelect.options[subjectSelect.selectedIndex];
     state.subjectId=opt.value;
     setSubjectDisplay(opt.value?opt.textContent.trim():'');
+    // Persist the sticky subject so Study/Welcome reflect it too.
+    if(state.subjectId){fetch(`${API_BASE}/api/state/subject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject_id:state.subjectId})}).catch(()=>{});}
     state.paper='';
     resetQuestionCard();hideError();
     while(questionSelect.options.length>1)questionSelect.remove(1);
@@ -651,7 +659,6 @@
   });
   answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
   submitBtn.addEventListener('click',submitAnswer);
-  tryAnotherBtn.addEventListener('click',tryAnother);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitAnswer();}});
 
   function init(){resetFilters();fetchSubjects();updateLoadBtn();updateSubmitBtn();updateWordCount();}

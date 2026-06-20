@@ -1171,3 +1171,206 @@ for POB-1.6 (the bug-report objective) renders as a formatted canonical lesson w
 paragraph breaks + the trailing recall Q, not a raw JSON dump. Smoke-test recon also
 re-confirmed full lesson coverage: 116/116 objective_lessons (POB-1.14 a genuine
 1635-char lesson, conf 90).
+
+## UI overhaul — session 1 of 3: backend foundations (19 June 2026, branch `ui-overhaul-backend`)
+
+First of three sessions building the UI overhaul the student requested after her
+first real use of the system (sticky subject across pages, a one-time first-launch
+welcome message, retry-rescore for recall questions). Session 1 is backend-only —
+no frontend changes; sessions 2 (Welcome + upload + first-launch) and 3 (Study +
+Quiz + Builder) build on these endpoints. Branch left open, NOT merged.
+
+  - **m017** (`apply_runtime_migrations`, Layer 1 version-tracked) adds the generic
+    `app_state` key-value table (single-student, no-accounts app: keys
+    `current_subject_id` + `welcome_message_seen`) and `study_sessions.is_retry`
+    (1 = re-attempt, 0 = first try). Both are ALSO added to `schema.sql` (the
+    source of truth for fresh test DBs) so the controller's `is_retry` INSERT works
+    on a schema-built DB without a migration call; on the live E: DB (predates both)
+    m017 creates them, and on a fresh schema DB the bundled ALTER raises duplicate-
+    column → recorded `[pre-existing]`. Applied to live E: DB. (Lesson: inline `;`
+    in a `schema.sql` comment breaks the tests' naive `split(";")` — keep comments
+    semicolon-free.)
+  - `backend/app_state.py` (PHASE: runtime): `get_state`/`set_state` (upsert),
+    `get_current_subject` (defaults to the first `syllabus_locked=1` subject
+    alphabetically when unset), `set_current_subject` (raises ValueError unless the
+    subject is locked — never strands the student on a gated subject),
+    `has_seen_welcome_message`/`mark_welcome_message_seen`.
+  - **Retry-rescore.** `grade.grade_answer` gained `is_retry=False` and echoes it
+    into the result, but does NOT itself persist — the `study_sessions` write (shared
+    by the mark-scheme AND syllabus-fallback grade paths) lives in
+    `controller._handle_grade`, which now reads `is_retry` from the request, passes it
+    to `grade_answer`, and flags the `study_sessions` row (`is_retry` column).
+    `ChatRequest` gained `is_retry: bool = False` so the /api/chat grade turn carries
+    it. Confirmed this session: `weakness.log_weakness` already UPSERTS by
+    objective_id (SELECT existing → UPDATE score/box/next_review, else INSERT — one
+    row per objective), so a retry overwrites the visible result + the Leitner
+    decision while the original attempt stays in `study_sessions` history. NO change
+    to weakness.py. (Caveat for a later session: the retry's new box is
+    `update_leitner(box_left_by_first_attempt, retry_score)`, so a fail-then-pass
+    retry recomputes from box 1, not the pre-attempt box — a value upsert, not a stack.)
+  - New endpoints in `app.py`: `GET/POST /api/state/subject` (POST validates via
+    `set_current_subject` → 400 `{ok:false,error}` on unlocked/unknown using the
+    injected-`Response`-status pattern), `GET/POST /api/state/welcome-seen` (POST is a
+    one-way flag, no body).
+  - Tests: `tests/test_app_state.py` (4), `tests/test_grade_retry.py` (3, via the
+    controller grade route with a stubbed examiner — asserts is_retry=0/1 rows both
+    present + weakness reflects the retry score), `tests/test_app_state_api.py` (3).
+    Suite **420**.
+
+## UI overhaul — session 2 of 3: Welcome page, first-launch, student upload (19 June 2026, branch `ui-overhaul-backend`)
+
+Second of three UI overhaul sessions, on the same branch as session 1 (still NOT
+merged — session 3 builds on it). Builds on session 1's app_state endpoints.
+
+  - **First-launch message** (`backend/static/first_launch.html`): a full-screen,
+    centered, dark (#13151a) one-time message from the builder to his daughter
+    ("…the next best thing — made with love, for you. — Dad"). `GET /` now branches
+    SERVER-SIDE on `app_state.has_seen_welcome_message` (no client flash): unseen →
+    first_launch.html, seen → the Welcome page. Continue POSTs
+    `/api/state/welcome-seen` then navigates to `/`. Shown exactly once, ever; no UI
+    reset (a builder DB edit if ever needed). `GET /` previously served chat.html —
+    chat UI is still at `/chat`.
+  - **welcome.html fully rebuilt** (old design removed; was the greeting/add-notes/
+    nav page). Self-contained vanilla JS + the shared dark/blue CSS custom-property
+    palette (defined at the top of the file; sessions 2-3 reuse the SAME tokens):
+    header subject dropdown (persists via session 1's `/api/state/subject`, reloads
+    only the status section on change), a single hardcoded quote (rotation
+    intentionally deferred, noted in a comment), a live status row (`X of Y mastered
+    · N due today` + circular % badge — reuses the EXACT `/api/plan/progress/{subject}`
+    + `/api/due/{subject}` endpoints the /plan page uses, not a recompute), three
+    actions (Continue studying → `/plan`, Browse all topics → `/plan#topics` placeholder
+    for session 3's objective map, Practice → `/quiz`), a drag-and-drop upload box, and
+    a discreet PIN-gated Builder link.
+  - **`POST /api/student-upload`** (student-facing, DELIBERATELY separate from the
+    builder's `/api/upload` staging workflow): synchronous single file →
+    `uploads.stage_file` → `uploads.extract_text` → `classify_uploads.single_file_classify`
+    (new minimal refactor: a thin wrapper over the existing single-file `classify_uploads`
+    path, used by both the CLI and this endpoint; never touches other files' queue
+    state) → decide. `folder_confidence >= 85` AND exactly one objective at
+    confidence >= 85 → auto-accept (`review_notes='auto_accepted_student_upload'`) +
+    `upload_ingest.ingest_staged_file` → `{outcome:'added', section}`. Otherwise leave
+    it staged + unreviewed (`review_notes='pending_student_upload_review'`) for the
+    builder's existing `/upload` queue → `{outcome:'needs_review'}` (no confidence/
+    technical detail shown to the student). Hard failures (bad type/empty/too large/
+    extraction-failed/classification-failed) → `{outcome:'error', message:<friendly>}`
+    with the real error logged server-side, never returned. Always HTTP 200 so the
+    front end branches on `{ok, outcome}` only. Design note: step 5/6 of the spec
+    overlap on "classification failed"; resolved as — parsed-but-low-confidence →
+    needs_review, hard classification failure (e.g. Gemini unreachable, recorded as
+    status='failed') → error but the file is kept for the builder.
+  - **Builder PIN**: none existed before — built fresh. `POST /api/builder/verify-pin`
+    checks SERVER-SIDE against `BUILDER_PIN` in .env (default '1971'; added to
+    .env.example) so the value never ships to the browser. welcome.html's modal counts
+    its own three wrong attempts then hides until refresh. `GET /builder` is a
+    placeholder (serves the Upload Material page) until session 3 builds the console.
+  - Tests: `tests/test_first_launch.py` (3 — unseen→first-launch, seen→welcome,
+    transition), `tests/test_student_upload.py` (4 — added+ingested, needs_review-not-
+    ingested, clean error with no stack-trace leak, distinct-from-builder-batch). Two
+    existing test_api.py markers updated for the new `GET /` + welcome content. Suite
+    **427**.
+  - Live verify (server on :8001 — a stale dev server held :8000): `GET /` served
+    first_launch ("next best thing") while unseen → POST welcome-seen → `GET /` served
+    Welcome ("Continue studying"); `/api/state/subject` = POB; PIN 0000→false, 1971→true;
+    `/welcome` has the dropdown + dropzone; `/builder` → 200; status numbers
+    mastered 1 / 116 / due 2 match `/plan`. Backup `csec_…_pre_ui_session_2_test.sqlite`
+    taken first; welcome flag left reset to '0' so Rylee's real first launch still shows.
+
+## UI overhaul — session 3 of 3: Study rebuild, Quiz restyle, Builder console (19 June 2026, branch `ui-overhaul-backend`)
+
+Final UI-overhaul session (PR opened for user review — NOT merged). Built from
+Rylee's real first-use feedback: objective map, collapsed lessons, question-after-
+reading, retry-with-missed-points, and a real Builder console.
+
+  - **Task 1 — shared palette.** The dark/blue tokens (`--bg-page`, `--accent-blue`,
+    `--text-body`, …) moved from welcome/first_launch into shared.css §2b (one
+    definition). welcome.html + first_launch.html now `<link>` shared.css and dropped
+    their local `:root`. study_plan.html + quiz.html adopt the palette by re-pointing
+    the legacy surface/text/accent tokens (`--ink`/`--booklet`/`--paper`…) onto the
+    blue ones at page level, so existing shared.css component rules render blue
+    without a rewrite.
+  - **Task 2 — objective map.** New `GET /api/objectives/{subject}/map`: objectives
+    grouped by section, each `status` = mastered (study_plan.status='mastered', the
+    SAME model as get_plan_progress — counting map 'mastered' == progress mastered) /
+    attempted (has a study_sessions row) / not_started, plus `is_next_due`
+    (get_due_objectives). study_plan.html renders it as an in-page collapsible section
+    (sections collapsed except the one holding the next-due objective; status dots
+    green/amber(due)/blue(attempted)/grey-ring; row click → the unified renderer). The
+    progress header numbers are derived FROM the map data so header + map can't disagree.
+  - **Task 3 — unified lesson flow.** ONE renderer `renderObjectiveLesson(objective,
+    {origin})` reached by all three entry points (batch step, jump, map click) —
+    collapses the divergent-render-path bug class. Lesson renders COLLAPSED (2-sentence
+    preview + "Read full lesson ▾", `formatLesson` does **bold** + preserves `\n\n`);
+    the recall question is hidden behind a "Ready for the question →" gate; on submit
+    the shared missed-points feedback shows; **one** retry ("Try again" → is_retry=true
+    → then "Next"; unlimited retries deliberately NOT built — noted per task). A slim
+    back/objectives/next footer is consistent across views; small sticky subject
+    dropdown in the header (POSTs /api/state/subject). To make Study grading record
+    (so the map's "attempted" reflects Study, and retries flag history),
+    `/api/plan/grade_batch` + `_handle_grade_batch_question` gained `is_retry` and now
+    INSERT a per-objective study_sessions row (session 1's parameter, extended to the
+    batch path — synthesis unchanged).
+  - **Task 4 — Quiz restyle (visual only).** Segmented mode toggle, header sticky
+    subject dropdown, question card/answer box styled identically to Study, and the
+    grade card replaced by the SHARED feedback component. New `backend/static/feedback.js`
+    (`renderMissedFeedback`) is `<script src>`-included by BOTH Study and Quiz — a
+    genuine shared partial, not copy-paste. Load Question / Submit logic untouched.
+  - **Task 5 — Builder console.** `backend/static/builder.html` (replaces the
+    placeholder): links to /upload + /lessons/status + a "Reset welcome message"
+    action (`POST /api/state/welcome-reset` → flag '0'). Client-side PIN gate reuses
+    session 2's `/api/builder/verify-pin` (blurred until unlocked; sessionStorage
+    'builder_ok' set by the Welcome modal so it doesn't double-prompt). BUILDER_PIN
+    default 1971.
+  - Tests: test_objective_map.py (3), test_lesson_flow_unified.py (3: shared lesson
+    path + is_retry 0→1 sequence), test_quiz_restyle.py (4), test_builder_console.py
+    (3), test_shared_tokens.py (4); two existing markers in test_study_plan.py updated
+    to the unified renderer (openSingleObjective / renderObjectiveLesson), two existing
+    test_api markers already updated in session 2. Suite **443**.
+  - Live verified on :8000 (port freed by killing a zombie multiprocessing-fork child
+    holding the inherited socket): / served first-launch while unseen → after
+    welcome-seen served Welcome; /plan has the map + ready gate + unified renderer +
+    feedback.js; map endpoint returned 10 sections / 116 objectives with statuses +
+    is_next_due; /quiz has the segmented toggle + shared feedback + header dropdown;
+    PIN 0000→false / 1971→true; /builder serves the gated console; welcome-reset
+    flipped the flag and **welcome_message_seen left at 0** (Rylee's first launch
+    untouched). Backup csec_…_pre_ui_session_3_test.sqlite taken first. NOTE: live LLM
+    grading not re-run here (covered by tests); the grade endpoints were verified to
+    serve, the retry is_retry wiring by integration test.
+
+## Launcher: retire the bypassing .vbs + harden Continue (20 June 2026)
+
+Three live symptoms (stale "open Task Manager / end python.exe" dialog, a silent
+~20s startup that caused repeat double-clicks, and a Continue button that hung)
+all traced to ONE thing the prior foreground-`start.bat` fix never touched: the
+**desktop shortcut ran `C:\Users\ricky\Desktop\CSEC Study Partner.vbs`**, a
+separate launcher created at setup that bypassed `start.bat` entirely — it ran
+`shell.Run "...uvicorn...", 0, False` (hidden + detached, so the orphan problem
+persisted and there was no window to close) and showed the Task Manager MsgBox.
+`start.bat` was correct; she just never ran it.
+
+Fixes:
+  - **Desktop shortcut repointed** to `launch\start.bat` (Normal window, Start-in
+    the repo). `.vbs` renamed → `.vbs.old` → deleted after live verify; a second
+    shortcut under `OneDrive\Videos\Desktop` that also pointed at the `.vbs` was
+    repointed to `start.bat` too. (A pre-existing `CSEC Study Partner.vbs.bak` on
+    the Desktop and a stale repo copy at
+    `OneDrive\Dokumente\Workflow\CSEC-Study-tool.inspect` were left for manual
+    cleanup — not in the run path.)
+  - **`start.bat` now self-loads `SSD_ROOT` from `.env`** when it isn't already in
+    the environment (the `.vbs` read `.env` via Python and never needed the shell
+    var; a plain double-click otherwise died at the SSD gate since `SSD_ROOT` is set
+    nowhere on this machine). `.env` stays the single source of truth.
+  - **`start.bat` prints an explicit "starting up — ~20 seconds, the page will look
+    blank, that's normal, just wait" message** during the cold-start window that was
+    previously silent. The ~20s is FastAPI lifespan's pre-warm `ollama_chat` loading
+    `llama3.2:3b` (measured: ~19.6s cold / ~2-3s warm); the delay is unavoidable, the
+    invisibility was the bug.
+  - **`first_launch.html` Continue button hardened**: the `welcome-seen` POST is now
+    time-boxed by an `AbortController` (5s) and navigation lives in a `finally`, so a
+    POST that hangs during cold start (a plain `fetch` only rejects on a connection
+    error, not a slow response) can never trap her on the message screen again. Worst
+    case on a true failure: the flag isn't set and she sees the message once more.
+  - tests/test_first_launch.py +2 (served-markup guards: timeout/finally present, old
+    no-timeout pattern gone). Suite **445**. Live: launched via the shortcut → visible
+    console + startup message + uvicorn as the console's child; closing the window
+    stopped the server (uvicorn gone, :8000 free, Ollama left running); `GET /` served
+    first_launch with the hardened handler.

@@ -63,7 +63,16 @@ CREATE TABLE IF NOT EXISTS study_sessions (
     mode         TEXT NOT NULL,
     outcome      TEXT,
     score_pct    INTEGER,
+    is_retry     INTEGER DEFAULT 0,   -- 1 = a re-attempt, 0 = the first try
     created_at   TEXT DEFAULT (datetime('now'))
+);
+
+-- App-level singletons for a single-student, no-accounts offline app (UI overhaul
+-- m017). Two keys: 'current_subject_id' (sticky subject) and 'welcome_message_seen'.
+CREATE TABLE IF NOT EXISTS app_state (
+    key         TEXT PRIMARY KEY,
+    value       TEXT,
+    updated_at  TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS weakness_log (
