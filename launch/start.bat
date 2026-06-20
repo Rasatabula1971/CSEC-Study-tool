@@ -1,15 +1,32 @@
 @echo off
 REM ============================================================
 REM  CSEC AI Study Partner - launcher
-REM  Run this from the repo root. Set SSD_ROOT in .env first.
+REM  Run this from the repo root (double-click start.bat).
+REM  Set SSD_ROOT in .env first.
+REM
+REM  How this window behaves:
+REM   - This window runs the study server in the FOREGROUND. It
+REM     stays open and "busy" (filling with server log lines) for
+REM     the whole study session. That open window IS the running
+REM     indicator. To stop studying, CLOSE THIS WINDOW -- that
+REM     shuts the server down cleanly. There is no orphaned
+REM     background process and no separate stop step.
+REM   - Ollama is started in the background on purpose and is LEFT
+REM     running when this window closes (it uses little memory when
+REM     idle and is shared by every session). Only the FastAPI
+REM     server is tied to this window.
 REM
 REM  Gating policy (do not change):
 REM   - Ollama reachability is a HARD gate. The curl on /api/tags
 REM     (== ollama_client.ollama_health()) keeps its `exit /b 1`.
 REM     Ollama down is a real blocker and must stop startup.
-REM   - ram_check.py is ADVISORY ONLY: it always exits 0 and must
-REM     NOT gate startup. The real RAM test is whether a session
-REM     runs without freezing, not a snapshot at launch.
+REM
+REM  Note for developers: this launcher intentionally runs uvicorn
+REM  with NO --reload. Reload spawns a watcher child that can
+REM  outlive the parent and orphan the server -- the exact problem
+REM  this foreground launcher fixes. If you are doing active backend
+REM  work, run uvicorn with --reload yourself from a separate dev
+REM  shell -- do not add it back here.
 REM ============================================================
 
 echo Checking SSD...
@@ -18,6 +35,7 @@ if not exist "%SSD_ROOT%" (
     pause
     exit /b 1
 )
+
 echo Starting Ollama...
 start "" ollama serve
 timeout /t 3 /nobreak >nul
@@ -27,18 +45,26 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo Starting FastAPI...
-cd /d "%~dp0.."
-REM --reload: pick up code/route changes without a manual restart. Prevents the
-REM "endpoint added on disk but the running process never registered it" gotcha
-REM (e.g. GET /api/objective returning 404 from a stale process).
-start "" python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
-timeout /t 2 /nobreak >nul
-curl -s http://127.0.0.1:8000/health >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: FastAPI did not start. Check the terminal for errors.
-    pause
-    exit /b 1
-)
-echo Study system ready. Opening browser...
+
+REM Open the browser BEFORE starting the server: the server runs in
+REM the foreground below and never returns, so anything that must
+REM happen "after launch" has to happen here first. The page may be
+REM blank for a few seconds until the server finishes starting --
+REM that is expected.
+echo Opening browser...
 start http://127.0.0.1:8000
+
+echo.
+echo ============================================================
+echo   CSEC Study Partner is starting.
+echo   If the page is blank, wait a few seconds and refresh.
+echo.
+echo   To stop studying, just close this window.
+echo ============================================================
+echo.
+
+REM Run the server in the FOREGROUND (no `start`, no --reload). This
+REM call blocks: the window stays open and busy for the whole
+REM session, and closing the window stops the server cleanly.
+cd /d "%~dp0.."
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000

@@ -57,8 +57,9 @@ Take your time and follow the steps in order.
 10. **Your web browser opens by itself** and shows the study app. **Pick your
     subject** and start studying.
 
-11. **When you're finished:** double-click **`stop.bat`** in the `launch` folder.
-    Wait until it says **"Safe to remove the SSD,"** then unplug the drive.
+11. **When you're finished:** close the black window — click the **X** in its
+    top-right corner. That stops the study app right away. Wait a couple of
+    seconds, then it's safe to unplug the SSD.
 
 ---
 

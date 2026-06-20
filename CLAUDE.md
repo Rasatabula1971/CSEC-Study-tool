@@ -119,7 +119,7 @@ C:\csec-study-partner\              ← This repo
 │   ├── examiner.txt
 │   └── planner.txt
 ├── launch/
-│   ├── start.bat                   ← SSD check → Ollama → FastAPI → health checks
+│   ├── start.bat                   ← SSD check → Ollama → open browser → run FastAPI in FOREGROUND (close the window to stop)
 │   └── backup.bat                  ← Copies csec.sqlite to 07_BACKUPS with date stamp
 └── tests/
     ├── test_schema.py
@@ -566,7 +566,19 @@ python backend/db/init_db.py
 # Run all tests
 pytest tests/ -v
 
-# Start the system (dev mode with reload)
+# Start the study system (the student-facing launcher)
+#   Double-click launch/start.bat. It checks the SSD, starts Ollama (left running
+#   in the background), opens the browser, then runs uvicorn in the FOREGROUND of
+#   its console window. That window IS the running indicator: closing it stops the
+#   server cleanly. There is no orphaned background process and no stop.bat
+#   (removed) -- closing the window is the stop mechanism. The launcher uses NO
+#   --reload on purpose: the reload watcher child can outlive its parent and
+#   orphan the server, which is exactly what the foreground launcher fixes.
+launch\start.bat
+
+# Dev server (active backend work only -- NOT the student launcher)
+#   --reload picks up code changes live. Run it yourself from a separate dev
+#   shell; do not bake --reload back into start.bat.
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 
 # Ingest a subject folder (notes / past papers / mark schemes -> vec index)
