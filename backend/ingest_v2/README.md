@@ -123,3 +123,8 @@ backend/ingest_v2/
 ├── syllabus_csvs/         # one CSV per subject (header → syllabus_parser)
 └── mcq_topic_maps/        # one YAML per subject
 ```
+
+## Known issues
+
+- 31 POB mark-scheme PDFs were relocated from a since-deleted `D:\` staging path to `E:\...\03_MARK_SCHEMES\` at some point; their original v1 chunk bindings are orphaned (source file no longer exists) but harmless. v2 ingests the current location correctly.
+- GenericOfficeAdapter (docx/pptx outside T&T MoE SLMS naming convention) deferred — not needed for POB (covered via upload-feature ingestion, confirmed by hash match); revisit if a future subject has bulk .docx/.pptx notes with no upload history.
