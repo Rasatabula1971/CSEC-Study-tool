@@ -548,18 +548,20 @@ Stage 6 goal: build the FastAPI app, a minimal browser-based chat UI, and the la
        pause
        exit /b 1
    )
-   echo Starting FastAPI...
-   cd /d "%~dp0.."
-   start "" python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
-   timeout /t 2 /nobreak >nul
-   curl -s http://127.0.0.1:8000/health >nul 2>&1
-   if errorlevel 1 (
-       echo ERROR: FastAPI did not start. Check the terminal for errors.
-       pause
-       exit /b 1
-   )
-   echo Study system ready. Opening browser...
+   REM Open the browser BEFORE the server, which runs in the foreground
+   REM below and never returns. The page may be blank for a few seconds
+   REM until the server finishes starting -- that is expected.
+   echo Opening browser...
    start http://127.0.0.1:8000
+   echo.
+   echo To stop studying, just close this window.
+   echo.
+   cd /d "%~dp0.."
+   REM Run uvicorn in the FOREGROUND (no `start`, no --reload): this call
+   REM blocks, the window stays open and busy for the whole session, and
+   REM closing the window stops the server cleanly. Detaching with
+   REM `start ""` or adding --reload orphans the server -- do not do either.
+   python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
    Add a comment at the top: "Run this from the repo root. Set SSD_ROOT in .env first."
 
    Gating policy (do not change):
