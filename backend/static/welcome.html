@@ -276,9 +276,9 @@
     <!-- Actions -->
     <section class="actions">
       <a href="/plan" class="btn btn-primary">Continue studying →</a>
-      <!-- Session 3 builds the objective-map view; this points at /plan for now and the
-           anchor is wired once that view exists. -->
-      <a href="/plan#topics" class="btn btn-secondary">
+      <!-- Deep-links to the objective map in Study (the container's id), which
+           auto-scrolls into view on arrival (see study_plan.html loadObjectiveMap). -->
+      <a href="/plan#objectiveMap" class="btn btn-secondary">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         Browse all topics
       </a>

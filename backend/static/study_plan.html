@@ -313,6 +313,11 @@
   }
 
   // ===== Objective map =====================================================
+  // Welcome's "Browse all topics" deep-links here with #objectiveMap (the map
+  // container's id). The map renders async (and is empty in the static HTML), so a
+  // native anchor jump fires before it has content; instead we scroll to it ONCE
+  // after the first render. #map / #topics accepted as fallbacks for stale links.
+  let mapAnchorPending=['#objectivemap','#map','#topics'].includes((location.hash||'').toLowerCase());
   async function loadObjectiveMap(){
     if(!state.subjectId){objectiveMap.innerHTML='';return;}
     try{
@@ -321,6 +326,10 @@
       state.map=await res.json();
       setProgressFromMap(state.map);
       renderObjectiveMap(state.map);
+      if(mapAnchorPending){
+        mapAnchorPending=false;   // one-time: don't re-scroll on later refreshes
+        requestAnimationFrame(()=>objectiveMap.scrollIntoView({behavior:'smooth',block:'start'}));
+      }
     }catch{objectiveMap.innerHTML='';}
   }
   function dotClass(o){
