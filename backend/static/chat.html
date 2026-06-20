@@ -960,8 +960,10 @@
         // Grade rendered → return to lesson mode for the next topic.
         autoSwitchToTeach();
       } else {
-        // teach route
-        const text = data.lesson || data.text || data.response || JSON.stringify(data);
+        // teach route — backend returns the lesson under `lesson_text` (the v2
+        // canonical-lesson field, same one study_plan.html reads). The legacy
+        // aliases stay as defensive fallbacks; JSON.stringify is the last resort.
+        const text = data.lesson_text || data.lesson || data.text || data.response || JSON.stringify(data);
         appendMessage('ai', text, { objectiveId: data.objective_id });
         // Lesson rendered → ready the student to be quizzed.
         if (respondedRoute === 'teach') autoSwitchToGrade();

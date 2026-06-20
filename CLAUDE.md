@@ -1128,3 +1128,34 @@ Fix (frontend only — `backend/static/study_plan.html`):
     /api/objective/POB-3.2 → canonical lesson + recall question; the jump grade path
     (start_batch → grade_batch with objective_id+question_text) returned score 100%, 3/3,
     3 mark points — identical shape to the batch view's renderGrade.
+
+## Tutor Chat teach render — field-name fix (19 June 2026) — bug fix
+
+A targeted UI smoke test (every clickable control on every served page, checked
+against its live backend response) found ONE confirmed broken button across all six
+pages: **chat.html Teach**. The /api/chat teach response returns the lesson under
+`lesson_text` (the v2 canonical-lesson field; `_shape_for_ui` does NOT alias it), but
+chat.html read `data.lesson || data.text || data.response || JSON.stringify(data)` —
+all three aliases were undefined, so the teach branch fell through to
+`JSON.stringify(data)` and dumped the raw response object into the chat bubble.
+study_plan.html already read `data.lesson_text` correctly (loadLesson); chat.html was
+never updated to match.
+
+Fix (`backend/static/chat.html` ~line 964, one line): read `data.lesson_text` first,
+keeping the legacy aliases + JSON.stringify as defensive fallbacks. No other field
+mismatch in the same render block (grade branch reads `data.points`/`objective_id`
+correctly). Rendering parity needed no further work: `.message.ai .message-bubble` is
+already `white-space: pre-wrap`, so the lesson's `\n\n` paragraph breaks render; the
+v2 `lesson_text` already ends with the recall question as a trailing `Q:` line, so it
+shows read-only (matching chat.html's bubble UX — its grade mode uses a separate
+question-picker, not the recall question). `**bold**` stays literal in BOTH pages
+(neither renders markdown — that IS the parity; adding markdown would diverge).
+
+Tests: `tests/test_chat.py` (4 structural HTML guards — reads `lesson_text` first, old
+raw-dump-first chain gone, `lesson_text` precedes the JSON.stringify fallback, bubble
+is pre-wrap), matching the read-the-served-markup convention in test_panel_shell.py.
+Suite 410. Live verify: GET /chat serves the fix (old buggy line gone); teach payload
+for POB-1.6 (the bug-report objective) renders as a formatted canonical lesson with
+paragraph breaks + the trailing recall Q, not a raw JSON dump. Smoke-test recon also
+re-confirmed full lesson coverage: 116/116 objective_lessons (POB-1.14 a genuine
+1635-char lesson, conf 90).
