@@ -1,0 +1,16 @@
+subject_id: Economics
+display_name: Economics
+source_root: 'D:\GPT Folder CSEC\Organized_CSEC_2027\Economics'
+syllabus_csv: backend/ingest_v2/syllabus_csvs/economics.csv
+mcq_topic_map: backend/ingest_v2/mcq_topic_maps/economics.yaml
+paper_2_grading_enabled: false  # set true only if real mark schemes exist
+known_gaps:
+  - "S6 Obj8: no Caribbean AI lesson (Nominal/Real/Potential Output)"
+  - "S8 Obj3-6: Caribbean AI coverage stops at Obj2"
+skip_patterns:
+  - '_Review Needed'
+  - '_download_*'
+  - '__pycache__'
+  - '.venv'
+  - '.git'
+  - 'App_Upload_Staging'

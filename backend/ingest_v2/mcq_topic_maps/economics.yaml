@@ -1,0 +1,36 @@
+# =====================================================================
+# Economics MCQ topic map  --  PLACEHOLDER (needs human curation)
+# =====================================================================
+# Maps the topic / subtopic strings used by a Kerwin Springer MCQ bank to
+# canonical objective_ids (ECON-{section}.{obj}). KerwinMCQAdapter resolves a
+# question's objective in this order:
+#   1. subtopic_overrides[question.subtopic]   (confidence = high)
+#   2. default_objective for the topic          (confidence = medium)
+#   3. unmapped_objective sentinel "REVIEW"      (confidence = review)
+#
+# CURATION NOTE: the keys below MUST match the ACTUAL topic/subtopic strings in
+# the Economics Kerwin bank JSON (subjectId/topics), and every objective_id MUST
+# exist in syllabus_csvs/economics.csv once that syllabus is loaded + locked. The
+# single entry here is an illustrative EXAMPLE only -- replace it with the real map.
+#
+# Schema:
+#   topic_map:
+#     "<topic string from the bank>":
+#       default_objective: <ECON-x.y>
+#       subtopic_overrides:
+#         "<subtopic string>": <ECON-x.y>
+#   unmapped_objective: REVIEW
+
+topic_map:
+  "Basic Economic Concepts":
+    default_objective: ECON-1.1
+    subtopic_overrides:
+      "Scarcity": ECON-1.5
+      "Opportunity Cost": ECON-1.5
+      "Branches of Economics": ECON-1.2
+  "Demand & Supply":
+    default_objective: ECON-3.3
+    subtopic_overrides:
+      "Elasticity": ECON-3.9
+
+unmapped_objective: REVIEW  # questions with no topic match go to review
