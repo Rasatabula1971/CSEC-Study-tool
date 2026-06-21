@@ -653,8 +653,12 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                 data = _compose_lesson(subject_id, obj, chunks, chat_fn)
             except Exception:
                 data = None
+            # Token usage for THIS objective's compose call (None,None on the
+            # Ollama-fallback/test path). Captured once, reused on every _record below.
+            tokens = _last_token_usage()
             if data is None:
-                _record(summary, oid, len(chunks), sources, None, "errored", verbose)
+                _record(summary, oid, len(chunks), sources, None, "errored", verbose,
+                        tokens=tokens)
                 summary["errored"] += 1
                 continue
 
@@ -663,7 +667,8 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
             if data.get("status") == "insufficient_source":
                 reason = (data.get("reason") or "model judged source insufficient").strip()
                 _queue_insufficient_source(db, oid, reason, dry_run)
-                _record(summary, oid, len(chunks), sources, None, "queued", verbose)
+                _record(summary, oid, len(chunks), sources, None, "queued", verbose,
+                        tokens=tokens)
                 summary["queued"] += 1
                 if verbose:
                     print(f"    {oid}: insufficient_source -- {reason}")
@@ -684,7 +689,8 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
 
             if final_conf < confidence_floor:
                 _queue_insufficient(db, oid, dry_run)
-                _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)
+                _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose,
+                        tokens=tokens)
                 summary["queued"] += 1
                 continue
 
@@ -695,7 +701,8 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
                                                obj.get("command_words"))
             if not ok:
                 _queue_quality_failed(db, oid, why, dry_run)
-                _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose)
+                _record(summary, oid, len(chunks), sources, final_conf, "queued", verbose,
+                        tokens=tokens)
                 summary["queued"] += 1
                 if verbose:
                     print(f"    {oid}: quality_check_failed -- {why}")
@@ -745,7 +752,7 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
 
             summary["cleared"] += cleared
             _record(summary, oid, len(chunks), sources, final_conf, "written", verbose,
-                    cleared=cleared)
+                    cleared=cleared, tokens=tokens)
             summary["written"] += 1
         finally:
             if not dry_run:
@@ -754,6 +761,21 @@ def ingest_lessons_for_subject(db: sqlite3.Connection, subject_id: str, *,
     if verbose:
         _print_totals(summary)
     return summary
+
+
+def _last_token_usage():
+    """(input_tokens, output_tokens) from the most recent Anthropic composition call.
+
+    Reads anthropic_client.LAST_USAGE (set per call). Returns (None, None) when
+    composition ran on the Ollama fallback or under test (anthropic never called),
+    so the summary line just omits the token suffix.
+    """
+    try:
+        import anthropic_client
+        u = anthropic_client.LAST_USAGE
+        return u.get("input_tokens"), u.get("output_tokens")
+    except Exception:
+        return None, None
 
 
 def _source_label(chunks: list[dict]) -> str:
@@ -765,14 +787,18 @@ def _source_label(chunks: list[dict]) -> str:
 
 
 def _record(summary: dict, oid: str, chunks_used: int, sources: str,
-            confidence, status: str, verbose: bool, cleared: int = 0) -> None:
+            confidence, status: str, verbose: bool, cleared: int = 0,
+            tokens=None) -> None:
+    in_tok, out_tok = (tokens or (None, None))
     summary["rows"].append({
         "objective_id": oid, "chunks_used": chunks_used, "sources": sources,
         "confidence": confidence, "status": status, "cleared": cleared,
+        "input_tokens": in_tok, "output_tokens": out_tok,
     })
     if verbose:
         conf = "  --" if confidence is None else f"{confidence:>4}"
-        print(f"  {oid:<16}{chunks_used:>7}  {sources:<18}{conf}{cleared:>8}  {status}")
+        tokstr = f"  tok={in_tok}/{out_tok}" if in_tok is not None else ""
+        print(f"  {oid:<16}{chunks_used:>7}  {sources:<18}{conf}{cleared:>8}  {status}{tokstr}")
 
 
 def _print_totals(summary: dict) -> None:
