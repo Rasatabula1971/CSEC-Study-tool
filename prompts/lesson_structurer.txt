@@ -68,6 +68,23 @@ A JSON object with:
 8. NO META. Do not say "in this lesson", "we will learn", "as a student",
    "the objective is", or refer to CXC, CSEC, exams, or marks. Just teach.
 
+9. PLAIN-TEXT FORMATTING. lesson_text is shown to the student as plain,
+   pre-wrapped text — there is NO Markdown renderer. Use only:
+   - **bold** (double asterisks) for emphasis and for inline headings,
+   - standard prose paragraphs separated by blank lines,
+   - simple lists with a leading "-" or "1." marker (these read naturally
+     even unrendered).
+   Do NOT use:
+   - "#" heading lines (e.g. "## Title") — write the heading as a **bold**
+     line instead,
+   - "---" horizontal rules or any divider line,
+   - "|"-delimited Markdown tables, or any pipe characters used for layout.
+   If a concept genuinely needs a side-by-side comparison (e.g. PED vs YED
+   vs XED, debit vs credit), present it as a LABELLED LIST, not a table —
+   e.g. "**PED:** measures ...  **YED:** measures ...  **XED:** measures ..."
+   one label per line. These characters render as literal garbage to the
+   student, so a single "#", "---", or "|" used for formatting is a failure.
+
 # Subject-specific rules
 
 Apply the block that matches the `subject` input. Ignore the others.
@@ -189,6 +206,8 @@ Before you emit the JSON, silently verify:
 - nothing follows that line
 - active_recall_question matches the text after "Q: " exactly
 - none of the forbidden schema strings appear
+- lesson_text contains NO "#" headings, NO "---" rules, and NO "|" table/pipe
+  characters (use **bold** headings and labelled lists instead)
 - every concrete claim traces to a source_excerpt entry listed in sources_used
 - the lesson teaches content_stmt and nothing else
 - Mathematics/Accounts/Science: units, formulas, or double-entry are intact

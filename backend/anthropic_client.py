@@ -29,6 +29,28 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 
 logger = logging.getLogger(__name__)
 
+# Token usage from the most recent anthropic_chat call. The Anthropic response
+# already carries resp.usage (what Anthropic bills on); we were discarding it.
+# Stored here as a side channel so the caller (ingest_lessons) can surface it on
+# its per-objective summary line WITHOUT changing anthropic_chat's str return type
+# (it must stay a drop-in for ollama_chat). Reset at the start of every call so a
+# failed/Ollama-fallback call never reports a stale previous count.
+LAST_USAGE = {"input_tokens": None, "output_tokens": None}
+
+
+def _record_usage(resp) -> None:
+    """Capture resp.usage into LAST_USAGE and echo one line to stdout per call.
+
+    Best-effort: a response object without .usage must never break the call.
+    """
+    try:
+        LAST_USAGE["input_tokens"] = resp.usage.input_tokens
+        LAST_USAGE["output_tokens"] = resp.usage.output_tokens
+        print(f"[tokens] in={resp.usage.input_tokens} out={resp.usage.output_tokens}")
+    except Exception:
+        LAST_USAGE["input_tokens"] = None
+        LAST_USAGE["output_tokens"] = None
+
 
 def is_anthropic_available() -> bool:
     """True if a non-empty ANTHROPIC_API_KEY is configured."""
@@ -48,6 +70,11 @@ def anthropic_chat(messages: list[dict], system: str, schema: dict | None = None
     """
     if not ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY not configured in .env")
+
+    # Reset per call: if create() below raises, usage stays None rather than
+    # carrying the previous call's count.
+    LAST_USAGE["input_tokens"] = None
+    LAST_USAGE["output_tokens"] = None
 
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -69,6 +96,7 @@ def anthropic_chat(messages: list[dict], system: str, schema: dict | None = None
                 tools=[tool],
                 tool_choice={"type": "tool", "name": "submit_lesson"},
             )
+            _record_usage(resp)
             for block in resp.content:
                 if block.type == "tool_use":
                     return json.dumps(block.input)
@@ -83,6 +111,7 @@ def anthropic_chat(messages: list[dict], system: str, schema: dict | None = None
                 system=system,
                 messages=messages,
             )
+            _record_usage(resp)
             return resp.content[0].text
         except APIError as e:
             raise RuntimeError(f"Anthropic API error: {e}")
