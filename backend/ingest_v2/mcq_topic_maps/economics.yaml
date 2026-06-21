@@ -1,36 +1,117 @@
 # =====================================================================
-# Economics MCQ topic map  --  PLACEHOLDER (needs human curation)
+# Economics MCQ topic map  --  Kerwin Springer bank -> ECON objective_ids
 # =====================================================================
-# Maps the topic / subtopic strings used by a Kerwin Springer MCQ bank to
-# canonical objective_ids (ECON-{section}.{obj}). KerwinMCQAdapter resolves a
-# question's objective in this order:
-#   1. subtopic_overrides[question.subtopic]   (confidence = high)
-#   2. default_objective for the topic          (confidence = medium)
-#   3. unmapped_objective sentinel "REVIEW"      (confidence = review)
+# Resolution order in KerwinMCQAdapter._resolve:
+#   1. subtopic_overrides[question.subtopic]  -> confidence HIGH
+#   2. default_objective for the topic         -> confidence MEDIUM
+#   3. unmapped_objective sentinel 'REVIEW'     -> confidence review
 #
-# CURATION NOTE: the keys below MUST match the ACTUAL topic/subtopic strings in
-# the Economics Kerwin bank JSON (subjectId/topics), and every objective_id MUST
-# exist in syllabus_csvs/economics.csv once that syllabus is loaded + locked. The
-# single entry here is an illustrative EXAMPLE only -- replace it with the real map.
-#
-# Schema:
-#   topic_map:
-#     "<topic string from the bank>":
-#       default_objective: <ECON-x.y>
-#       subtopic_overrides:
-#         "<subtopic string>": <ECON-x.y>
-#   unmapped_objective: REVIEW
+# Built from all 91 (topic, subtopic) pairs in the live bank; every target is a
+# real objective_id in the locked 77-objective Economics syllabus. Subtopics whose
+# best objective equals the topic default are intentionally OMITTED (they fall
+# through to the default at MEDIUM) per the curation review. Mapping decisions are
+# human economics judgment, content-grounded against objectives.content_stmt and
+# the CXC 36/G/SYLL 17 CONTENT detail.
+# =====================================================================
 
 topic_map:
   "Basic Economic Concepts":
     default_objective: ECON-1.1
     subtopic_overrides:
+      "Classification of economics": ECON-1.2
+      "Definition of an economy": ECON-1.3
+      "Free market economy": ECON-2.10
+      "Market vs planned economies": ECON-2.10
+      "Planned economy": ECON-2.10
+      "Public goods": ECON-4.6
       "Scarcity": ECON-1.5
-      "Opportunity Cost": ECON-1.5
-      "Branches of Economics": ECON-1.2
+  "Caribbean Integration":
+    default_objective: ECON-8.5
+    subtopic_overrides:
+      "Bilateral agreements": ECON-7.1
   "Demand & Supply":
     default_objective: ECON-3.3
     subtopic_overrides:
-      "Elasticity": ECON-3.9
+      "Externalities": ECON-4.6
+      "Market equilibrium": ECON-3.5
+      "Opportunity cost": ECON-1.5
+      "Perfectly elastic demand": ECON-3.9
+      "Price elasticity of demand": ECON-3.9
+      "Shifts in demand": ECON-3.7
+      "Shifts in supply": ECON-3.7
+      "Shortages and surpluses": ECON-3.6
+      "Simultaneous demand and supply shifts": ECON-3.8
+      "Subsidies": ECON-3.7
+  "Elasticity":
+    default_objective: ECON-3.9
+    subtopic_overrides:
+      "Definition of price elasticity of supply": ECON-3.13
+      "Elasticity of supply": ECON-3.13
+      "Unitary price elasticity of supply": ECON-3.13
+  "Inflation & Unemployment":
+    default_objective: ECON-6.3
+    subtopic_overrides:
+      "Cost-push inflation": ECON-6.11
+      "Effects of inflation on money": ECON-6.11
+      "Effects of retrenchment": ECON-6.13
+      "Types of unemployment": ECON-6.12
+  "International Trade":
+    default_objective: ECON-7.1
+    subtopic_overrides:
+      "Balance of merchandise trade": ECON-7.3
+      "Balance of payments - transfers": ECON-7.3
+      "Balance of payments correction": ECON-7.6
+      "Comparative advantage": ECON-7.2
+      "Drivers of FDI": ECON-8.3
+      "E-commerce": ECON-8.6
+      "Effects of competition": ECON-7.2
+      "Exchange rate appreciation": ECON-7.7
+      "Exchange rate effects": ECON-7.7
+      "FDI": ECON-8.3
+      "Net exports and trade balance": ECON-7.3
+  "Labour & Wages":
+    default_objective: ECON-2.2
+    subtopic_overrides:
+      "Trade unions": ECON-6.14
+  "Market Structures":
+    default_objective: ECON-4.2
+  "Money & Banking":
+    default_objective: ECON-5.1
+    subtopic_overrides:
+      "Characteristics of money": ECON-5.3
+      "Circular flow with financial sector": ECON-6.4
+      "Credit unions": ECON-5.6
+      "Financial sector role": ECON-5.2
+      "Formal vs informal financial sector": ECON-5.6
+      "Functions of a commercial bank": ECON-5.6
+      "Government financial instruments": ECON-5.7
+      "Money supply": ECON-5.4
+  "National Income":
+    default_objective: ECON-6.5
+    subtopic_overrides:
+      "Circular flow of income": ECON-6.4
+      "Effects of retrenchment": ECON-6.13
+      "Methods of calculating national income": ECON-6.6
+  "Population & Development":
+    default_objective: ECON-6.9
+  "Production":
+    default_objective: ECON-2.1
+    subtopic_overrides:
+      "Average variable cost": ECON-2.5
+      "Causes of PPF shifts": ECON-1.6
+      "Characteristics of Caribbean countries": ECON-8.1
+      "Economies of scale": ECON-2.13
+      "Factors of production - rewards": ECON-2.2
+      "Manufacturing share of GDP": ECON-2.3
+      "PPF interpretation": ECON-1.6
+      "Primary vs secondary products": ECON-2.3
+      "Production possibility frontier": ECON-1.6
+      "Scarcity and choice": ECON-1.5
+      "Sectors of production": ECON-2.3
+      "Sectors of production - primary": ECON-2.3
+  "Public Finance":
+    default_objective: ECON-6.2
+    subtopic_overrides:
+      "Economic decisions of businesses vs government": ECON-1.7
 
-unmapped_objective: REVIEW  # questions with no topic match go to review
+unmapped_objective: REVIEW  # no topic match -> review (expected: none for this bank)
