@@ -105,6 +105,13 @@ OUTPUT_COLUMNS = [
 ]
 
 
+def _numeric_key(s: str) -> tuple[int, str]:
+    """Sort key that parses a leading integer (string fallback) so '2.10' sorts
+    after '2.9', and merged supplement rows land in numeric position."""
+    m = re.match(r"(\d+)", s or "")
+    return (int(m.group(1)) if m else 0, s or "")
+
+
 # ---------------------------------------------------------------------------
 # Field derivation
 # ---------------------------------------------------------------------------
@@ -154,6 +161,42 @@ def derive_skill_type(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Master-map -> rows
 # ---------------------------------------------------------------------------
+
+def detect_tail_truncation(objective_records) -> list[dict]:
+    """Flag sections whose highest-numbered objective looks mid-list, not final.
+
+    CXC syllabi terminate a section's LAST specific objective with '.'; every
+    earlier objective ends ';' or '; and,'. So if a section's highest-numbered
+    objective's RAW text (before clean_content_stmt strips the terminator) ends
+    with ';' or ',', the extraction very likely dropped that section's TAIL -- the
+    exact silent failure that hid ECON-2.12/2.13 and ECON-5.7 (interior-gap checks
+    can't see missing tail objectives). This is a WARNING, not a hard failure: an
+    OCR quirk could leave a genuinely-last objective mid-sentence, so a human
+    verifies against the source PDF rather than the build aborting.
+
+    Returns one dict per suspect section: {section_num, objective_id, raw_text,
+    terminal}."""
+    last_per_section: dict[str, tuple[tuple[int, str], dict, str]] = {}
+    for r, sec_num, _title, _supp in objective_records:
+        obj_num = (r.get("objective_number") or "").strip()
+        key = _numeric_key(obj_num)
+        if sec_num not in last_per_section or key > last_per_section[sec_num][0]:
+            last_per_section[sec_num] = (key, r, obj_num)
+
+    warnings: list[dict] = []
+    for sec_num in sorted(last_per_section, key=_numeric_key):
+        _key, r, obj_num = last_per_section[sec_num]
+        raw = (r.get("objective") or "").strip()
+        if raw.endswith(";") or raw.endswith(","):
+            warnings.append({
+                "section_num": sec_num,
+                "objective_id": None,  # prefix filled by caller
+                "objective_num": obj_num,
+                "raw_text": raw,
+                "terminal": raw[-1],
+            })
+    return warnings
+
 
 def load_master_map(path) -> list[dict]:
     """Read the master-map CSV into a list of dict rows (utf-8-sig tolerant)."""
@@ -292,12 +335,14 @@ def build_syllabus_rows(records: list[dict], subject: str,
         })
 
     # Deterministic numeric order by (section, objective) so merged supplement rows
-    # land in their right place. Leading-integer parse, string fallback for safety.
-    def _num(s: str) -> tuple[int, str]:
-        m = re.match(r"(\d+)", s or "")
-        return (int(m.group(1)) if m else 0, s or "")
+    # land in their right place.
+    rows.sort(key=lambda row: (_numeric_key(row["section_num"]),
+                               _numeric_key(row["objective_num"])))
 
-    rows.sort(key=lambda row: (_num(row["section_num"]), _num(row["objective_num"])))
+    # Tail-truncation guard: would have caught the dropped S2/S5 objectives.
+    truncation_warnings = detect_tail_truncation(objective_records)
+    for w in truncation_warnings:
+        w["objective_id"] = f"{prefix}-{w['section_num']}.{w['objective_num']}"
 
     report = {
         "subject": subject,
@@ -310,7 +355,11 @@ def build_syllabus_rows(records: list[dict], subject: str,
         "unclassified_count": unclassified,
         "exam_weight": exam_weight,
         "supplement_count": len(supplement_ids),
-        "supplement_ids": sorted(supplement_ids, key=lambda i: (_num(i.split("-")[1].split(".")[0]), _num(i.split(".")[-1]))),
+        "supplement_ids": sorted(
+            supplement_ids,
+            key=lambda i: (_numeric_key(i.split("-")[1].split(".")[0]),
+                           _numeric_key(i.split(".")[-1]))),
+        "truncation_warnings": truncation_warnings,
     }
     return rows, report
 
@@ -337,6 +386,19 @@ def print_excluded(report: dict) -> None:
         print(f"EXCLUDED [{label}]: {text}", file=sys.stderr)
 
 
+def print_truncation_warnings(report: dict) -> None:
+    """Print tail-truncation suspicions loudly to stderr (warning, not failure)."""
+    for w in report.get("truncation_warnings", []):
+        print(
+            f"WARNING: possible tail truncation in section {w['section_num']} -- "
+            f"its last objective {w['objective_id']} ends with '{w['terminal']}' "
+            f"not '.', so the extraction may have dropped later objective(s). "
+            f"Verify against the source PDF before locking.\n"
+            f"         last objective text: {w['raw_text']!r}",
+            file=sys.stderr,
+        )
+
+
 def print_summary(report: dict, output_path) -> None:
     print("\n" + "=" * 70)
     print(f"build_syllabus_csv -- {report['subject']} ({report['prefix']})")
@@ -361,6 +423,16 @@ def print_summary(report: dict, output_path) -> None:
 
     print(f"\nUNCLASSIFIED skill_type : {report['unclassified_count']} "
           f"(no seed command verb found -- not defaulted)")
+
+    tw = report.get("truncation_warnings", [])
+    if tw:
+        print(f"\n*** POSSIBLE TAIL TRUNCATION : {len(tw)} section(s) "
+              f"(see WARNING lines on stderr) ***")
+        for w in tw:
+            print(f"  ! section {w['section_num']} last objective {w['objective_id']} "
+                  f"ends with '{w['terminal']}' -- verify against source PDF")
+    else:
+        print("\nTail-truncation check : OK (every section's last objective ends '.')")
 
     if report.get("supplement_count"):
         print(f"\nSupplement rows merged (human-confirmed, not from extraction): "
@@ -418,6 +490,7 @@ def main(argv=None) -> None:
         exam_weight=args.exam_weight)
 
     print_excluded(report)
+    print_truncation_warnings(report)
     write_csv(rows, args.output)
     print_summary(report, args.output)
 

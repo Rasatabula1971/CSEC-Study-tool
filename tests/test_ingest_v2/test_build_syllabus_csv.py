@@ -248,6 +248,59 @@ def test_supplement_duplicate_raises():
     assert "ECON-1.1" in str(exc.value)
 
 
+def test_tail_truncation_warns_when_last_objective_ends_with_semicolon():
+    # Last objective of S1 ends ';' (not '.') -> the dropped-tail signal.
+    recs = [
+        mm_row("Economics", S1, 1, 'define the term "economics";'),
+        mm_row("Economics", S1, 2, "explain the branches of economics;"),
+    ]
+    _, report = bsc.build_syllabus_rows(recs, "Economics")
+    warns = report["truncation_warnings"]
+    assert warns and warns[0]["section_num"] == "1"
+    assert warns[0]["objective_id"] == "ECON-1.2"   # the highest-numbered objective
+    assert warns[0]["terminal"] == ";"
+
+
+def test_tail_truncation_warns_on_and_continuation_comma():
+    # The real pre-fix S5 case: last objective ends '; and,' (terminal ',').
+    recs = [
+        mm_row("Economics", "SECTION 5: THE FINANCIAL SECTOR", 1, "explain the financial sector;"),
+        mm_row("Economics", "SECTION 5: THE FINANCIAL SECTOR", 2,
+               "describe the role of financial institutions other than the Central Bank; and,"),
+    ]
+    _, report = bsc.build_syllabus_rows(recs, "Economics")
+    warns = report["truncation_warnings"]
+    assert warns and warns[0]["terminal"] == ","
+    assert warns[0]["objective_id"] == "ECON-5.2"
+
+
+def test_no_tail_truncation_when_last_objective_ends_with_period():
+    # Highest-numbered objective ends '.' -> section looks complete, no warning.
+    recs = [
+        mm_row("Economics", S1, 1, "define economics;"),
+        mm_row("Economics", S1, 2, "explain the branches of economics."),
+    ]
+    _, report = bsc.build_syllabus_rows(recs, "Economics")
+    assert report["truncation_warnings"] == []
+
+
+def test_supplement_resolves_tail_truncation():
+    # A truncated section (last obj ends ';') is made whole by a supplement objective
+    # whose text ends '.', so the warning clears -- mirrors the ECON-2/5 fix.
+    recs = [
+        mm_row("Economics", S1, 1, "define economics;"),
+        mm_row("Economics", S1, 2, "explain the branches of economics;"),
+    ]
+    supp = [{
+        "subject": "Economics", "context": S1, "objective_number": "3",
+        "objective": "describe the main economic agents in an economy.",
+    }]
+    _, before = bsc.build_syllabus_rows(recs, "Economics")
+    _, after = bsc.build_syllabus_rows(recs, "Economics", supplement_records=supp)
+    assert before["truncation_warnings"]          # truncated before
+    assert after["truncation_warnings"] == []     # whole after supplement
+
+
 def test_load_supplement_parses_small_shape(tmp_path):
     path = tmp_path / "supp.csv"
     path.write_text(
