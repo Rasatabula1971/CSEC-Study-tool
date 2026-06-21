@@ -1,0 +1,78 @@
+section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.1,1,"Define the term ""economics""",Knowledge,Define,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.2,2,Explain the branches of economics,Understanding,Explain,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.3,3,Explain the meaning of an economy,Understanding,Explain,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.4,4,Describe the main economic agents in an economy,Understanding,Describe,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.5,5,"Explain the concepts of scarcity, choice and opportunity cost within an economy",Understanding,Explain,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.6,6,"Use the production possibility frontier to illustrate basic economic concepts, principles and approaches",Application,Use|Illustrate,Both
+ECON-S1,1,THE NATURE OF ECONOMICS,ECON-1.7,7,Describe the main factors that affect the decisions made by economic agents,Understanding,Describe,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.1,1,Explain the difference between production and productivity,Understanding,Explain,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.2,2,Describe the factors of production,Understanding,Describe,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.3,3,Describe the main sectors in an economy,Understanding,Describe,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.4,4,Explain the difference between short run and long run,Understanding,Explain,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.5,5,Identify the costs associated with production,Knowledge,Identify,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.6,6,Calculate the costs associated with production,Application,Calculate,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.7,7,Illustrate the curves associated with the cost of production,Understanding,Illustrate,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.8,8,Explain the difference between goods and services,Understanding,Explain,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.9,9,Explain the concept of resource allocation,Understanding,Explain,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.10,10,Describe the main types of economic systems,Understanding,Describe,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.11,11,Discuss the merits and demerits of each economic system,Understanding,Discuss,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.12,12,"Describe how firms operate under different market structures; and,",Understanding,Describe,Both
+ECON-S2,2,"PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION",ECON-2.13,13,Explain the concepts of economies of scale and diseconomies of scale,Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.1,1,"Explain the term ""market""",Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.2,2,Identify the market forces,Knowledge,Identify,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.3,3,Use diagrams to describe the relationship between price and demand and price and supply,Application,Use|Describe,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.4,4,Explain the concept of ceteris paribus,Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.5,5,Explain the concept of market equilibrium and disequilibrium,Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.6,6,Illustrate market equilibrium and disequilibrium,Understanding,Illustrate,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.7,7,Use diagrams to explain the non- price determinants of demand and supply,Application,Use|Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.8,8,"Illustrate how changes to the determinants affect equilibrium, price and quantity",Understanding,Illustrate,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.9,9,"Explain the concept of price, income and cross-price elasticities of demand",Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.10,10,"Calculate the price, income and cross-price elasticities of demand",Application,Calculate,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.11,11,"Interpret the price, income and cross-price elasticities of demand",Understanding,Interpret,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.12,12,"Outline the factors affecting price, income and cross-price elasticities of demand",Knowledge,Outline,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.13,13,Explain the concept of price elasticity of supply,Understanding,Explain,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.14,14,Calculate price elasticity of supply,Application,Calculate,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.15,15,Interpret price elasticity of supply,Understanding,Interpret,Both
+ECON-S3,3,DEMAND AND SUPPLY,ECON-3.16,16,Outline the factors affecting price elasticity of supply,Knowledge,Outline,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.1,1,"Define the term ""market structure""",Knowledge,Define,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.2,2,Describe the main types of market structures,Understanding,Describe,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.3,3,Illustrate graphs related to the main market structures,Understanding,Illustrate,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.4,4,Interpret graphs related to the main market structures,Understanding,Interpret,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.5,5,"Define the term ""market failure""",Knowledge,Define,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.6,6,"Outline the main causes of market failure; and,",Knowledge,Outline,Both
+ECON-S4,4,MARKET STRUCTURE AND MARKET FAILURE,ECON-4.7,7,Discuss the main consequences of market failure,Understanding,Discuss,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.1,1,Explain the concept of the Financial Sector,Understanding,Explain,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.2,2,Discuss the role of the Financial Sector,Understanding,Discuss,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.3,3,Discuss the concept of money,Understanding,Discuss,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.4,4,"Explain the concepts ""demand for money"" and ""money supply""",Understanding,Explain,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.5,5,Describe the role of the Central Bank,Understanding,Describe,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.6,6,"Describe the role of financial institutions and arrangements other than the Central Bank; and,",Understanding,Describe,Both
+ECON-S5,5,THE FINANCIAL SECTOR,ECON-5.7,7,Explain the differences among the types of financial instruments,Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.1,1,Discuss the role of government in stabilising the economy,Understanding,Discuss,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.2,2,"Explain the concepts, principles and approaches associated with economic policies and goals",Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.3,3,Discuss measures used to correct macro-economic problems in an economy,Understanding,Discuss,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.4,4,Use diagrams to describe the concept of the circular flow of income,Application,Use|Describe,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.5,5,"Discuss the differences among Gross Domestic Product (GDP), Gross National Product (GNP), and National Income (NI)",Understanding,Discuss,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.6,6,Calculate Gross Domestic Product (GDP) and Gross National Product (GNP); National Income(NI),Application,Calculate,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.7,7,Interpret Gross Domestic Product (GDP) and Gross National Product (GNP); National Income(NI),Understanding,Interpret,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.8,8,"Explain the differences among nominal output, real output and potential output",Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.9,9,Explain the difference between economic growth and economic development,Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.10,10,Explain the difference between inflation and recession,Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.11,11,"Discuss the main causes, consequences, and solutions associated with inflation and recession in an economy",Understanding,Discuss,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.12,12,Explain the different types of unemployment,Understanding,Explain,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.13,13,"Discuss the causes and consequences of, and solutions to the different types of unemployment; and,",Understanding,Discuss,Both
+ECON-S6,6,ECONOMIC MANAGEMENT: POLICIES AND GOALS,ECON-6.14,14,Explain the role of trade unions in an economy,Understanding,Explain,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.1,1,Discuss the meaning of concepts principles and approaches associated with international trade,Understanding,Discuss,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.2,2,Explain the rationale for international trade,Understanding,Explain,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.3,3,"Discuss the concepts, principles and approaches associated with balance of payments",Understanding,Discuss,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.4,4,Calculate balance of payments surpluses and deficits,Application,Calculate,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.5,5,Interpret balance of payments surpluses and deficits,Understanding,Interpret,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.6,6,"Discuss the consequences of and remedies for balance of payments surpluses and deficits; and,",Understanding,Discuss,Both
+ECON-S7,7,INTERNATIONAL TRADE,ECON-7.7,7,"Discuss the concepts, principles and approaches associated with exchange rates",Understanding,Discuss,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.1,1,Describe the main characteristics of Caribbean economies,Understanding,Describe,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.2,2,Discuss the major economic challenges and possible solutions associated with Caribbean economies,Understanding,Discuss,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.3,3,"Discuss the concepts, principles and approaches associated with Caribbean economies",Understanding,Discuss,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.4,4,Explain the benefits and costs derived from the participation of CARICOM countries in preferential trade arrangements,Understanding,Explain,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.5,5,"Discuss the benefits to be derived from the Caribbean Single Market and Economy (CSME); and,",Understanding,Discuss,Both
+ECON-S8,8,CARIBBEAN ECONOMIES IN A GLOBAL ENVIRONMENT,ECON-8.6,6,"Discuss the concepts, principles, approaches, and issues associated with e-commerce",Understanding,Discuss,Both

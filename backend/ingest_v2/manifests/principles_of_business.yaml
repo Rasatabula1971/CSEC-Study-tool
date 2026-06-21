@@ -1,0 +1,23 @@
+subject_id: Principles_of_Business
+display_name: Principles of Business
+# POB corpus uses the live knowledge-base skeleton (01_SPECIMEN_PAPERS,
+# 02_PAST_PAPERS, 03_MARK_SCHEMES, 04_NOTES) -- the same folders v1 ingest walks.
+# The GenericPDFAdapter recognises both this numeric skeleton and the new
+# Organized_CSEC_2027 folder names, so re-ingesting POB through v2 matches v1.
+source_root: 'E:\CSEC_AI_STUDY_PARTNER\03_KNOWLEDGE_BASE\Principles_of_Business'
+syllabus_csv: backend/ingest_v2/syllabus_csvs/principles_of_business.csv
+mcq_topic_map: backend/ingest_v2/mcq_topic_maps/principles_of_business.yaml
+# True: the live POB DB has 2447 mark_points populated (Paper 2 grading works).
+paper_2_grading_enabled: true
+known_gaps: []
+# v1 ingest walked ONLY 01_SPECIMEN_PAPERS/02_PAST_PAPERS/03_MARK_SCHEMES/04_NOTES.
+# Skip the folders it never touched (00_SYLLABUS, 05_STUDENT_WORK) so re-ingesting
+# POB through v2 matches v1's scope exactly (the test_pob_parity gate).
+skip_patterns:
+  - '00_SYLLABUS'
+  - '05_STUDENT_WORK'
+  - '_Review Needed'
+  - '__pycache__'
+  - '.venv'
+  - '.git'
+  - 'App_Upload_Staging'

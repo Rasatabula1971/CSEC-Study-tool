@@ -1,0 +1,13 @@
+# =====================================================================
+# Principles of Business MCQ topic map  --  PLACEHOLDER
+# =====================================================================
+# POB has no Kerwin Springer MCQ bank in the v2 framework yet, so this map is
+# intentionally empty: every MCQ (if any are ever added) would route to REVIEW
+# until the map is curated against the real bank's topic strings. The POB manifest
+# references this file only so manifest path-validation passes; the POB corpus is
+# all PDF, handled by the GenericPDFAdapter.
+#
+# Schema: see mcq_topic_maps/economics.yaml.
+
+topic_map: {}
+unmapped_objective: REVIEW
