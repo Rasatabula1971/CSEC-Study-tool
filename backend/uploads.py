@@ -35,12 +35,16 @@ same drive-letter-agnostic resolver extract.py uses (TESSERACT_CMD env, then the
 SSD-bundled binary, then PATH).
 """
 
-import io
 import logging
-import math
 import os
 import re
 from pathlib import Path
+
+# Shared OCR primitives (binary resolution, DPI bomb-guard, page/image OCR) live in
+# ocr_utils so uploads and the ingest_v2 adapters share ONE path. backend/ is on
+# sys.path before uploads is imported (app.py / tests), and ocr_utils is light
+# (heavy deps are lazy inside it), so this top-level import is safe.
+from ocr_utils import OCR_DPI, ensure_tesseract, ocr_image, ocr_page, render_dpi
 
 logger = logging.getLogger("csec.uploads")
 
@@ -49,24 +53,24 @@ TRUNCATION_MARKER = "\n[Truncated: file exceeds 500k char limit]"  # legacy (ses
 TRUNCATE_PREVIEW_MARKER = "\n[Truncated: see chunks]"             # appended to the preview
 TRUNCATE_HARDCAP_MARKER = "\n[Truncated: 5M char hard cap]"
 
+# These are intentionally HIGHER and richer than the ingest_v2 adapters' shared
+# ocr_utils.OCR_TRIGGER_THRESHOLD (30): the student-upload path is purpose-tuned to OCR
+# aggressively for phone-photos / scans, and pairs a per-page threshold with a
+# whole-file-average mode. Deliberately NOT consolidated with the adapter trigger.
 PAGE_TEXT_THRESHOLD = 50           # chars on a page below this -> OCR that page
 FILE_AVG_THRESHOLD  = 100          # whole-file avg chars/page below this -> OCR every page
 CHUNK_SIZE          = 100_000      # chars per row in upload_staging_chunks
 MAX_TOTAL_CHARS     = 5_000_000    # hard cap on full extracted text, even with chunks
-OCR_LANG            = "eng"
-OCR_DPI             = 300          # render a PDF page to image at this DPI before OCR
-# Pillow's default Image.MAX_IMAGE_PIXELS decompression-bomb guard. Some CXC PDFs have
-# oversized pages / embedded high-res images that, rendered at OCR_DPI, exceed this and
-# make Pillow refuse to open the image. We keep the guard and lower our render DPI to fit.
-PIL_PIXEL_LIMIT     = 178_956_970
+# OCR_LANG / OCR_DPI / PIL_PIXEL_LIMIT now live in ocr_utils (OCR_DPI re-imported above).
 
 VALID_FILE_TYPES = ("pdf", "docx", "image")
 
 # Everything outside this set is replaced with an underscore during sanitisation.
 _BAD_CHARS = re.compile(r"[^a-zA-Z0-9._-]")
 
-# Set once Tesseract has been pointed at its binary (idempotent -- see _ensure_ocr).
-_ocr_configured = False
+# Back-compat alias: the page-OCR primitive moved to ocr_utils.ocr_page. Retained so
+# tests that call uploads._ocr_page directly keep resolving to the shared implementation.
+_ocr_page = ocr_page
 
 
 # ---------------------------------------------------------------------------
@@ -118,89 +122,9 @@ def safe_filename(original_name: str) -> str:
     return safe
 
 
-# ---------------------------------------------------------------------------
-# OCR plumbing
-# ---------------------------------------------------------------------------
-def _ensure_ocr() -> None:
-    """Point pytesseract at its binary, once. Uses extract.py's drive-letter-agnostic
-    resolver (TESSERACT_CMD -> SSD-bundled -> PATH). Best-effort: if extract or the
-    binary can't be resolved we leave pytesseract on PATH, and the OCR call itself
-    raises a clear error that extract_text records as a failed extraction."""
-    global _ocr_configured
-    if _ocr_configured:
-        return
-    try:
-        import pytesseract
-        import extract  # same resolver as the notes-OCR flow -- single source of truth
-        extract._configure_tesseract(pytesseract)
-    except Exception:  # noqa: BLE001 -- fall back to PATH; OCR will surface any failure
-        pass
-    _ocr_configured = True
-
-
-def _conf_int(c) -> int:
-    """Tesseract per-word confidence -> int. image_to_data returns these as strings
-    (sometimes floats); -1 means 'no confidence' and is filtered out by callers."""
-    try:
-        return int(float(c))
-    except (ValueError, TypeError):
-        return -1
-
-
-def _ocr_image_obj(img) -> tuple:
-    """Run Tesseract on a PIL image. Returns (text, mean_confidence|None)."""
-    import pytesseract
-    data = pytesseract.image_to_data(
-        img, lang=OCR_LANG, output_type=pytesseract.Output.DICT
-    )
-    words = [w for w in data["text"] if w.strip()]
-    confs = [v for v in (_conf_int(c) for c, w in zip(data["conf"], data["text"])
-                         if w.strip()) if v != -1]
-    text = " ".join(words)
-    mean_conf = int(sum(confs) / len(confs)) if confs else None
-    return text, mean_conf
-
-
-def _ocr_render_dpi(page) -> tuple:
-    """Choose the render DPI for a page so the rasterised image stays under Pillow's
-    decompression-bomb guard. Returns (dpi, reduced): `reduced` is True when the page is
-    so large that OCR_DPI would exceed 90% of PIL_PIXEL_LIMIT (10% headroom for Pillow
-    internals), in which case DPI is scaled down proportionally (sqrt of the area ratio),
-    floored at 72. The single source of truth for the DPI decision -- both _ocr_page and
-    _extract_pdf consult it (the tuple contract of _ocr_page stays unchanged)."""
-    rect = page.rect
-    # page.rect is in points (72 per inch); pixels = points * DPI / 72.
-    width_px = rect.width * OCR_DPI / 72
-    height_px = rect.height * OCR_DPI / 72
-    pixel_count = width_px * height_px
-    if pixel_count > PIL_PIXEL_LIMIT * 0.9:
-        ratio = (PIL_PIXEL_LIMIT * 0.9) / pixel_count
-        scale = math.sqrt(ratio)
-        return max(72, int(OCR_DPI * scale)), True
-    return OCR_DPI, False
-
-
-def _ocr_page(page) -> tuple:
-    """Render a PyMuPDF page to a PNG and OCR it. Returns (text, mean_conf). The render
-    DPI is reduced for oversized pages so Pillow's guard never trips (logged when it
-    happens); the (text, conf) contract is unchanged."""
-    _ensure_ocr()
-    from PIL import Image
-    target_dpi, reduced = _ocr_render_dpi(page)
-    if reduced:
-        rect = page.rect
-        logger.info(
-            "Reducing OCR DPI for oversized page: DPI %d (page rect %.0f×%.0f pt, "
-            "%dpx at %d DPI)",
-            target_dpi, rect.width, rect.height,
-            int(rect.width * OCR_DPI / 72 * rect.height * OCR_DPI / 72), OCR_DPI,
-        )
-    pix = page.get_pixmap(dpi=target_dpi)
-    img = Image.open(io.BytesIO(pix.tobytes("png")))
-    try:
-        return _ocr_image_obj(img)
-    finally:
-        img.close()
+# OCR plumbing (ensure_tesseract / ocr_image / render_dpi / ocr_page) moved to
+# ocr_utils.py -- imported at the top of this module and shared with the ingest_v2
+# adapters. The _extract_pdf / _extract_image extractors below call those directly.
 
 
 def _finalize_extraction(full_text: str, total_pages, ocr_pages: list,
@@ -257,9 +181,9 @@ def _extract_pdf(path) -> dict:
         for i, txt, page in native:
             needs_ocr = ocr_all or len(txt) < PAGE_TEXT_THRESHOLD
             if needs_ocr:
-                if _ocr_render_dpi(page)[1]:
+                if render_dpi(page)[1]:
                     dpi_reduced = True
-                ocr_text, conf = _ocr_page(page)
+                ocr_text, conf = ocr_page(page)
                 parts.append(f"\n[Page {i} - OCR]\n{ocr_text}")
                 ocr_pages.append(i)
                 if conf is not None:
@@ -278,11 +202,11 @@ def _extract_pdf(path) -> dict:
 
 def _extract_image(path) -> dict:
     """Standalone image OCR (.png/.jpg/.jpeg) via Tesseract."""
-    _ensure_ocr()
+    ensure_tesseract()
     from PIL import Image
     img = Image.open(path)
     try:
-        text, mean_conf = _ocr_image_obj(img)
+        text, mean_conf = ocr_image(img)
     finally:
         img.close()
     return {

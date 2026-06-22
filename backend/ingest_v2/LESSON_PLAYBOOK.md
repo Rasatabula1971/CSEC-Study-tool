@@ -35,6 +35,28 @@ re-run across many objectives adds up.)
   a 16-chunk objective succeeded). This step is just to confirm
   retrieval is returning *something* for a range of objectives, not
   to forecast the write rate.
+- [ ] **`insufficient_source` should mostly NOT recur for this subject
+  if `extra_source_roots` was populated correctly at ingestion.** The
+  bulk of the Economics `insufficient_source` effort traced to its
+  Bridge/Supplemental `.docx` notes never being ingested (they live in
+  `App_Upload_Staging`, outside the default walk). The ingest-side fix
+  — `enable_office_adapter: true` + `extra_source_roots` in the manifest
+  (see ingest PLAYBOOK Phase 0) — pulls that content into `chunks` so
+  retrieval can reach it. Before assuming a subject is genuinely
+  source-thin, confirm those folders were wired during ingestion; if
+  they weren't, fix the manifest and re-ingest rather than burning Sonnet
+  calls against a corpus that's missing its best material.
+- [ ] **If gaps still appear after that, check retrieval RANKING before
+  concluding the source is missing.** Economics' second-biggest cause was
+  NOT absent content but `NOTES_K` being too small: the teaching chunk
+  existed but ranked below syllabus-restatement / intro / assessment
+  chunks and fell outside the top-`k` cutoff. `NOTES_K` is now 15 (was 5;
+  fixed in `retrieval.py`). The diagnostic when an objective refuses
+  despite plausibly-present notes: pull the top-`k` chunks for that
+  objective's content_stmt and read what actually ranked — if good
+  teaching chunks are present but below the cutoff, it's a ranking/`k`
+  problem, not a missing-source problem. Do this BEFORE chasing the
+  source as absent.
 
 ## Phase 1 — Small validation batch (billed, ~5 objectives)
 

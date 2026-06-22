@@ -62,6 +62,46 @@ explicit decision.
   exam_weight to "Both" or "TBD" without this being explicitly answered
   first. Surface this as the first question to the orchestrating Claude,
   before touching the converter.
+- [ ] **Bridge / Supplemental notes (purpose-built `.docx` lessons).**
+  Check `App_Upload_Staging\03_KNOWLEDGE_BASE\{Subject}\04_NOTES\` for
+  `Bridge_Section_*` or `Supplemental_Notes` folders BEFORE first
+  ingestion. These are hand-authored lesson notes that live OUTSIDE the
+  main `Organized_CSEC_2027\{Subject}\` corpus, so the default walk never
+  sees them. If present:
+    1. set `enable_office_adapter: true` in the subject manifest, and
+    2. add each folder's absolute path to `extra_source_roots:`.
+  The `GenericOfficeAdapter` then claims the `.docx`/`.pptx` files and
+  binds them by filename (e.g. `POB-1.2 …`, `S08_Obj3 …`, `S2 Obj 10 …`).
+  Getting this right at ingestion is what prevents the Economics
+  `insufficient_source` rabbit-hole from recurring (see LESSON_PLAYBOOK
+  Phase 0). Counts found during this build (eligible Office notes per
+  subject — verify, they may have grown):
+    - Integrated_Science — **99**
+    - Mathematics — **85**
+    - Principles_of_Accounts — **50**
+    - English — **2**
+    - Information_Technology — **0** (skip; leave `enable_office_adapter`
+      unset)
+  POB is intentionally excluded (its Bridge notes were never wired and it
+  is frozen for parity — do not add the flag to POB's manifest).
+- [ ] **Prefix reconciliation (Integrated_Science and English).** The
+  `GenericOfficeAdapter` is prefix-agnostic on purpose: it takes only the
+  `section.objective` from a filename and rebuilds the id with the
+  subject's framework prefix (`subject_prefix.SUBJECT_PREFIX`), then
+  validates against the locked syllabus. Two subjects have a known
+  filename-vs-syllabus prefix MISMATCH observed during this build:
+    - **Integrated_Science** — Bridge filenames use `ISCI-*`, framework
+      prefix is `INTSCI`.
+    - **English** — Bridge filenames use `ENGA-*`, framework prefix is
+      `ENG`.
+  The adapter handles this correctly (the filename prefix is discarded;
+  proven by `test_extract_prefix_mismatch_isci_resolves_against_intsci`).
+  But before locking either subject, CONFIRM the framework prefix in
+  `subject_prefix.py` matches what the subject's own **syllabus CSV**
+  uses — if the syllabus itself uses `ISCI`/`ENGA`, change the
+  `SUBJECT_PREFIX` entry to match the syllabus (the syllabus is the source
+  of truth for ids; the filename never is). Don't assume the provisional
+  default is right for these two.
 
 ## Phase 1 — Syllabus CSV conversion (mostly automated)
 
