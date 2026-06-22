@@ -95,7 +95,7 @@ def _normalize_subject_id(subject: str) -> str:
 NOTES_TABLE = "vec_notes"
 PAST_PAPERS_TABLE = "vec_past_papers"
 MARK_SCHEMES_TABLE = "vec_mark_schemes"
-NOTES_K = 5
+NOTES_K = 15
 FALLBACK_K = 3
 MIN_NOTES_CHUNKS = 2
 
