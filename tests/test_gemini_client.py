@@ -2,8 +2,9 @@
 tests/test_gemini_client.py
 ===========================
 Unit tests for backend/gemini_client.py. The Google SDK is never contacted: the
-availability check reads a module global (monkeypatched), and the failure test
-mocks genai so no network call is made.
+availability check reads a module global (monkeypatched), and the chat tests patch
+the client-based google.genai surface (genai.Client / client.models.generate_content,
+and types.GenerateContentConfig) so no network call is made.
 
 Run: pytest tests/test_gemini_client.py -v
 """
@@ -18,6 +19,48 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
 import gemini_client  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Test doubles for the client-based google.genai API
+# ---------------------------------------------------------------------------
+class _FakeResponse:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeModels:
+    def __init__(self, captured, response_text):
+        self._captured = captured
+        self._response_text = response_text
+
+    def generate_content(self, *, model, contents, config):
+        self._captured["model"] = model
+        self._captured["contents"] = contents
+        self._captured["config"] = config
+        return _FakeResponse(self._response_text)
+
+
+class _FakeClient:
+    def __init__(self, captured, response_text):
+        self.models = _FakeModels(captured, response_text)
+
+
+def _install_fake_genai(monkeypatch, captured, response_text):
+    """Patch genai.Client (capture + no network) and types.GenerateContentConfig
+    (capture the RAW config kwargs, before any pydantic coercion). Returns nothing;
+    `captured` is filled when gemini_chat runs."""
+    def fake_client(*, api_key=None):
+        captured["api_key"] = api_key
+        return _FakeClient(captured, response_text)
+
+    # GenerateContentConfig stand-in: the "config" object IS the kwargs dict, so the
+    # test can assert on response_mime_type / response_schema / etc. without coercion.
+    def fake_config(**kwargs):
+        return dict(kwargs)
+
+    monkeypatch.setattr(gemini_client.genai, "Client", fake_client)
+    monkeypatch.setattr(gemini_client.types, "GenerateContentConfig", fake_config)
 
 
 # ---------------------------------------------------------------------------
@@ -42,15 +85,15 @@ def test_is_gemini_available_true_when_set(monkeypatch):
 # gemini_chat
 # ---------------------------------------------------------------------------
 def test_gemini_chat_raises_on_invalid_key(monkeypatch):
-    """A GenerativeModel construction/generation failure propagates (the router
-    catches it and falls back to Ollama -- tested in test_llm_router)."""
+    """A client construction / generation failure propagates (the router decides
+    whether that becomes a loud error or an Ollama fallback -- tested in
+    test_llm_router). gemini_chat itself adds no try/except."""
     monkeypatch.setattr(gemini_client, "GEMINI_API_KEY", "bad-key")
-    monkeypatch.setattr(gemini_client.genai, "configure", lambda **k: None)
 
     def boom(*args, **kwargs):
         raise RuntimeError("API key not valid")
 
-    monkeypatch.setattr(gemini_client.genai, "GenerativeModel", boom)
+    monkeypatch.setattr(gemini_client.genai, "Client", boom)
 
     with pytest.raises(Exception):
         gemini_client.gemini_chat([{"role": "user", "content": "hi"}], system="sys")
@@ -85,36 +128,22 @@ def test_gemini_key_valid_true_when_chat_succeeds(monkeypatch):
 
 
 def test_gemini_chat_returns_text_on_success(monkeypatch):
-    """On success gemini_chat returns response.text and maps roles correctly."""
+    """On success gemini_chat returns the response text and maps roles correctly."""
     monkeypatch.setattr(gemini_client, "GEMINI_API_KEY", "good-key")
-    monkeypatch.setattr(gemini_client.genai, "configure", lambda **k: None)
-
     captured = {}
-
-    class FakeResponse:
-        text = '{"ok": true}'
-
-    class FakeModel:
-        def __init__(self, **kwargs):
-            captured["init"] = kwargs
-
-        def generate_content(self, messages):
-            captured["messages"] = messages
-            return FakeResponse()
-
-    monkeypatch.setattr(gemini_client.genai, "GenerativeModel", FakeModel)
+    _install_fake_genai(monkeypatch, captured, response_text='{"ok": true}')
 
     out = gemini_client.gemini_chat(
         [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}],
         system="be terse", schema={"type": "object"},
     )
     assert out == '{"ok": true}'
-    # system prompt is passed through unchanged
-    assert captured["init"]["system_instruction"] == "be terse"
+    # system prompt is passed through unchanged (now lives on the config)
+    assert captured["config"]["system_instruction"] == "be terse"
     # schema present -> JSON mime requested
-    assert captured["init"]["generation_config"]["response_mime_type"] == "application/json"
+    assert captured["config"]["response_mime_type"] == "application/json"
     # assistant role maps to "model"; user stays "user"
-    assert [m["role"] for m in captured["messages"]] == ["user", "model"]
+    assert [m["role"] for m in captured["contents"]] == ["user", "model"]
 
 
 # ---------------------------------------------------------------------------
@@ -159,25 +188,14 @@ def test_to_gemini_schema_strips_unsupported_keywords():
 def test_gemini_chat_passes_response_schema(monkeypatch):
     """A schema arg now produces a response_schema (sanitised) in the generation config."""
     monkeypatch.setattr(gemini_client, "GEMINI_API_KEY", "good-key")
-    monkeypatch.setattr(gemini_client.genai, "configure", lambda **k: None)
     captured = {}
+    _install_fake_genai(monkeypatch, captured, response_text="{}")
 
-    class FakeResponse:
-        text = "{}"
-
-    class FakeModel:
-        def __init__(self, **kwargs):
-            captured["init"] = kwargs
-
-        def generate_content(self, messages):
-            return FakeResponse()
-
-    monkeypatch.setattr(gemini_client.genai, "GenerativeModel", FakeModel)
     gemini_client.gemini_chat(
         [{"role": "user", "content": "q"}], system="s",
         schema={"type": "object", "properties": {"a": {"type": "integer", "minimum": 0}}},
     )
-    gc = captured["init"]["generation_config"]
+    gc = captured["config"]
     assert gc["response_mime_type"] == "application/json"
     assert gc["response_schema"] == {"type": "object", "properties": {"a": {"type": "integer"}}}
     assert gc["max_output_tokens"] == 8192   # generous cap for the thinking model
