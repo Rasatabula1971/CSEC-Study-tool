@@ -2,14 +2,30 @@
 """
 backend/gemini_client.py
 ========================
-Optional cloud LLM: Google Gemini Flash, used ONLY for grading calls where model
-quality matters most (CLAUDE.md keeps everything else local on Ollama). The app
-runs perfectly with NO Gemini key configured -- this is an upgrade, never a
-dependency. llm_router.chat_for_grading prefers Gemini and falls back to Ollama
-silently on any failure.
+Optional cloud LLM: Google Gemini Flash, used at BUILD time for grading and
+upload classification where model quality matters most (CLAUDE.md keeps runtime
+local on Ollama). The app runs perfectly with NO Gemini key configured -- this
+is an upgrade, never a dependency.
+
+This module is deliberately thin. It exposes only:
+  * is_gemini_available() -- a pure PRESENCE check on the key (no network), and
+  * gemini_chat()         -- the generation call, which RAISES on any failure.
+
+The Gemini-vs-Ollama decision lives in the ROUTER (llm_router.py), NOT here:
+  * chat_for_grading / chat_for_classification FAIL LOUD -- when CLOUD_MODE=1 and
+    Gemini is unavailable they raise RuntimeError; they do NOT silently retry on
+    Ollama (CLAUDE.md "Optional Cloud Mode": cloud mode must never silently fall
+    back).
+  * Only build_engine() / chat_for_build silently SELECTS Ollama, gated on
+    is_gemini_available().
+Because gemini_chat() raises on failure, the router can implement either policy;
+preserving that raise-on-failure contract is what keeps both paths correct.
 
 gemini_chat mirrors ollama_client.ollama_chat's signature exactly
 (messages, system, schema) so the two are drop-in interchangeable.
+
+Migrated to the client-based google.genai SDK (google-genai >= 1.20); the
+deprecated google.generativeai package is no longer used.
 
 Env (from .env): GEMINI_API_KEY (presence is what enables Gemini), GEMINI_MODEL.
 """
@@ -17,8 +33,9 @@ Env (from .env): GEMINI_API_KEY (presence is what enables Gemini), GEMINI_MODEL.
 import logging
 import os
 
-import google.generativeai as genai
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -32,8 +49,7 @@ def is_gemini_available() -> bool:
     """True if a non-empty GEMINI_API_KEY is configured.
 
     This is mere PRESENCE -- it's what the router uses to decide whether to ATTEMPT
-    Gemini (a failed attempt falls back to Ollama, so trying is cheap and safe).
-    For an accurate UI indicator, use gemini_key_valid() instead.
+    Gemini. For an accurate UI indicator, use gemini_key_valid() instead.
     """
     return bool(GEMINI_API_KEY)
 
@@ -43,7 +59,7 @@ def gemini_key_valid() -> bool:
 
     Distinct from is_gemini_available (presence): an invalid/expired/wrong-type key
     returns False here. Intended to run once at startup so the UI can honestly show
-    whether grading will really reach the cloud or silently fall back to Ollama.
+    whether grading will really reach the cloud or fall back to Ollama.
     Never raises -- any failure is logged and reported as False.
     """
     if not is_gemini_available():
@@ -111,29 +127,43 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
     model: the limit covers thinking + output together, and a tight cap truncates the
     JSON mid-array (finish_reason=MAX_TOKENS) before the answer is written.
 
-    Returns the model's response text. Raises on any failure so the caller
-    (chat_for_grading) can fall back to Ollama.
+    Returns the model's response text. RAISES on any failure (bad key, network,
+    API error) -- the router (chat_for_grading / chat_for_classification /
+    chat_for_build) owns whether that becomes a loud error or an Ollama fallback.
+    No try/except is added here on purpose.
     """
-    genai.configure(api_key=GEMINI_API_KEY)
+    # google.genai is client-based: construct a client per call (cheap; the key is
+    # read from the module global so tests can monkeypatch it).
+    # NOTE: passing api_key= explicitly is LOAD-BEARING. Unlike the old
+    # google.generativeai SDK, google.genai also auto-reads GOOGLE_API_KEY from the
+    # environment and, if no key is passed, silently PREFERS GOOGLE_API_KEY over
+    # GEMINI_API_KEY when both are set. Dropping this explicit arg would make the
+    # client authenticate with a stray machine-level GOOGLE_API_KEY instead of our
+    # .env GEMINI_API_KEY. Keep it explicit. (The SDK still prints a harmless
+    # "Using GOOGLE_API_KEY" warning at construction; the explicit key overrides it.)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-    generation_config = {
+    config_kwargs = {
+        "system_instruction": system,
         "temperature": 0.3,
         "max_output_tokens": 8192,
     }
     if schema:
-        generation_config["response_mime_type"] = "application/json"
-        generation_config["response_schema"] = _to_gemini_schema(schema)
+        config_kwargs["response_mime_type"] = "application/json"
+        config_kwargs["response_schema"] = _to_gemini_schema(schema)
+    config = types.GenerateContentConfig(**config_kwargs)
 
-    model = genai.GenerativeModel(
-        model_name=GEMINI_MODEL,
-        system_instruction=system,
-        generation_config=generation_config,
-    )
-
-    gemini_messages = []
+    # Map the ollama-shaped messages to google.genai contents. assistant -> "model";
+    # everything else -> "user" (same mapping as before). Dict form is accepted by
+    # the SDK (ContentDict / PartDict).
+    contents = []
     for msg in messages:
         role = "model" if msg["role"] == "assistant" else "user"
-        gemini_messages.append({"role": role, "parts": [msg["content"]]})
+        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-    response = model.generate_content(gemini_messages)
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=contents,
+        config=config,
+    )
     return _response_text(response)
