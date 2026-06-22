@@ -649,6 +649,36 @@ The current stage is the first unchecked box.
 - [x] **Stage 14** — Backup Hardening + Version-Tracked Migrations: auto-backup before every destructive build script; schema_migrations ledger ✓ 2026-06-17 (backend/db/backup.py PHASE: build — backup_database(label) copies DB_PATH → {SSD_ROOT}/07_BACKUPS/csec_{YYYY-MM-DD_HHMMSS}_{label}.sqlite via shutil.copy2 (preserves mtime), raises RuntimeError on unmounted SSD / missing DB / failed copy, rolling prune keeps the 30 most-recent csec_*.sqlite by mtime; backup_first(label) decorator runs backup_database first and ABORTS the wrapped fn if the backup raises (functools.wraps). Decorated main() of every destructive build-time script: ingest.py='pre_ingest', ingest_lessons.py='pre_ingest_lessons', derive_syllabus_mark_points.py='pre_derive', recover_mark_points.py='pre_recover', ingest_worked_solutions.py='pre_ingest_solutions', db/syllabus_parser.py='pre_syllabus_parse', db/lock_subject.py='pre_lock_subject' (read-only scripts export_progress/feedback_report/ram_check/review_queue left undecorated). Import: backend/ scripts `from db.backup import backup_first`; db/ scripts add their own dir to sys.path then `from backup import backup_first`. app.py: schema_migrations(version PK, description, applied_at) ledger + _ensure_schema_migrations bootstrap (always-run, can't version-track its own creation) + _run_migration(db, version, description, sql) — skips if version recorded, else splits sql on ';' and runs each, records the row; an ALTER that hits 'duplicate column name' is recorded as '<desc> [pre-existing]' (so historical try/except ALTERs stop retrying), any other error rolls back + re-raises. apply_runtime_migrations refactored into two layers: (1) 11 version-tracked schema migrations m001_runtime_core_tables…m011_stage13_source_rank_column; (2) the three DATA backfills (command_word, source_rank, question_id→-stem) kept UNCONDITIONAL/idempotent on every call — tests insert rows then re-run migrations to backfill them, and later ingestion adds rows that still need normalising, so these must NOT be version-gated. Live E: DB backfilled: 11 rows in schema_migrations (m002-m006/m011 [pre-existing], the CREATEs applied). tests/test_backup.py (5: file-created, missing-SSD→RuntimeError, prune-keeps-30, decorator-backs-up-first, decorator-aborts-on-fail) + tests/test_schema_migrations.py (5: applies+records, no-op when applied, duplicate-column→[pre-existing], unexpected-error re-raises, apply_runtime_migrations twice = same row count); suite 293/293. Build-time mutations are now backup-guarded and migrations are version-idempotent — subject rollout (Stage 16) is safe.)
 - [ ] **Stage 15** — (reserved — further pre-rollout hardening, TBD in PDR v3.2)
 - [ ] **Stage 16** (was Stage 8) — Rollout: remaining six subjects through the lock gate
+  - IN PROGRESS (2026-06-22). **ingest_v2 framework built** — a source-family-aware
+    adapter pipeline (CaribbeanAIAdapter, MoESLMSAdapter, KerwinMCQAdapter,
+    GenericPDFAdapter, GenericOfficeAdapter) driven by per-subject YAML manifests with a
+    `wire_adapters`/orchestrator dispatch, replacing v1's single-path `ingest.py` for new
+    subjects. POB stays on the v1 path byte-for-byte; the manual `test_pob_parity` gate
+    guards this (re-run this session: mismatches=0).
+  - **Economics is the first subject through the lock gate**: syllabus CSV converted
+    (77 objectives, after recovering 3 tail-truncated ones from 74), MCQ topic map
+    resolved (203/203, 0 review), `syllabus_locked=1`, and canonical lessons generated
+    via Claude Sonnet (build-time composition only; runtime grading stays Ollama).
+  - **Three independent PRs merged to `main` 2026-06-22** (commits 5e17b88 / 77e8c9e /
+    df34995; branches deleted):
+      * **#20** — Gemini SDK migration `google.generativeai` → `google.genai` (build-time
+        classification; removes the EOL-SDK FutureWarning).
+      * **#21** — GenericOfficeAdapter + opt-in OCR (shared `backend/ocr_utils.py`,
+        `OCR_TRIGGER_THRESHOLD=30` consolidating three call sites) + `extra_source_roots`:
+        lets subjects 3-7 ingest their purpose-built Bridge/Supplemental `.docx` notes
+        from `App_Upload_Staging` at first ingestion. Prefix-agnostic (handles
+        ISCI→INTSCI / ENGA→ENG). POB parity re-verified mismatches=0.
+      * **#22** — `NOTES_K` 5→15 for build-time lesson composition (fixed retrieval
+        ranking/cutoff misses; 21/26 Economics `insufficient_source` cleared, ~$0.86).
+        Runtime `retrieval.py` k=5 unaffected.
+  - Onboarding is documented end-to-end: `backend/ingest_v2/PLAYBOOK.md` (ingest) +
+    `LESSON_PLAYBOOK.md` (lesson generation). Phase 0 of both now carries the
+    Bridge/Supplemental check (per-subject counts: Integrated_Science 99, Mathematics 85,
+    Principles_of_Accounts 50, English 2, Information_Technology 0) and the ISCI/INTSCI &
+    ENGA/ENG prefix-reconciliation note.
+  - **Remaining (still syllabus-gated): Mathematics, Integrated_Science,
+    Principles_of_Accounts, English, Information_Technology.** Suite 494 passing on `main`
+    post-merge (1 skipped = the manual POB parity gate).
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---
