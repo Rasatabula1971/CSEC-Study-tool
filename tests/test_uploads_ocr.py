@@ -51,7 +51,10 @@ def _fake_image_to_data(words, confs):
 @pytest.fixture(autouse=True)
 def _no_real_ocr_config(monkeypatch):
     # Skip pointing pytesseract at the real binary -- the call itself is mocked.
-    monkeypatch.setattr(uploads, "_ensure_ocr", lambda: None)
+    # ensure_tesseract moved to ocr_utils (shared helper); patch it there so the
+    # skip stays effective regardless of which caller invokes it.
+    import ocr_utils
+    monkeypatch.setattr(ocr_utils, "ensure_tesseract", lambda: None)
 
 
 # --- builders --------------------------------------------------------------

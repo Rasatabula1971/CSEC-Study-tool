@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "db"))
 import ingest as v1  # noqa: E402  -- reuse v1.open_db
 
 from backend.ingest_v2.orchestrator import IngestOrchestrator, OrchestratorError
-from backend.ingest_v2.manifest import ManifestError
+from backend.ingest_v2.manifest import ManifestError, load_manifest
 from backend.ingest_v2.registry import wire_adapters
 
 MANIFESTS_DIR = Path(__file__).resolve().parent / "manifests"
@@ -62,7 +62,14 @@ def main() -> None:
     if not Path(db_path).exists():
         sys.exit(f"ERROR: database not found at {db_path}.")
 
-    wire_adapters()
+    # Read the per-subject Office-adapter opt-in to build the dispatch list. Full
+    # path validation (incl. extra_source_roots) happens in orch.run(); check_paths
+    # is skipped here so reading the flag needs no mounted corpus.
+    try:
+        _flags = load_manifest(manifest_path, check_paths=False)
+    except ManifestError as e:
+        sys.exit(f"ERROR: {e}")
+    wire_adapters(enable_office_adapter=_flags.enable_office_adapter)
     db = v1.open_db(db_path)
     try:
         if not args.dry_run:

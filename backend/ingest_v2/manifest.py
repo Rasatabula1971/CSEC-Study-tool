@@ -43,6 +43,21 @@ class SubjectManifest(BaseModel):
     syllabus_csv: str
     mcq_topic_map: str
     paper_2_grading_enabled: bool = False
+    # Opt-in OCR for the GenericPDFAdapter on image-only PDFs. Default False so a
+    # subject that does not set it (e.g. POB) keeps the exact v1 PyMuPDF-only path
+    # and stays byte-identical to v1 (the test_pob_parity gate).
+    enable_ocr: bool = False
+    # Opt-in: include GenericOfficeAdapter in this subject's dispatch (claims
+    # .docx/.pptx/.pptm that MoESLMSAdapter didn't). Default False so a subject that
+    # does not set it (e.g. POB) excludes the Office adapter entirely -- its loose
+    # .docx/.pptx are left unclaimed exactly as today (preserves test_pob_parity).
+    # Deliberately separate from extra_source_roots: a subject may want one without
+    # the other.
+    enable_office_adapter: bool = False
+    # Additional corpus roots walked alongside source_root (e.g. purpose-built
+    # Bridge/Supplemental notes staged outside the main corpus tree). Empty by
+    # default so existing subjects walk only source_root, unchanged.
+    extra_source_roots: list[str] = Field(default_factory=list)
     known_gaps: list[str] = Field(default_factory=list)
     skip_patterns: list[str] = Field(default_factory=list)
 
@@ -67,12 +82,22 @@ class SubjectManifest(BaseModel):
     def mcq_topic_map_path(self) -> Path:
         return _resolve(self.mcq_topic_map)
 
+    @property
+    def extra_source_root_paths(self) -> list[Path]:
+        """Resolved extra corpus roots (absolute as-is; relative against repo root,
+        like the other manifest paths)."""
+        return [_resolve(p) for p in self.extra_source_roots]
+
     def check_paths(self) -> None:
         """Raise ManifestError unless every referenced path exists. The corpus
-        root must be a directory; the CSV and MCQ map must be files."""
+        root and every extra source root must be directories; the CSV and MCQ map
+        must be files."""
         missing = []
         if not self.source_root_path.is_dir():
             missing.append(f"source_root (dir) not found: {self.source_root_path}")
+        for p in self.extra_source_root_paths:
+            if not p.is_dir():
+                missing.append(f"extra_source_root (dir) not found: {p}")
         if not self.syllabus_csv_path.is_file():
             missing.append(f"syllabus_csv not found: {self.syllabus_csv_path}")
         if not self.mcq_topic_map_path.is_file():

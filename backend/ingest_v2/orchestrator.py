@@ -176,18 +176,26 @@ class IngestOrchestrator:
         return [c() for c in classes]
 
     def _walk(self, manifest: SubjectManifest):
-        """Yield every file under source_root, skipping any whose path contains a
-        component matching a skip pattern (fnmatch, per path component)."""
-        root = manifest.source_root_path
+        """Yield every file under source_root AND each extra_source_root, skipping any
+        whose path contains a component matching a skip pattern (fnmatch, per path
+        component). De-duplicated by resolved absolute path, so a file reachable from
+        more than one root (e.g. an extra root nested under source_root) is walked
+        once. The same skip_patterns apply uniformly to every root."""
         patterns = manifest.skip_patterns
-        for p in sorted(root.rglob("*")):
-            if not p.is_file():
-                continue
-            rel_parts = p.relative_to(root).parts
-            if any(fnmatch.fnmatch(part, pat)
-                   for part in rel_parts for pat in patterns):
-                continue
-            yield p
+        seen = set()
+        for root in [manifest.source_root_path, *manifest.extra_source_root_paths]:
+            for p in sorted(root.rglob("*")):
+                if not p.is_file():
+                    continue
+                rel_parts = p.relative_to(root).parts
+                if any(fnmatch.fnmatch(part, pat)
+                       for part in rel_parts for pat in patterns):
+                    continue
+                rp = p.resolve()
+                if rp in seen:
+                    continue
+                seen.add(rp)
+                yield p
 
     @staticmethod
     def _first_match(adapters: list[BaseAdapter], path: Path) -> BaseAdapter | None:

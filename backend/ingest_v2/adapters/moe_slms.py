@@ -37,8 +37,9 @@ _MOE_RE = re.compile(r"\bS\s*(\d+)\b.*?\bObj\s*([0-9][0-9\s,\-]*)", re.IGNORECAS
 _CLEAN_RANGE_RE = re.compile(r"^\d+\s*-\s*\d+$")
 _CLEAN_LIST_RE = re.compile(r"^\d+(?:\s+\d+)*$")
 
-# Low text on a PDF page triggers an OCR fallback attempt.
-_OCR_PAGE_THRESHOLD = 30
+# The low-text PDF-page OCR trigger is the shared ingest_v2 threshold
+# (ocr_utils.OCR_TRIGGER_THRESHOLD), imported at the call site in _extract_pdf rather
+# than redefined here -- same value generic_pdf's opt-in OCR path uses.
 
 # pptx/pptm and docx/pdf handled separately.
 _PPT_SUFFIXES = {".pptx", ".pptm"}
@@ -169,8 +170,9 @@ class MoESLMSAdapter(BaseAdapter):
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         import ingest as v1
+        import ocr_utils  # shared OCR trigger threshold (backend/ on path above)
         for page, text in v1.extract_pdf_pages(path):
-            if len((text or "").strip()) < _OCR_PAGE_THRESHOLD:
+            if len((text or "").strip()) < ocr_utils.OCR_TRIGGER_THRESHOLD:
                 ocr = self._ocr_pdf_page(path, page)
                 if ocr:
                     text = ocr
@@ -178,19 +180,20 @@ class MoESLMSAdapter(BaseAdapter):
 
     @staticmethod
     def _ocr_pdf_page(path: Path, page: int) -> str:
-        """Best-effort Tesseract OCR of one PDF page. Any failure (no Tesseract,
-        no Pillow, render error) returns '' so extraction degrades gracefully."""
+        """Best-effort Tesseract OCR of one PDF page via the SHARED ocr_utils.ocr_page
+        helper -- which adds the decompression-bomb DPI guard this adapter previously
+        lacked (oversized pages no longer trip Pillow's guard). Any failure (no
+        Tesseract, no Pillow, render error) returns '' so extraction degrades
+        gracefully."""
         try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # backend/ for ocr_utils
             import fitz  # PyMuPDF
-            import pytesseract
-            from PIL import Image
-            import io
+            import ocr_utils
             doc = fitz.open(str(path))
             try:
-                pg = doc.load_page(page - 1)
-                pix = pg.get_pixmap(dpi=200)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                return pytesseract.image_to_string(img) or ""
+                text, _conf = ocr_utils.ocr_page(doc.load_page(page - 1))
+                return text or ""
             finally:
                 doc.close()
         except Exception:
