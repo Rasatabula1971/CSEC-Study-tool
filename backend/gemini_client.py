@@ -114,7 +114,13 @@ def _response_text(response) -> str:
             return ""
 
 
-def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
+def gemini_chat(
+    messages: list,
+    system: str,
+    schema: dict | None = None,
+    thinking_budget: int | None = None,
+    model: str | None = None,
+) -> str:
     """Send a chat request to Gemini. Matches ollama_chat(messages, system, schema).
 
     The exact same system prompt and user message that would go to Ollama go here
@@ -126,6 +132,11 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
     max_output_tokens is generous (8192) because gemini-flash-latest is a thinking
     model: the limit covers thinking + output together, and a tight cap truncates the
     JSON mid-array (finish_reason=MAX_TOKENS) before the answer is written.
+
+    thinking_budget: pass 0 to disable thinking entirely and give all 8192 output
+    tokens to the actual response (useful for large free-form outputs like HTML
+    visual pages where reasoning steps consume tokens that would otherwise go to
+    content).
 
     Returns the model's response text. RAISES on any failure (bad key, network,
     API error) -- the router (chat_for_grading / chat_for_classification /
@@ -142,12 +153,15 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
     # .env GEMINI_API_KEY. Keep it explicit. (The SDK still prints a harmless
     # "Using GOOGLE_API_KEY" warning at construction; the explicit key overrides it.)
     client = genai.Client(api_key=GEMINI_API_KEY)
+    effective_model = model or GEMINI_MODEL
 
     config_kwargs = {
         "system_instruction": system,
         "temperature": 0.3,
         "max_output_tokens": 8192,
     }
+    if thinking_budget is not None:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
     if schema:
         config_kwargs["response_mime_type"] = "application/json"
         config_kwargs["response_schema"] = _to_gemini_schema(schema)
@@ -162,7 +176,7 @@ def gemini_chat(messages: list, system: str, schema: dict | None = None) -> str:
         contents.append({"role": role, "parts": [{"text": msg["content"]}]})
 
     response = client.models.generate_content(
-        model=GEMINI_MODEL,
+        model=effective_model,
         contents=contents,
         config=config,
     )

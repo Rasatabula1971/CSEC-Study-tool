@@ -57,38 +57,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Open the browser BEFORE starting the server: the server runs in
-REM the foreground below and never returns, so anything that must
-REM happen "after launch" has to happen here first. The page may be
-REM blank for a few seconds until the server finishes starting --
-REM that is expected.
-REM Open the study app in its OWN dedicated Chrome window (--app):
-REM a single borderless window with NO session-restore and no other
-REM tabs. Plain `start http://...` cold-starts the default browser,
-REM and Chrome set to "Continue where you left off" then restores the
-REM previous session AND opens this URL -- which surfaced as TWO
-REM windows on launch. The app window avoids that entirely. If Chrome
-REM is not installed, fall back to the default browser so launch still
-REM works (it just loses the single-window guarantee).
-echo Opening browser...
-set "CHROME="
-if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-if not defined CHROME if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-if not defined CHROME if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "CHROME=%LocalAppData%\Google\Chrome\Application\chrome.exe"
-if defined CHROME (
-    start "" "%CHROME%" --app=http://127.0.0.1:8000
-) else (
-    start http://127.0.0.1:8000
-)
+REM A hidden background helper (open_browser.ps1) polls the server every second
+REM and opens the browser only once the server actually responds. This avoids
+REM the ERR_CONNECTION_REFUSED page that showed during the ~20-second cold-start
+REM window when the browser used to open before the server finished loading.
+REM Chrome opens as a dedicated --app window (no other tabs, no session-restore);
+REM falls back to the default browser if Chrome is not installed.
+echo Browser will open automatically when the server is ready...
+start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0open_browser.ps1" -Url http://127.0.0.1:8000
 
 echo.
 echo ============================================================
 echo   CSEC Study Partner is starting up.
 echo.
 echo   This takes about 20 seconds the first time, while the
-echo   AI model loads into memory. The browser page will look
-echo   blank or show an error until it finishes -- that is
-echo   normal. Just wait, then refresh the page once.
+echo   AI model loads into memory. The browser will open
+echo   automatically once it is ready -- no need to do
+echo   anything. Just wait for the window to appear.
 echo.
 echo   To stop studying, just close this window.
 echo ============================================================

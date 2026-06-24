@@ -134,6 +134,198 @@
     .question-empty-icon { color: var(--text-faint); margin-bottom: 8px; display: flex; justify-content: center; }
     .question-empty-title { font-size: 14px; color: var(--text-secondary); }
     .question-empty-body { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    /* ===== Visualize button ===== */
+    .visualize-row {
+      display: flex; align-items: center; gap: 8px;
+      padding-top: 10px; margin-top: 6px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .visualize-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 8px;
+      background: none; border: 1px solid var(--border-card);
+      color: var(--text-secondary); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: border-color 100ms ease, color 100ms ease, background 100ms ease;
+    }
+    .visualize-btn:hover:not(:disabled) {
+      border-color: var(--accent-blue-soft-border);
+      color: var(--accent-blue);
+      background: var(--accent-blue-soft-bg);
+    }
+    .visualize-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .visualize-btn svg { flex: none; }
+    .visualize-hint { font-size: 12px; color: var(--text-faint); }
+
+    /* ===== Visual dialog — full-viewport overlay ===== */
+    /*
+     * Using an inner .vd-shell that is position:fixed;inset:0 rather than
+     * applying fixed positioning to <dialog> itself. html,body{height:100%}
+     * on this page makes the <dialog>'s own containing block the body (not
+     * the viewport), so dialog{position:fixed;inset:0} falls short of the
+     * topbar. The inner fixed shell always anchors to the true viewport.
+     */
+    dialog.visual-dialog {
+      /* Reset every browser's dialog default styles */
+      position: fixed;
+      inset: 0;
+      width: 0;
+      height: 0;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      overflow: visible;
+    }
+    dialog.visual-dialog::backdrop {
+      background: rgba(0,0,0,0.82);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    /* The real visual surface — position:fixed anchors to the true viewport */
+    .vd-shell {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      background: #0d0f14;
+      animation: vd-enter 200ms var(--ease-spring) both;
+      overflow: hidden;
+    }
+    @keyframes vd-enter {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* Slim top bar */
+    .visual-dialog-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 44px;
+      flex: none;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.03);
+    }
+    .visual-dialog-close {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 7px;
+      color: var(--text-muted);
+      font-size: 14px; line-height: 1;
+      cursor: pointer;
+      flex: none;
+      transition: background 100ms ease, color 100ms ease;
+    }
+    .visual-dialog-close:hover { background: rgba(255,255,255,0.12); color: var(--text-body); }
+    .visual-dialog-close:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+    .visual-dialog-title {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .visual-dialog-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-blue);
+      background: var(--accent-blue-soft-bg);
+      border: 1px solid var(--accent-blue-soft-border);
+      border-radius: 6px;
+      padding: 2px 8px;
+      letter-spacing: 0.04em;
+      flex: none;
+    }
+
+    /* Body: iframe fills all remaining height */
+    .visual-dialog-body {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      background: #0d0f14;
+    }
+    .visual-dialog-body iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    /* Loading state */
+    .visual-dialog-loading {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px;
+      background: #0d0f14;
+    }
+    .vd-spinner-wrap {
+      position: relative;
+      width: 48px; height: 48px;
+    }
+    .vd-spinner {
+      width: 48px; height: 48px;
+      border: 3px solid rgba(91,141,239,0.15);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: vd-spin 0.9s linear infinite;
+    }
+    @keyframes vd-spin { to { transform: rotate(360deg); } }
+    .vd-msg {
+      font-size: 14px;
+      color: var(--text-muted);
+      letter-spacing: 0.01em;
+    }
+    .vd-msg-sub {
+      font-size: 12px;
+      color: var(--text-faint);
+      margin-top: 2px;
+      text-align: center;
+    }
+
+    /* Error state */
+    .visual-dialog-error {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; background: #0d0f14; padding: 32px;
+    }
+    .visual-dialog-error.visible { display: flex; }
+    .vd-err-icon {
+      font-size: 32px;
+      color: var(--accent-red);
+      opacity: 0.7;
+    }
+    .vd-err-msg {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 380px;
+      line-height: 1.6;
+    }
+    .vd-err-retry {
+      padding: 9px 22px;
+      background: var(--accent-blue);
+      color: var(--accent-blue-text);
+      border: none; border-radius: 9px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: opacity 120ms ease;
+    }
+    .vd-err-retry:hover { opacity: 0.9; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .vd-spinner { animation: none; }
+      dialog.visual-dialog { animation: none; }
+    }
   </style>
 </head>
 <body>
@@ -215,6 +407,32 @@
     </div>
   </div>
 </div>
+
+<!-- Visual dialog — full-screen overlay, opened by openVisualDialog() -->
+<dialog class="visual-dialog" id="visualDialog" aria-label="Interactive visual">
+  <div class="vd-shell">
+    <div class="visual-dialog-bar">
+      <button type="button" class="visual-dialog-close" id="visualDialogClose" aria-label="Close visual">&#x2715;</button>
+      <span class="visual-dialog-title" id="visualDialogTitle"></span>
+      <span class="visual-dialog-label">Visual</span>
+    </div>
+    <div class="visual-dialog-body">
+      <div class="visual-dialog-loading" id="visualLoading">
+        <div class="vd-spinner-wrap">
+          <div class="vd-spinner"></div>
+        </div>
+        <div class="vd-msg" id="visualLoadingMsg">Generating visual&hellip;</div>
+        <div class="vd-msg-sub">This takes about 5&ndash;10 seconds</div>
+      </div>
+      <div class="visual-dialog-error" id="visualError">
+        <div class="vd-err-icon">&#x26A0;</div>
+        <div class="vd-err-msg" id="visualErrMsg"></div>
+        <button type="button" class="vd-err-retry" id="visualErrRetry">Close</button>
+      </div>
+      <iframe id="visualIframe" title="Interactive visual"></iframe>
+    </div>
+  </div>
+</dialog>
 
 <script src="/static/feedback.js"></script>
 <script>
@@ -512,6 +730,17 @@
         <div class="lesson-body collapsed" id="lessonBody">${formatLesson(preview)}</div>
         ${hasMore?`<button type="button" class="lesson-toggle" id="lessonToggle">Read full lesson ▾</button>`:''}
         ${readyOrNote}
+        <div class="visualize-row">
+          <button type="button" class="visualize-btn" id="visualizeBtn"
+                  aria-label="Open interactive visual for this lesson">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            Visualize
+          </button>
+          <span class="visualize-hint" id="visualizeHint"></span>
+        </div>
       </div>`;
     if(hasMore){
       let expanded=false;const bodyEl=$('lessonBody'),tgl=$('lessonToggle');
@@ -524,6 +753,71 @@
     }
     const ready=$('readyBtn');
     if(ready)ready.addEventListener('click',()=>revealQuestion(objective,recall[0]||''));
+
+    // Wire the Visualize button — NO automatic pre-fetch; only runs on explicit click
+    const vzBtn=$('visualizeBtn');
+    const vzHint=$('visualizeHint');
+    if(vzBtn&&objective&&objective.objective_id){
+      vzBtn.addEventListener('click',(e)=>{
+        if(!e.isTrusted)return; // only real user clicks
+        openVisualDialog(objective.objective_id,vzBtn,vzHint);
+      });
+    }
+  }
+
+  // ===== Visual dialog =======================================================
+  function openVisualDialog(objectiveId,btn,hint){
+    const dlg=$('visualDialog');
+    const iframe=$('visualIframe');
+    const loading=$('visualLoading');
+    const errPanel=$('visualError');
+    const errMsg=$('visualErrMsg');
+    const titleEl=$('visualDialogTitle');
+
+    // Reset state
+    const loadingMsgEl=$('visualLoadingMsg');
+    iframe.srcdoc='';
+    loading.style.display='flex';
+    if(loadingMsgEl) loadingMsgEl.textContent='Generating visual…';
+    errPanel.classList.remove('visible');
+    titleEl.textContent=objectiveId;
+    dlg.showModal();
+
+    btn.disabled=true;
+    hint.textContent='Generating…';
+
+    fetch(`${API_BASE}/api/visual/${encodeURIComponent(objectiveId)}`,{method:'POST'})
+      .then(r=>r.json())
+      .then(data=>{
+        if(!data.ok){
+          loading.style.display='none';
+          errPanel.classList.add('visible');
+          errMsg.textContent=data.error||'Generation failed.';
+          btn.disabled=false;
+          hint.textContent='';
+          return;
+        }
+        if(data.cached && loadingMsgEl) loadingMsgEl.textContent='Loading visual…';
+        hint.textContent=data.cached?'Cached':'Generated';
+        // Fetch HTML and inject via srcdoc — no sandbox restrictions, full JS
+        fetch(`${API_BASE}/api/visual/${encodeURIComponent(objectiveId)}`)
+          .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+          .then(html=>{ iframe.onload=()=>{ loading.style.display='none'; }; iframe.srcdoc=html; })
+          .catch(fetchErr=>{
+            loading.style.display='none';
+            errMsg.textContent='Could not load visual: '+fetchErr.message;
+            errPanel.classList.add('visible');
+            btn.disabled=false;
+          });
+        btn.disabled=false;
+      })
+      .catch(err=>{
+        loading.style.display='none';
+        errPanel.classList.add('visible');
+        errMsg.textContent='Couldn\'t reach the server. Make sure the study system is running.';
+        btn.disabled=false;
+        hint.textContent='';
+      });
   }
 
   function revealQuestion(objective,first){
@@ -700,6 +994,31 @@
   answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
   submitBtn.addEventListener('click',submitBatchAnswer);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitBatchAnswer();}});
+
+  // ===== Visual dialog close wiring =========================================
+  (function(){
+    const dlg=$('visualDialog');
+    const closeBtn=$('visualDialogClose');
+    const retryBtn=$('visualErrRetry');
+    if(!dlg)return;
+    closeBtn.addEventListener('click',()=>{ dlg.close(); $('visualIframe').srcdoc=''; });
+    retryBtn.addEventListener('click',()=>{ dlg.close(); $('visualIframe').srcdoc=''; });
+    // The ::backdrop absorbs clicks — close on backdrop click by checking the shell
+    dlg.addEventListener('click',(e)=>{
+      const shell=dlg.querySelector('.vd-shell');
+      if(!shell)return;
+      const rect=shell.getBoundingClientRect();
+      if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom){
+        dlg.close(); $('visualIframe').srcdoc='';
+      }
+    });
+    // Close on Escape is native to <dialog>; also blank the iframe
+    dlg.addEventListener('close',()=>{ $('visualIframe').srcdoc=''; });
+    // Listen for postMessage('close') from inside the iframe (the ← Close button)
+    window.addEventListener('message',(e)=>{
+      if(e.data==='close'&&dlg.open){ dlg.close(); $('visualIframe').srcdoc=''; }
+    });
+  })();
 
   async function init(){await fetchSubjects();enterPlanMode();updateSubmitBtn();updateWordCount();}
   init();

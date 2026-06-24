@@ -668,10 +668,51 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # pre-m015 DB -- classification columns absent; nothing to backfill
 
+    # m018: visual_pages table — tracks one generated HTML visual per objective,
+    # cached on the SSD. file_path is absolute so serving is a direct FileResponse.
+    # generation_ms is informational; the UI shows a spinner during generation.
+    _run_migration(
+        db, "m018_visual_pages",
+        "visual_pages table for on-demand lesson visuals",
+        """
+        CREATE TABLE IF NOT EXISTS visual_pages (
+            objective_id  TEXT PRIMARY KEY REFERENCES objectives(objective_id),
+            subject_id    TEXT NOT NULL REFERENCES subjects(subject_id),
+            generated_at  TEXT NOT NULL,
+            model_used    TEXT NOT NULL DEFAULT 'gemini',
+            file_path     TEXT NOT NULL,
+            generation_ms INTEGER
+        )
+        """,
+    )
+
     # Upload session 1: make sure the SSD staging tree exists for every locked
     # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
     # clearer error at upload time.
     ensure_staging_dirs(db)
+    ensure_visual_dirs(db)
+
+
+def ensure_visual_dirs(db: sqlite3.Connection) -> None:
+    """Create {SSD_ROOT}/05_VISUALS and a subdir per locked subject.
+
+    Best-effort — warns and skips if the SSD is not mounted.
+    """
+    ssd_root = os.getenv("SSD_ROOT")
+    if not ssd_root:
+        return
+    visuals_root = Path(ssd_root) / "05_VISUALS"
+    try:
+        visuals_root.mkdir(parents=True, exist_ok=True)
+        rows = db.execute(
+            "SELECT subject_id FROM subjects WHERE syllabus_locked = 1"
+        ).fetchall()
+        for r in rows:
+            (visuals_root / r["subject_id"]).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not create visual dirs under %s (%s)", visuals_root, exc
+        )
 
 
 def ensure_staging_dirs(db: sqlite3.Connection) -> None:
@@ -934,6 +975,11 @@ def upload_page() -> FileResponse:
 def lesson_status_page() -> FileResponse:
     """Serve the read-only lesson-generation status page (auto-refreshing)."""
     return FileResponse(LESSON_STATUS_HTML)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(status_code=204)
 
 
 @app.get("/")
@@ -2661,6 +2707,74 @@ def lessons_regenerate_stale(subject_id: str, request: Request,
     if objective_ids:
         background_tasks.add_task(_run_regenerate, db, subject_id, objective_ids)
     return {"ok": True, "queued": len(objective_ids)}
+
+
+@app.get("/api/visual/{objective_id}/status")
+def visual_status(objective_id: str, request: Request) -> dict:
+    """Check whether a visual has been generated for this objective.
+
+    Returns {exists: bool, cached: bool, generated_at: str|null, generation_ms: int|null}.
+    Never triggers generation — use POST /api/visual/{objective_id} for that.
+    """
+    row = request.app.state.db.execute(
+        "SELECT generated_at, generation_ms, file_path FROM visual_pages WHERE objective_id = ?",
+        (objective_id,),
+    ).fetchone()
+    if not row:
+        return {"exists": False, "cached": False, "generated_at": None, "generation_ms": None}
+    file_ok = Path(row["file_path"]).exists()
+    return {
+        "exists": file_ok,
+        "cached": file_ok,
+        "generated_at": row["generated_at"],
+        "generation_ms": row["generation_ms"],
+    }
+
+
+@app.post("/api/visual/{objective_id}")
+def visual_generate(objective_id: str, request: Request, response: Response) -> dict:
+    """Generate (or serve cached) the visual HTML for one objective.
+
+    First call: calls Gemini Flash (~3-5 s), writes to SSD, records in visual_pages.
+    Subsequent calls: instant cache hit (file already on SSD).
+    Pass ?force=1 to regenerate even if cached.
+
+    Returns {ok: bool, cached: bool, error: str|null}.
+    The visual is then served by GET /api/visual/{objective_id}.
+    """
+    force = request.query_params.get("force", "0") == "1"
+    # Lazy import so the runtime server never loads generate_visual (PHASE: build)
+    # until a builder or student actually triggers generation.
+    import generate_visual as gv
+
+    result = gv.generate_visual(request.app.state.db, objective_id, force=force)
+    if not result["ok"]:
+        response.status_code = 400
+        return {"ok": False, "cached": False, "error": result["error"]}
+    return {"ok": True, "cached": result["cached"], "error": None}
+
+
+@app.get("/api/visual/{objective_id}")
+def visual_serve(objective_id: str, request: Request, response: Response):
+    """Serve the generated visual HTML file for an objective.
+
+    Returns the raw HTML file (Content-Type: text/html).
+    404 if no visual has been generated yet — call POST first.
+    """
+    row = request.app.state.db.execute(
+        "SELECT file_path FROM visual_pages WHERE objective_id = ?",
+        (objective_id,),
+    ).fetchone()
+    if not row:
+        response.status_code = 404
+        return {"error": "no visual generated yet — POST /api/visual/{objective_id} first"}
+
+    file_path = Path(row["file_path"])
+    if not file_path.exists():
+        response.status_code = 404
+        return {"error": "visual file missing from SSD — regenerate with POST ?force=1"}
+
+    return FileResponse(str(file_path), media_type="text/html")
 
 
 @app.post("/api/staging/{subject_id}/auto-accept-and-ingest")

@@ -6,505 +6,842 @@
   <title>CSEC Study Partner</title>
   <link rel="stylesheet" href="/static/shared.css" />
   <style>
-    /* The dark/blue palette tokens now live in shared.css (UI overhaul
-       addition) so Welcome, Study, Quiz and the Builder console all draw from
-       one definition. This page keeps only its own component styles below. */
+    /* 1. Reset + base */
     * { box-sizing: border-box; }
-    html, body { height: 100%; }
+    html { min-height: 100%; }
     body {
       margin: 0;
+      min-height: 100vh;
       background: var(--bg-page);
       color: var(--text-body);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      min-height: 100vh;
       -webkit-font-smoothing: antialiased;
-    }
-    .page {
-      max-width: 560px;
-      margin: 0 auto;
-      width: 100%;
-      padding: 28px 22px 56px;
       display: flex;
       flex-direction: column;
-      gap: 28px;
     }
 
-    /* --- Header row --- */
-    .header {
+    /* 2. Sticky top bar */
+    .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-    }
-    .brand {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      letter-spacing: 0.01em;
-    }
-    .subject-select {
-      background: var(--bg-card);
-      border: 1px solid var(--border-card);
-      border-radius: 8px;
-      color: var(--text-body);
-      font-size: 14px;
-      padding: 8px 12px;
-      cursor: pointer;
-      outline: none;
-      max-width: 260px;
-    }
-    .subject-select:hover { border-color: var(--accent-blue-soft-border); }
-    .subject-select:focus-visible { border-color: var(--accent-blue); box-shadow: 0 0 0 2px var(--accent-blue-soft-bg); }
-
-    /* --- Quote block --- */
-    .quote {
-      text-align: center;
-      padding-bottom: 26px;
+      padding: 14px 24px;
       border-bottom: 1px solid var(--border-subtle);
+      flex: none;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg-page);
     }
-    .quote-text {
-      font-style: italic;
-      font-size: 18px;
-      line-height: 1.55;
-      color: var(--text-body);
-      max-width: 460px;
-      margin: 0 auto;
+    .brand { font-size: 14px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.01em; }
+    .builder-link {
+      font-size: 12px; color: var(--text-faint);
+      background: none; border: none; cursor: pointer; padding: 4px 8px;
+      border-radius: 5px; outline: none;
     }
-    .quote-author {
-      margin-top: 12px;
-      font-size: 13px;
-      color: var(--text-muted);
+    .builder-link:hover { color: var(--text-muted); }
+    .builder-link:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; color: var(--text-muted); }
+
+    /* 3. Three-column shell — sidebar | main | due-panel
+          Page scrolls naturally; sidebars stick. */
+    .shell {
+      display: flex;
+      flex: 1;
+      align-items: flex-start;
     }
+
+    /* 4. Left sidebar — subjects */
+    .sidebar {
+      width: 192px;
+      flex: none;
+      border-right: 1px solid var(--border-subtle);
+      padding: 24px 0;
+      position: sticky;
+      top: 49px;
+      min-height: calc(100vh - 49px);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-label {
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 0 16px 10px;
+    }
+    .subject-list { display: flex; flex-direction: column; gap: 2px; }
+    .subject-btn {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; text-align: left;
+      padding: 10px 16px;
+      background: none; border: none;
+      border-left: 3px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px; line-height: 1.3; cursor: pointer;
+      transition: background-color 100ms ease, color 100ms ease, border-color 100ms ease;
+    }
+    .subject-btn:hover { background: rgba(255,255,255,0.04); color: var(--text-body); }
+    .subject-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+    .subject-btn.active {
+      border-left-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: var(--accent-blue-soft-bg);
+      font-weight: 600;
+    }
+    .subject-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: currentColor; flex: none; opacity: 0.5;
+    }
+    .subject-btn.active .subject-dot { opacity: 1; }
+    .subject-btn-text { flex: 1; }
+
+    /* 5. Main content column — fills space between the two sidebars */
+    .main { flex: 1; min-width: 0; }
+    .main-inner {
+      max-width: 520px;
+      padding: 32px 32px 56px;
+      display: flex; flex-direction: column; gap: 24px;
+    }
+
+    /* 6. Greeting */
+    .greeting-name { font-size: 26px; font-weight: 700; color: var(--text-body); letter-spacing: -0.01em; line-height: 1.2; }
+    .greeting-sub  { margin-top: 4px; font-size: 14px; color: var(--text-muted); }
+
+    /* 7. Quote */
+    .quote { padding-bottom: 22px; border-bottom: 1px solid var(--border-subtle); }
+    .quote-text   { font-style: italic; font-size: 16px; line-height: 1.6; color: var(--text-secondary); margin: 0; }
+    .quote-author { margin-top: 8px; font-size: 13px; color: var(--text-muted); }
     .quote-author::before { content: "— "; }
 
-    /* --- Status row --- */
-    .status {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
-    .status-text { min-width: 0; }
-    .status-subject {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-    .status-line {
-      margin-top: 4px;
-      font-size: 16px;
-      color: var(--text-secondary);
-      font-variant-numeric: tabular-nums;
-    }
+    /* 8. Status row */
+    .status { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .status-subject { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .status-line    { margin-top: 4px; font-size: 15px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
     .pct-badge {
-      flex: none;
-      width: 58px;
-      height: 58px;
-      border-radius: 50%;
+      flex: none; width: 54px; height: 54px; border-radius: 50%;
       background: var(--accent-blue-soft-bg);
       border: 1px solid var(--accent-blue-soft-border);
       color: var(--accent-blue);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
     }
 
-    /* --- Action buttons --- */
-    .actions { display: flex; flex-direction: column; gap: 10px; }
+    /* 9. Action buttons */
+    .actions { display: flex; flex-direction: column; gap: 9px; }
     .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      padding: 14px 18px;
-      border-radius: 11px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      border: 1px solid transparent;
-      transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, transform 100ms ease;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 13px 16px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      text-decoration: none; border: 1px solid transparent;
+      transition: opacity 120ms ease, background-color 120ms ease,
+                  border-color 120ms ease, transform 100ms ease;
     }
     .btn:active { transform: translateY(1px); }
     .btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
     .btn-primary { background: var(--accent-blue); color: var(--accent-blue-text); }
-    .btn-primary:hover { opacity: 0.92; }
-    .btn-secondary {
-      background: var(--bg-card);
-      border-color: var(--border-card);
-      color: var(--text-body);
-    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--bg-card); border-color: var(--border-card); color: var(--text-body); }
     .btn-secondary:hover { border-color: var(--accent-blue-soft-border); background: rgba(255,255,255,0.06); }
 
-    /* --- Upload section --- */
-    .upload-label {
+    /* 10. Upload */
+    .upload-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+    .dropzone {
+      border: 1.5px dashed var(--border-card); border-radius: 11px;
+      padding: 22px 16px; text-align: center; cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease;
+      background: rgba(255,255,255,0.015);
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent-blue); background: var(--accent-blue-soft-bg); }
+    .dropzone:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+    .dropzone-icon { color: var(--accent-blue); margin-bottom: 7px; }
+    .dropzone-primary  { font-size: 14px; color: var(--text-body); font-weight: 500; }
+    .dropzone-secondary { margin-top: 3px; font-size: 12px; color: var(--text-muted); }
+    .dropzone.busy { opacity: 0.6; pointer-events: none; }
+    .upload-result {
+      margin-top: 10px; font-size: 13px; padding: 10px 12px;
+      border-radius: 9px; display: none; align-items: center; gap: 8px;
+    }
+    .upload-result.visible { display: flex; }
+    .upload-result.success { background: rgba(61,220,132,0.1); border: 1px solid rgba(61,220,132,0.25); color: var(--accent-green); }
+    .upload-result.review  { background: rgba(245,180,80,0.1);  border: 1px solid rgba(245,180,80,0.25);  color: #f5b450; }
+    .upload-result.error   { background: rgba(226,75,74,0.1);   border: 1px solid rgba(226,75,74,0.25);   color: var(--accent-red); }
+    .upload-result svg { flex: none; }
+
+    /* =========================================================
+       11. DUE TODAY panel (right sticky column)
+    ========================================================= */
+    .due-panel {
+      width: 256px;
+      flex: none;
+      border-left: 1px solid var(--border-subtle);
+      padding: 24px 0;
+      position: sticky;
+      top: 49px;
+      min-height: calc(100vh - 49px);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .due-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 0 18px 14px;
+    }
+    .due-title {
       font-size: 11px;
       font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.12em;
-      margin-bottom: 10px;
+      letter-spacing: 0.1em;
     }
-    .dropzone {
-      border: 1.5px dashed var(--border-card);
-      border-radius: 12px;
-      padding: 26px 18px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease;
-      background: rgba(255,255,255,0.015);
-    }
-    .dropzone:hover, .dropzone.dragover {
-      border-color: var(--accent-blue);
+    .due-count {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-blue);
+      font-variant-numeric: tabular-nums;
       background: var(--accent-blue-soft-bg);
-    }
-    .dropzone:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-    .dropzone-icon { color: var(--accent-blue); margin-bottom: 8px; }
-    .dropzone-primary { font-size: 15px; color: var(--text-body); font-weight: 500; }
-    .dropzone-secondary { margin-top: 4px; font-size: 13px; color: var(--text-muted); }
-    .dropzone.busy { opacity: 0.6; pointer-events: none; }
-
-    .upload-result {
-      margin-top: 12px;
-      font-size: 14px;
-      padding: 12px 14px;
+      border: 1px solid var(--accent-blue-soft-border);
       border-radius: 10px;
-      display: none;
-      align-items: center;
-      gap: 9px;
+      padding: 1px 8px;
     }
-    .upload-result.visible { display: flex; }
-    .upload-result.success {
-      background: rgba(61,220,132,0.1);
-      border: 1px solid rgba(61,220,132,0.25);
-      color: var(--accent-green);
+    .due-count.zero {
+      color: var(--text-faint);
+      background: transparent;
+      border-color: var(--border-subtle);
     }
-    .upload-result.review {
-      background: rgba(245,180,80,0.1);
-      border: 1px solid rgba(245,180,80,0.25);
-      color: #f5b450;
-    }
-    .upload-result.error {
-      background: rgba(226,75,74,0.1);
-      border: 1px solid rgba(226,75,74,0.25);
-      color: var(--accent-red);
-    }
-    .upload-result svg { flex: none; }
 
-    /* --- Footer --- */
-    .footer { text-align: center; margin-top: 8px; }
-    .builder-link {
+    /* List of due-objective cards */
+    .due-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    /* thin custom scrollbar */
+    .due-list::-webkit-scrollbar { width: 3px; }
+    .due-list::-webkit-scrollbar-track { background: transparent; }
+    .due-list::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+
+    .due-card {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease;
+    }
+    .due-card:hover {
+      border-color: var(--accent-blue-soft-border);
+      background: rgba(91,141,239,0.07);
+      transform: translateX(2px);
+    }
+    .due-card:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+    .due-card:active { transform: translateX(1px); }
+
+    .due-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .due-oid {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-blue);
+      font-family: var(--font-mono);
+      letter-spacing: 0.02em;
+    }
+    .due-box {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg-page);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
+    /* Box colour hints */
+    .due-box.box-1 { color: var(--accent-red);   border-color: rgba(226,75,74,0.3); }
+    .due-box.box-2 { color: #f5b450;              border-color: rgba(245,180,80,0.3); }
+    .due-box.box-3 { color: #f5b450;              border-color: rgba(245,180,80,0.3); }
+    .due-box.box-4 { color: var(--accent-green);  border-color: rgba(61,220,132,0.3); }
+    .due-box.box-5 { color: var(--accent-green);  border-color: rgba(61,220,132,0.3); }
+
+    .due-stmt {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      /* Show max 2 lines then ellipsis */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .due-score {
+      font-size: 11px;
+      color: var(--text-faint);
+      font-variant-numeric: tabular-nums;
+    }
+    .due-score.low { color: var(--accent-red); }
+
+    /* Empty / loading / error states */
+    .due-state {
+      padding: 24px 18px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    .due-state .due-tick {
+      font-size: 28px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .due-state .due-state-sub {
+      margin-top: 4px;
       font-size: 12px;
       color: var(--text-faint);
-      background: none;
-      border: none;
-      cursor: pointer;
-      text-decoration: none;
-      padding: 4px 8px;
     }
-    .builder-link:hover { color: var(--text-muted); }
 
-    /* --- PIN modal --- */
+    /* Footer start-review button */
+    .due-footer {
+      padding: 12px 10px 0;
+      border-top: 1px solid var(--border-subtle);
+      margin-top: 8px;
+    }
+    .due-footer .btn {
+      font-size: 13px;
+      padding: 10px 14px;
+    }
+
+    /* skeleton shimmer while loading */
+    @keyframes shimmer {
+      0%   { background-position: -256px 0; }
+      100% { background-position:  256px 0; }
+    }
+    .due-skeleton {
+      height: 72px;
+      border-radius: 10px;
+      background: linear-gradient(90deg,
+        var(--bg-card) 25%,
+        rgba(255,255,255,0.04) 50%,
+        var(--bg-card) 75%);
+      background-size: 512px 100%;
+      animation: shimmer 1.4s infinite;
+    }
+
+    /* ========== 12. PIN modal ========== */
     .modal-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      z-index: 50;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center; padding: 24px; z-index: 50;
     }
     .modal-overlay.visible { display: flex; }
     .modal {
-      background: #1a1d24;
-      border: 1px solid var(--border-card);
-      border-radius: 14px;
-      padding: 24px;
-      width: 100%;
-      max-width: 320px;
-      text-align: center;
+      background: var(--bg-card); border: 1px solid var(--border-card);
+      border-radius: 14px; padding: 24px; width: 100%; max-width: 300px; text-align: center;
     }
     .modal-title { font-size: 15px; font-weight: 600; color: var(--text-body); margin-bottom: 14px; }
     .pin-input {
-      width: 100%;
-      background: var(--bg-page);
-      border: 1px solid var(--border-card);
-      border-radius: 8px;
-      color: var(--text-body);
-      font-size: 18px;
-      letter-spacing: 0.3em;
-      text-align: center;
-      padding: 10px;
-      outline: none;
+      width: 100%; background: var(--bg-page); border: 1px solid var(--border-card);
+      border-radius: 8px; color: var(--text-body); font-size: 18px;
+      letter-spacing: 0.3em; text-align: center; padding: 10px; outline: none;
     }
     .pin-input:focus-visible { border-color: var(--accent-blue); }
     .pin-error { min-height: 16px; margin-top: 8px; font-size: 12px; color: var(--accent-red); }
     .modal-actions { display: flex; gap: 10px; margin-top: 12px; }
     .modal-actions .btn { padding: 10px; font-size: 14px; }
+
+    /* ========== 13. Responsive ========== */
+    /* Below 860px: hide the due panel */
+    @media (max-width: 860px) {
+      .due-panel { display: none; }
+    }
+    /* Below 600px: stack to single column */
+    @media (max-width: 600px) {
+      .shell { flex-direction: column; }
+      .sidebar {
+        width: 100%; position: static; min-height: 0;
+        border-right: none; border-bottom: 1px solid var(--border-subtle);
+        padding: 12px 0 10px;
+      }
+      .subject-list { flex-direction: row; flex-wrap: wrap; padding: 0 14px; gap: 6px; }
+      .subject-btn {
+        border-left: none; border-bottom: 2px solid transparent;
+        border-radius: 8px; padding: 8px 12px; width: auto; flex: none;
+      }
+      .subject-btn.active { border-left-color: transparent; border-bottom-color: var(--accent-blue); }
+      .main-inner { padding: 20px 16px 48px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .due-card, .btn, .subject-btn, .dropzone { transition: none; }
+      .due-skeleton { animation: none; }
+    }
   </style>
 </head>
 <body>
-  <div class="page">
 
-    <!-- Header -->
-    <header class="header">
-      <div class="brand">Study Partner</div>
-      <select class="subject-select" id="subjectSelect" aria-label="Subject"></select>
-    </header>
+  <!-- Sticky top bar -->
+  <header class="topbar">
+    <div class="brand">CSEC Study Partner</div>
+    <button type="button" class="builder-link" id="builderLink">Builder</button>
+  </header>
 
-    <!-- Quote (single hardcoded quote for now). NOTE: per-visit quote ROTATION is a
-         nice-to-have for a future session — intentionally NOT built here. -->
-    <section class="quote">
-      <p class="quote-text">Success is the sum of small efforts, repeated day in and day out.</p>
-      <p class="quote-author">Robert Collier</p>
-    </section>
+  <!-- Three-column shell -->
+  <div class="shell">
 
-    <!-- Status -->
-    <section class="status">
-      <div class="status-text">
-        <div class="status-subject" id="statusSubject">…</div>
-        <div class="status-line" id="statusLine">Loading your progress…</div>
+    <!-- Left: subject nav -->
+    <nav class="sidebar" aria-label="Subjects">
+      <div class="sidebar-label">Subjects</div>
+      <div class="subject-list" id="subjectList"></div>
+    </nav>
+
+    <!-- Centre: main content -->
+    <main class="main">
+      <div class="main-inner">
+
+        <section class="greeting">
+          <div class="greeting-name">Hey Rylee &#x1F44B;</div>
+          <div class="greeting-sub">Ready to study?</div>
+        </section>
+
+        <section class="quote">
+          <p class="quote-text">Success is the sum of small efforts, repeated day in and day out.</p>
+          <p class="quote-author">Robert Collier</p>
+        </section>
+
+        <section class="status">
+          <div class="status-text">
+            <div class="status-subject" id="statusSubject">…</div>
+            <div class="status-line"    id="statusLine">Loading your progress…</div>
+          </div>
+          <div class="pct-badge" id="pctBadge">—</div>
+        </section>
+
+        <section class="actions">
+          <a href="/plan" class="btn btn-primary">Continue studying &#x2192;</a>
+          <a href="/plan#objectiveMap" class="btn btn-secondary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="8" y1="6"  x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6"  x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+              <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            Browse all topics
+          </a>
+          <a href="/quiz" class="btn btn-secondary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            Practice with a past paper
+          </a>
+        </section>
+
+        <section class="upload">
+          <div class="upload-label">Got new material?</div>
+          <div class="dropzone" id="dropzone" tabindex="0" role="button"
+               aria-label="Upload a worksheet, photo, or PDF">
+            <div class="dropzone-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div class="dropzone-primary">Drop a worksheet, photo, or PDF</div>
+            <div class="dropzone-secondary" id="dropzoneSub">I'll add it to your subject</div>
+          </div>
+          <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg" style="display:none" />
+          <div class="upload-result" id="uploadResult" role="status" aria-live="polite"></div>
+        </section>
+
       </div>
-      <div class="pct-badge" id="pctBadge">—</div>
-    </section>
+    </main>
 
-    <!-- Actions -->
-    <section class="actions">
-      <a href="/plan" class="btn btn-primary">Continue studying →</a>
-      <!-- Deep-links to the objective map in Study (the container's id), which
-           auto-scrolls into view on arrival (see study_plan.html loadObjectiveMap). -->
-      <a href="/plan#objectiveMap" class="btn btn-secondary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-        Browse all topics
-      </a>
-      <a href="/quiz" class="btn btn-secondary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Practice with a past paper
-      </a>
-    </section>
-
-    <!-- Upload -->
-    <section class="upload">
-      <div class="upload-label">Got new material?</div>
-      <div class="dropzone" id="dropzone" tabindex="0" role="button"
-           aria-label="Upload a worksheet, photo, or PDF">
-        <div class="dropzone-icon">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </div>
-        <div class="dropzone-primary">Drop a worksheet, photo, or PDF</div>
-        <div class="dropzone-secondary" id="dropzoneSub">I'll add it to your subject</div>
+    <!-- Right: due today panel -->
+    <aside class="due-panel" aria-label="Due today">
+      <div class="due-header">
+        <span class="due-title">Due today</span>
+        <span class="due-count zero" id="dueCount">—</span>
       </div>
-      <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg" style="display:none" />
-      <div class="upload-result" id="uploadResult" role="status" aria-live="polite"></div>
-    </section>
+      <div class="due-list" id="dueList">
+        <!-- skeleton placeholders while loading -->
+        <div class="due-skeleton"></div>
+        <div class="due-skeleton"></div>
+        <div class="due-skeleton"></div>
+      </div>
+      <div class="due-footer" id="dueFooter" style="display:none">
+        <a href="/plan" class="btn btn-primary" id="startReviewBtn">
+          Start today&#x2019;s review &#x2192;
+        </a>
+      </div>
+    </aside>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <button type="button" class="builder-link" id="builderLink">Builder</button>
-    </footer>
-  </div>
+  </div><!-- /.shell -->
 
-  <!-- PIN modal -->
-  <div class="modal-overlay" id="pinModal">
+  <!-- Builder PIN modal -->
+  <div class="modal-overlay" id="pinModal" role="dialog" aria-modal="true" aria-labelledby="pinModalTitle">
     <div class="modal">
-      <div class="modal-title">Enter builder PIN</div>
-      <input type="password" inputmode="numeric" class="pin-input" id="pinInput" maxlength="12" aria-label="Builder PIN" />
-      <div class="pin-error" id="pinError"></div>
+      <div class="modal-title" id="pinModalTitle">Enter builder PIN</div>
+      <input type="password" inputmode="numeric" class="pin-input" id="pinInput"
+             maxlength="12" aria-label="Builder PIN" />
+      <div class="pin-error" id="pinError" role="alert"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="pinCancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="pinSubmit">Enter</button>
+        <button type="button" class="btn btn-primary"   id="pinSubmit">Enter</button>
       </div>
     </div>
   </div>
 
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const state = { subjects: [], current: null };
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = { subjects: [], current: null, objMap: {} }; // objMap: id → content_stmt
 
-    function escapeHtml(s) {
-      const d = document.createElement('div');
-      d.textContent = s == null ? '' : String(s);
-      return d.innerHTML;
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+function displayNameFor(sid) {
+  const s = state.subjects.find(x => x.subject_id === sid);
+  return s ? s.display_name : sid;
+}
+
+/* ------------------------------------------------------------------ */
+/* Subject sidebar                                                      */
+/* ------------------------------------------------------------------ */
+function renderSubjectList() {
+  const list = $('subjectList');
+  list.innerHTML = '';
+  if (!state.subjects.length) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'padding:10px 16px;font-size:12px;color:var(--text-faint)';
+    msg.textContent = 'No subjects yet.';
+    list.appendChild(msg);
+    return;
+  }
+  state.subjects.forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'subject-btn' + (s.subject_id === state.current ? ' active' : '');
+    btn.setAttribute('aria-pressed', s.subject_id === state.current ? 'true' : 'false');
+    btn.dataset.sid = s.subject_id;
+    btn.innerHTML =
+      '<span class="subject-dot" aria-hidden="true"></span>' +
+      '<span class="subject-btn-text">' + escapeHtml(s.display_name) + '</span>';
+    btn.addEventListener('click', () => selectSubject(s.subject_id));
+    list.appendChild(btn);
+  });
+}
+
+async function loadSubjects() {
+  try {
+    const res = await fetch('/api/subjects');
+    if (res.ok) state.subjects = await res.json();
+  } catch { state.subjects = []; }
+  if (!Array.isArray(state.subjects)) state.subjects = [];
+
+  let current = null;
+  try {
+    const r = await fetch('/api/state/subject');
+    if (r.ok) current = (await r.json()).subject_id;
+  } catch { /* fall through */ }
+  if (!current && state.subjects.length) current = state.subjects[0].subject_id;
+  state.current = current;
+  renderSubjectList();
+}
+
+async function selectSubject(sid) {
+  state.current = sid;
+  renderSubjectList();
+  try {
+    await fetch('/api/state/subject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject_id: sid }),
+    });
+  } catch { /* keep going */ }
+  // Reset obj map so due panel fetches fresh stmts for the new subject
+  state.objMap = {};
+  // Fire both refreshes in parallel
+  loadStatus();
+  loadDuePanel();
+  updateDropzoneSub();
+}
+
+/* ------------------------------------------------------------------ */
+/* Progress status row                                                  */
+/* ------------------------------------------------------------------ */
+async function loadStatus() {
+  const sid = state.current;
+  $('statusSubject').textContent = displayNameFor(sid) || '';
+  if (!sid) {
+    $('statusLine').textContent = 'No subject set up yet.';
+    $('pctBadge').textContent = '—';
+    return;
+  }
+  let mastered = 0, total = 0, pct = 0, due = 0;
+  try {
+    const r = await fetch('/api/plan/progress/' + encodeURIComponent(sid));
+    if (r.ok) {
+      const p = await r.json();
+      mastered = p.mastered ?? 0;
+      total    = p.total   ?? 0;
+      pct      = p.percent_mastered ?? 0;
     }
-    function displayNameFor(id) {
-      const s = state.subjects.find(x => x.subject_id === id);
-      return s ? s.display_name : id;
+  } catch { /* leave zeros */ }
+  try {
+    const d = await fetch('/api/due/' + encodeURIComponent(sid));
+    if (d.ok) { const list = await d.json(); due = Array.isArray(list) ? list.length : 0; }
+  } catch { /* leave zero */ }
+  $('statusLine').textContent = mastered + ' of ' + total + ' mastered · ' + due + ' due today';
+  $('pctBadge').textContent   = pct + '%';
+}
+
+function updateDropzoneSub() {
+  const name = displayNameFor(state.current);
+  $('dropzoneSub').textContent = name ? "I'll add it to " + name : "I'll add it to your subject";
+}
+
+/* ------------------------------------------------------------------ */
+/* DUE TODAY panel                                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Fetch objective content_stmts for the current subject once, cache in state.objMap.
+ * Uses /api/objectives/{subject} (lightweight, no session data needed).
+ */
+async function ensureObjMap(sid) {
+  if (state.objMap._loaded === sid) return; // already loaded for this subject
+  try {
+    const res = await fetch('/api/objectives/' + encodeURIComponent(sid));
+    if (res.ok) {
+      const rows = await res.json();
+      state.objMap = { _loaded: sid };
+      rows.forEach(r => { state.objMap[r.objective_id] = r.content_stmt; });
     }
+  } catch { /* leave map empty */ }
+}
 
-    /* ---- Subjects + sticky selection ---- */
-    async function loadSubjects() {
-      try {
-        const res = await fetch('/api/subjects');
-        if (res.ok) state.subjects = await res.json();
-      } catch { state.subjects = []; }
-      if (!Array.isArray(state.subjects)) state.subjects = [];
+function boxClass(n) {
+  const b = parseInt(n, 10);
+  return Number.isFinite(b) ? 'box-' + Math.min(Math.max(b, 1), 5) : '';
+}
+function boxLabel(n) { return 'Box ' + n; }
 
-      let current = null;
-      try {
-        const r = await fetch('/api/state/subject');
-        if (r.ok) current = (await r.json()).subject_id;
-      } catch { /* fall back below */ }
-      if (!current && state.subjects.length) current = state.subjects[0].subject_id;
-      state.current = current;
+async function loadDuePanel() {
+  const sid = state.current;
+  if (!sid) { renderDueEmpty('No subject selected.', ''); return; }
 
-      const sel = $('subjectSelect');
-      sel.innerHTML = '';
-      state.subjects.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.subject_id;
-        opt.textContent = s.display_name;
-        if (s.subject_id === current) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    }
+  // Show skeletons while loading
+  $('dueList').innerHTML =
+    '<div class="due-skeleton"></div>' +
+    '<div class="due-skeleton"></div>' +
+    '<div class="due-skeleton"></div>';
+  $('dueCount').className = 'due-count zero';
+  $('dueCount').textContent = '—';
+  $('dueFooter').style.display = 'none';
 
-    async function onSubjectChange() {
-      const sid = $('subjectSelect').value;
-      state.current = sid;
-      try {
-        await fetch('/api/state/subject', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject_id: sid }),
-        });
-      } catch { /* keep going — the status reload still reflects the picked subject */ }
-      loadStatus();   // reload just the status section, not the whole page
-      updateDropzoneSub();
-    }
+  let dueRows = [];
+  try {
+    const res = await fetch('/api/due/' + encodeURIComponent(sid));
+    if (res.ok) dueRows = await res.json();
+    if (!Array.isArray(dueRows)) dueRows = [];
+  } catch {
+    renderDueError();
+    return;
+  }
 
-    /* ---- Status row (reuses the same endpoints /plan uses) ---- */
-    async function loadStatus() {
-      const sid = state.current;
-      $('statusSubject').textContent = displayNameFor(sid) || '';
-      if (!sid) { $('statusLine').textContent = 'No subject set up yet.'; return; }
+  // Load content stmts (cached after first call per subject)
+  await ensureObjMap(sid);
 
-      let mastered = 0, total = 0, pct = 0, due = 0;
-      try {
-        const r = await fetch(`/api/plan/progress/${encodeURIComponent(sid)}`);
-        if (r.ok) {
-          const p = await r.json();
-          mastered = p.mastered ?? 0; total = p.total ?? 0; pct = p.percent_mastered ?? 0;
-        }
-      } catch { /* leave zeros */ }
-      try {
-        const d = await fetch(`/api/due/${encodeURIComponent(sid)}`);
-        if (d.ok) { const list = await d.json(); due = Array.isArray(list) ? list.length : 0; }
-      } catch { /* leave zero */ }
+  if (dueRows.length === 0) {
+    renderDueAllClear();
+    return;
+  }
 
-      $('statusLine').textContent = `${mastered} of ${total} mastered · ${due} due today`;
-      $('pctBadge').textContent = `${pct}%`;
-    }
+  // Render cards
+  const countEl = $('dueCount');
+  countEl.textContent = dueRows.length;
+  countEl.className = 'due-count';
 
-    function updateDropzoneSub() {
-      const name = displayNameFor(state.current);
-      $('dropzoneSub').textContent = name ? `I'll add it to ${name}` : "I'll add it to your subject";
-    }
+  const list = $('dueList');
+  list.innerHTML = '';
+  dueRows.forEach(row => {
+    const stmt = state.objMap[row.objective_id] || '';
+    const score = (row.score_pct != null) ? row.score_pct : null;
+    const isLow = score !== null && score < 50;
 
-    /* ---- Student upload ---- */
-    function showUploadResult(kind, text, icon) {
-      const el = $('uploadResult');
-      el.className = 'upload-result visible ' + kind;
-      el.innerHTML = (icon || '') + '<span>' + escapeHtml(text) + '</span>';
-    }
-    const ICON_CHECK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    const a = document.createElement('a');
+    a.href = '/plan?objective=' + encodeURIComponent(row.objective_id);
+    a.className = 'due-card';
+    a.setAttribute('aria-label',
+      row.objective_id + ', Box ' + row.leitner_box +
+      (score !== null ? ', last score ' + score + '%' : '') +
+      (stmt ? ', ' + stmt : ''));
 
-    async function uploadFile(file) {
-      if (!file) return;
-      const dz = $('dropzone');
-      dz.classList.add('busy');
-      showUploadResult('review', `Reading ${file.name}…`, '');
-      try {
-        const form = new FormData();
-        if (state.current) form.append('subject_id', state.current);
-        form.append('file', file);
-        const res = await fetch('/api/student-upload', { method: 'POST', body: form });
-        const data = await res.json().catch(() => ({ ok: false, outcome: 'error' }));
+    a.innerHTML =
+      '<div class="due-card-top">' +
+        '<span class="due-oid">' + escapeHtml(row.objective_id) + '</span>' +
+        '<span class="due-box ' + boxClass(row.leitner_box) + '">' +
+          boxLabel(row.leitner_box) +
+        '</span>' +
+      '</div>' +
+      (stmt ? '<div class="due-stmt">' + escapeHtml(stmt) + '</div>' : '') +
+      (score !== null
+        ? '<div class="due-score' + (isLow ? ' low' : '') + '">Last score: ' + score + '%</div>'
+        : '');
 
-        if (data.ok && data.outcome === 'added') {
-          showUploadResult('success', `Added to ${data.section || 'your notes'}`, ICON_CHECK);
-          loadStatus();
-        } else if (data.ok && data.outcome === 'needs_review') {
-          showUploadResult('review', 'Got it — saved for review', '');
-        } else {
-          showUploadResult('error', data.message || 'Something went wrong — try again later.', '');
-        }
-      } catch {
-        showUploadResult('error', 'Something went wrong — try again later.', '');
-      } finally {
-        dz.classList.remove('busy');
-        $('fileInput').value = '';
-      }
-    }
+    list.appendChild(a);
+  });
 
-    function wireDropzone() {
-      const dz = $('dropzone'), input = $('fileInput');
-      dz.addEventListener('click', () => input.click());
-      dz.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
-      });
-      input.addEventListener('change', () => uploadFile(input.files[0]));
-      ['dragenter', 'dragover'].forEach(ev =>
-        dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('dragover'); }));
-      ['dragleave', 'drop'].forEach(ev =>
-        dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('dragover'); }));
-      dz.addEventListener('drop', (e) => {
-        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f) uploadFile(f);
-      });
-    }
+  $('dueFooter').style.display = 'block';
+  $('startReviewBtn').textContent = 'Start today’s review →';
+}
 
-    /* ---- Builder PIN gate ---- */
-    let pinAttempts = 0;
-    function openPin() {
-      $('pinError').textContent = '';
-      $('pinInput').value = '';
-      $('pinModal').classList.add('visible');
-      $('pinInput').focus();
-    }
-    function closePin() { $('pinModal').classList.remove('visible'); }
-    async function submitPin() {
-      const pin = $('pinInput').value.trim();
-      if (!pin) return;
-      try {
-        const res = await fetch('/api/builder/verify-pin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin }),
-        });
-        const data = await res.json().catch(() => ({ ok: false }));
-        if (data.ok) { sessionStorage.setItem('builder_ok', '1'); closePin(); window.location.href = '/builder'; return; }
-      } catch { /* treated as a wrong attempt below */ }
-      pinAttempts += 1;
-      if (pinAttempts >= 3) {
-        closePin();   // three wrong tries: hide until a page refresh
-      } else {
-        $('pinError').textContent = 'Incorrect PIN.';
-        $('pinInput').value = '';
-        $('pinInput').focus();
-      }
-    }
-    function wireBuilder() {
-      $('builderLink').addEventListener('click', openPin);
-      $('pinCancel').addEventListener('click', closePin);
-      $('pinSubmit').addEventListener('click', submitPin);
-      $('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
-      $('pinModal').addEventListener('click', (e) => { if (e.target === $('pinModal')) closePin(); });
-    }
+function renderDueEmpty(msg, sub) {
+  $('dueList').innerHTML =
+    '<div class="due-state">' +
+    (sub ? '<span class="due-tick">' + sub + '</span>' : '') +
+    escapeHtml(msg) +
+    '</div>';
+  $('dueCount').textContent = '0';
+  $('dueCount').className = 'due-count zero';
+  $('dueFooter').style.display = 'none';
+}
 
-    /* ---- Init ---- */
-    (async function init() {
-      $('subjectSelect').addEventListener('change', onSubjectChange);
-      wireDropzone();
-      wireBuilder();
-      await loadSubjects();
-      updateDropzoneSub();
+function renderDueAllClear() {
+  $('dueList').innerHTML =
+    '<div class="due-state">' +
+    '<span class="due-tick">&#x2713;</span>' +
+    'All caught up!' +
+    '<div class="due-state-sub">Nothing due right now.<br>Keep studying to add more.</div>' +
+    '</div>';
+  $('dueCount').textContent = '0';
+  $('dueCount').className = 'due-count zero';
+  $('dueFooter').style.display = 'none';
+}
+
+function renderDueError() {
+  $('dueList').innerHTML =
+    '<div class="due-state" style="color:var(--text-faint)">' +
+    'Couldn’t load due items.<br>' +
+    '<span class="due-state-sub">Try refreshing the page.</span>' +
+    '</div>';
+  $('dueCount').textContent = '—';
+  $('dueCount').className = 'due-count zero';
+  $('dueFooter').style.display = 'none';
+}
+
+/* ------------------------------------------------------------------ */
+/* Student file upload                                                  */
+/* ------------------------------------------------------------------ */
+const ICON_CHECK =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="20 6 9 17 4 12"/></svg>';
+
+function showUploadResult(kind, text, icon) {
+  const el = $('uploadResult');
+  el.className = 'upload-result visible ' + kind;
+  el.innerHTML = (icon || '') + '<span>' + escapeHtml(text) + '</span>';
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  const dz = $('dropzone');
+  dz.classList.add('busy');
+  showUploadResult('review', 'Reading ' + file.name + '…', '');
+  try {
+    const form = new FormData();
+    if (state.current) form.append('subject_id', state.current);
+    form.append('file', file);
+    const res  = await fetch('/api/student-upload', { method: 'POST', body: form });
+    const data = await res.json().catch(() => ({ ok: false, outcome: 'error' }));
+    if (data.ok && data.outcome === 'added') {
+      showUploadResult('success', 'Added to ' + (data.section || 'your notes'), ICON_CHECK);
       loadStatus();
-    })();
-  </script>
+    } else if (data.ok && data.outcome === 'needs_review') {
+      showUploadResult('review', 'Got it — saved for review', '');
+    } else {
+      showUploadResult('error', data.message || 'Something went wrong — try again later.', '');
+    }
+  } catch {
+    showUploadResult('error', 'Something went wrong — try again later.', '');
+  } finally {
+    dz.classList.remove('busy');
+    $('fileInput').value = '';
+  }
+}
+
+function wireDropzone() {
+  const dz    = $('dropzone');
+  const input = $('fileInput');
+  dz.addEventListener('click', () => input.click());
+  dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+  input.addEventListener('change', () => uploadFile(input.files[0]));
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave','drop'].forEach(ev =>    dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('dragover'); }));
+  dz.addEventListener('drop', (e) => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) uploadFile(f);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Builder PIN                                                          */
+/* ------------------------------------------------------------------ */
+let pinAttempts = 0;
+function openPin()  { $('pinError').textContent = ''; $('pinInput').value = ''; $('pinModal').classList.add('visible'); $('pinInput').focus(); }
+function closePin() { $('pinModal').classList.remove('visible'); }
+async function submitPin() {
+  const pin = $('pinInput').value.trim();
+  if (!pin) return;
+  try {
+    const res  = await fetch('/api/builder/verify-pin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const data = await res.json().catch(() => ({ ok: false }));
+    if (data.ok) { sessionStorage.setItem('builder_ok', '1'); closePin(); window.location.href = '/builder'; return; }
+  } catch { /* wrong */ }
+  pinAttempts += 1;
+  if (pinAttempts >= 3) { closePin(); }
+  else { $('pinError').textContent = 'Incorrect PIN.'; $('pinInput').value = ''; $('pinInput').focus(); }
+}
+function wireBuilder() {
+  $('builderLink').addEventListener('click', openPin);
+  $('pinCancel').addEventListener('click', closePin);
+  $('pinSubmit').addEventListener('click', submitPin);
+  $('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
+  $('pinModal').addEventListener('click', (e) => { if (e.target === $('pinModal')) closePin(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('pinModal').classList.contains('visible')) closePin(); });
+}
+
+/* ------------------------------------------------------------------ */
+/* Init                                                                 */
+/* ------------------------------------------------------------------ */
+(async function init() {
+  wireDropzone();
+  wireBuilder();
+  await loadSubjects();
+  updateDropzoneSub();
+  // Fire status + due panel in parallel
+  loadStatus();
+  loadDuePanel();
+})();
+</script>
 </body>
 </html>
