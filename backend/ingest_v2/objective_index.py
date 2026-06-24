@@ -39,11 +39,21 @@ class ObjectiveIndex:
     def __init__(self, db: sqlite3.Connection, subject_id: str):
         self.subject_id = subject_id
         self.prefix = prefix_for(subject_id)
-        # Full objective rows (objective_id, content_stmt) for keyword matching.
+        # Objective rows for keyword matching. match_text = content_stmt + parent
+        # section/topic title (v1_ingest.build_match_text), so a chunk that names the
+        # topic but not the terse content_stmt still reaches the threshold. LEFT JOIN
+        # keeps an objective whose section row is missing (match_text -> content_stmt).
         self._objectives = [
-            {"objective_id": r["objective_id"], "content_stmt": r["content_stmt"]}
+            {
+                "objective_id": r["objective_id"],
+                "content_stmt": r["content_stmt"],
+                "match_text": v1_ingest.build_match_text(r["content_stmt"], r["section_title"]),
+            }
             for r in db.execute(
-                "SELECT objective_id, content_stmt FROM objectives WHERE subject_id = ?",
+                "SELECT o.objective_id, o.content_stmt, s.title AS section_title "
+                "FROM objectives o "
+                "LEFT JOIN syllabus_sections s ON s.section_id = o.section_id "
+                "WHERE o.subject_id = ?",
                 (subject_id,),
             ).fetchall()
         ]

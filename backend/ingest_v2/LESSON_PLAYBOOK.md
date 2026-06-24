@@ -194,6 +194,49 @@ future subjects too).
   Don't use it to pre-screen objectives or to second-guess a
   `insufficient_source` result — Sonnet's own content judgment is the
   real (and only useful) signal.
-- A `quality_check_failed` on the recall-question format has so far
-  always resolved cleanly on a single retry. Treat it as noise unless
-  it repeats on the same objective.
+- A `quality_check_failed` on the recall-question format USUALLY
+  resolves cleanly on a single retry (treat a one-off as noise) — BUT
+  there is one systematic exception that will NOT clear no matter how
+  many times you retry: see the validator gap below. If the same
+  objective fails the recall check 2–3 times running, stop spinning
+  (each retry is a billed Sonnet call) and check whether it is the
+  scenario-first calculation case.
+
+- **Recall-question validator gap — scenario-first calculation prompts
+  (latent rollout blocker).** `_validate_lesson_quality` in
+  `ingest_lessons.py` accepts a recall question only when it *ends in
+  `?`* OR *starts with a CSEC command word* (`_RECALL_COMMAND_WORDS`).
+  That rule wrongly rejects a perfectly valid calculation prompt where
+  the command word appears MID-sentence after a numeric scenario. Real
+  example caught on Economics **ECON-3.14** ("Calculate price elasticity
+  of supply"), which Sonnet composed correctly (`status: ok`) with the
+  recall question:
+    > "A firm's quantity supplied increases from 200 units to 260 units
+    > when the price rises from $5.00 to $10.00. Using the simple PES
+    > formula, calculate the Price Elasticity of Supply and state whether
+    > supply is elastic or inelastic."
+  This ends in a period (not `?`) and starts with "A firm's…" (the
+  scenario), so the gate rejects it — even though `calculate` and
+  `state` are present and correct. Every retry fails identically because
+  Sonnet keeps (rightly) writing scenario-first numeric prompts; this is
+  NOT noise.
+  - **Why it matters beyond Economics:** ANY subject with
+    numeric/Calculate objectives hits the same wall. **Mathematics** and
+    **Principles_of_Accounts** will have MANY such objectives — for them
+    this is a blocker, not an edge case. (Economics' other Calculate
+    objectives only wrote because their recall questions happened to open
+    with the literal word "Calculate"; the moment Sonnet sets up a
+    scenario first, the gate rejects.)
+  - **Proposed fix (precise, so it needs no re-diagnosis):** broaden the
+    accept-rule so a recall question also passes if it CONTAINS a CSEC
+    command word as a whole word ANYWHERE (not only at the start), in
+    addition to the existing ends-in-`?` / starts-with-command-word
+    cases. ~2-line change in `_validate_lesson_quality` +
+    `_RECALL_COMMAND_WORDS` usage, plus one test (a scenario-first
+    calculation prompt must pass). The validator's OTHER gates — length
+    floor, chat-boilerplate filter, answer-leak check — are independent
+    of this and MUST stay exactly as-is (do not loosen them).
+  - **Current status:** ECON-3.14 is queued on THIS gap, not a content
+    gap. It will write cleanly the moment the fix lands — no new content
+    needed. Decision pending; not yet implemented (deliberately deferred,
+    documented here so it is actionable later without re-investigating).

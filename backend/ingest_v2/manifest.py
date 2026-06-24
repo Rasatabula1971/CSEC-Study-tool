@@ -54,6 +54,11 @@ class SubjectManifest(BaseModel):
     # Deliberately separate from extra_source_roots: a subject may want one without
     # the other.
     enable_office_adapter: bool = False
+    # Opt-in: include MarkdownNotesAdapter in this subject's dispatch (claims .md notes
+    # that no specialised adapter owns -- Supplemental/Miss-Francois/KCR/Collins .md).
+    # Default False so a subject that does not set it (e.g. POB) excludes the markdown
+    # adapter entirely -- v1 never ingested .md, so this preserves test_pob_parity.
+    enable_markdown_adapter: bool = False
     # Additional corpus roots walked alongside source_root (e.g. purpose-built
     # Bridge/Supplemental notes staged outside the main corpus tree). Empty by
     # default so existing subjects walk only source_root, unchanged.

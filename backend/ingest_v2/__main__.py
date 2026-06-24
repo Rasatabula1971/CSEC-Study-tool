@@ -69,7 +69,8 @@ def main() -> None:
         _flags = load_manifest(manifest_path, check_paths=False)
     except ManifestError as e:
         sys.exit(f"ERROR: {e}")
-    wire_adapters(enable_office_adapter=_flags.enable_office_adapter)
+    wire_adapters(enable_office_adapter=_flags.enable_office_adapter,
+                  enable_markdown_adapter=_flags.enable_markdown_adapter)
     db = v1.open_db(db_path)
     try:
         if not args.dry_run:

@@ -17,20 +17,26 @@ from backend.ingest_v2.adapters.caribbean_ai import CaribbeanAIAdapter
 from backend.ingest_v2.adapters.moe_slms import MoESLMSAdapter
 from backend.ingest_v2.adapters.kerwin_mcq import KerwinMCQAdapter
 from backend.ingest_v2.adapters.generic_office import GenericOfficeAdapter
+from backend.ingest_v2.adapters.markdown_notes import MarkdownNotesAdapter
 from backend.ingest_v2.adapters.generic_pdf import GenericPDFAdapter
 
 
-def wire_adapters(enable_office_adapter: bool = False) -> None:
+def wire_adapters(enable_office_adapter: bool = False,
+                  enable_markdown_adapter: bool = False) -> None:
     """Register the production adapter set, in dispatch order.
 
-    GenericOfficeAdapter is included ONLY when enable_office_adapter is True (a
-    per-subject opt-in read from the manifest). It sits AFTER MoESLMSAdapter -- so a
+    GenericOfficeAdapter and MarkdownNotesAdapter are each included ONLY when their
+    per-subject manifest opt-in is True. They sit AFTER MoESLMSAdapter -- so a
     .docx/.pptx under Notes\\T&T MoE SLMS is claimed by MoESLMSAdapter first -- and
-    before GenericPDFAdapter, which stays last as the .pdf catch-all. A subject that
-    leaves the flag False (e.g. POB) never has the Office adapter in its dispatch, so
-    its loose Office files remain unclaimed exactly as before (test_pob_parity)."""
+    before GenericPDFAdapter, which stays last as the .pdf catch-all. (Order between
+    the office and markdown adapters is irrelevant: they claim disjoint extensions.)
+    A subject that leaves a flag False (e.g. POB) never has that adapter in its
+    dispatch, so its loose Office/.md files remain unclaimed exactly as before
+    (test_pob_parity -- v1 ingested neither)."""
     order = [CaribbeanAIAdapter, MoESLMSAdapter, KerwinMCQAdapter]
     if enable_office_adapter:
         order.append(GenericOfficeAdapter)
+    if enable_markdown_adapter:
+        order.append(MarkdownNotesAdapter)
     order.append(GenericPDFAdapter)
     register_adapters(*order)

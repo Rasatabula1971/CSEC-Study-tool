@@ -143,11 +143,36 @@ def tokenize(s: str) -> set[str]:
     }
 
 
-def _match_objective(ctoks: set, objectives: list[dict]) -> tuple[str | None, int]:
-    """(objective_id, score) for the highest keyword-overlap objective, no threshold."""
+def build_match_text(content_stmt: str, section_title: str | None) -> str:
+    """The keyword-overlap matching corpus for one objective: its content_stmt PLUS
+    its parent section/topic title (e.g. 'HOUSEHOLD CHEMICALS', 'UNITS OF LIFE').
+
+    The terse content_stmt alone ('Examine the conditions which cause rusting') often
+    shares fewer than MIN_KEYWORD_OVERLAP content words with vocabulary-rich source
+    prose, so real topic content lands in review. Folding in the topic title adds the
+    shared topic vocabulary, lifting genuine topic content over the threshold WITHOUT
+    lowering it (junk like dotted leaders / answer blanks still scores 0 -- it matches
+    neither the statement nor the title). MIN_KEYWORD_OVERLAP stays 2.
+    """
+    cs = (content_stmt or "").strip()
+    title = (section_title or "").strip()
+    return f"{cs} {title}".strip() if title else cs
+
+
+def _match_objective(ctoks: set, objectives: list[dict],
+                     use_title: bool = True) -> tuple[str | None, int]:
+    """(objective_id, score) for the highest keyword-overlap objective, no threshold.
+
+    use_title=True matches against obj['match_text'] (content_stmt + section title)
+    when present; use_title=False matches content_stmt ONLY. Both fall back to
+    content_stmt for callers that build bare objective dicts (tests)."""
     best_id, best_score = None, 0
     for obj in objectives:
-        shared = len(ctoks & tokenize(obj["content_stmt"]))
+        if use_title:
+            text = obj.get("match_text") or obj["content_stmt"]
+        else:
+            text = obj["content_stmt"]
+        shared = len(ctoks & tokenize(text))
         if shared > best_score:
             best_id, best_score = obj["objective_id"], shared
     return best_id, best_score
@@ -166,6 +191,15 @@ def best_objective(chunk: str, objectives: list[dict],
     objectives first; a confident hit there wins. The full-syllabus search runs only
     when no preferred objective clears the threshold -- so the classification steers
     binding without ever forcing a weak match.
+
+    Section-title enrichment is applied as a TWO-PASS rescue, not a blanket change:
+    pass 1 matches content_stmt ONLY, so a chunk that already binds confidently keeps
+    the exact objective it had before (preserves existing bindings -- POB/Economics
+    parity is untouched, since their already-bound chunks are decided identically).
+    Pass 2 runs only for a chunk that pass 1 leaves below threshold (i.e. would go to
+    review): it retries against content_stmt + section title to rescue genuine topic
+    content. The threshold is never lowered. Net effect: review shrinks (rescued
+    chunks bind) with ZERO rebinding of already-confident chunks.
     """
     ctoks = tokenize(chunk)
     if not ctoks:
@@ -177,10 +211,17 @@ def best_objective(chunk: str, objectives: list[dict],
             pid, pscore = _match_objective(ctoks, pref)
             if pscore >= min_overlap:
                 return pid, pscore
-    best_id, best_score = _match_objective(ctoks, objectives)
-    if best_score >= min_overlap:
-        return best_id, best_score
-    return None, best_score
+    # Pass 1: content_stmt only -- identical to the pre-enrichment matcher, so any
+    # chunk that bound confidently before binds to the same objective now.
+    cid, cscore = _match_objective(ctoks, objectives, use_title=False)
+    if cscore >= min_overlap:
+        return cid, cscore
+    # Pass 2: rescue a sub-threshold (review-bound) chunk with the section-title-
+    # enriched corpus. Only ever moves a chunk OUT of review, never rebinds.
+    tid, tscore = _match_objective(ctoks, objectives, use_title=True)
+    if tscore >= min_overlap:
+        return tid, tscore
+    return None, max(cscore, tscore)
 
 
 # Each award point begins on its own line with a bullet (-, *, •) or an
@@ -386,9 +427,20 @@ def assert_subject_locked(db: sqlite3.Connection, subject_id: str) -> None:
 
 
 def load_objectives(db: sqlite3.Connection, subject_id: str) -> list[dict]:
+    """Objectives for keyword matching, each carrying a 'match_text' = content_stmt +
+    parent section/topic title (see build_match_text). LEFT JOIN so an objective with
+    no section row still yields a row (match_text falls back to content_stmt)."""
     return [
-        dict(r) for r in db.execute(
-            "SELECT objective_id, content_stmt FROM objectives WHERE subject_id = ?",
+        {
+            "objective_id": r["objective_id"],
+            "content_stmt": r["content_stmt"],
+            "match_text": build_match_text(r["content_stmt"], r["section_title"]),
+        }
+        for r in db.execute(
+            "SELECT o.objective_id, o.content_stmt, s.title AS section_title "
+            "FROM objectives o "
+            "LEFT JOIN syllabus_sections s ON s.section_id = o.section_id "
+            "WHERE o.subject_id = ?",
             (subject_id,),
         ).fetchall()
     ]

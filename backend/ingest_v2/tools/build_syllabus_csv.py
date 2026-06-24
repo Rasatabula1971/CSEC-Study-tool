@@ -64,15 +64,20 @@ from backend.ingest_v2.subject_prefix import prefix_for
 # ---------------------------------------------------------------------------
 
 # "SECTION 2: PRODUCTION, ECONOMIC RESOURCES AND RESOURCE ALLOCATION"
-SECTION_RE = re.compile(r"^SECTION\s+(\d+):\s*(.+)$")
+# Section number widened from (\d+) to ([\d.]+) so dotted composite section
+# numbers (e.g. Integrated Science's "SECTION 2.1:" = module.topic) parse too.
+# Verified non-regressive for POB (sections 1-10) and Economics (1-8): plain
+# integer section numbers match identically under both patterns.
+SECTION_RE = re.compile(r"^SECTION\s+([\d.]+):\s*(.+)$")
 
 # CXC command verbs, canonical Title-Case (matching the live DB). Scanned
 # case-insensitively as whole words; output preserves order of first appearance.
 COMMAND_VERBS = [
     "Define", "State", "List", "Identify", "Name", "Outline",
-    "Explain", "Describe", "Distinguish", "Illustrate",
+    "Explain", "Describe", "Distinguish", "Differentiate", "Illustrate", "Relate",
     "Use", "Apply", "Calculate", "Compute", "Discuss",
-    "Analyse", "Analyze", "Evaluate", "Assess", "Compare",
+    "Analyse", "Analyze", "Evaluate", "Assess", "Examine", "Investigate",
+    "Appraise", "Recommend", "Determine", "Compare",
     "Contrast", "Justify", "Draw", "Sketch", "Construct", "Interpret",
 ]
 
@@ -82,14 +87,19 @@ COMMAND_VERBS = [
 # not the original spec's starting table: "discuss" and "interpret" sit in
 # Understanding (POB stores them that way), and "differentiate" joins "distinguish"
 # (functionally identical) in Understanding. "classify" was already Understanding.
+# Integrated Science adds verbs absent from POB/Economics; these are placed by CXC's
+# skill bands (the syllabus' "KC, UK and XS" abilities): "examine"/"investigate"
+# (close inspection / experimental work) and "appraise"/"recommend"/"determine"
+# (critical judgement / working a result out, like evaluate/assess) -> Application;
+# "relate" (show relationships, comprehension) -> Understanding.
 SKILL_APPLICATION = {
     "use", "apply", "calculate", "compute", "analyse", "analyze",
     "evaluate", "assess", "compare", "contrast", "justify", "draw", "sketch",
-    "construct",
+    "construct", "examine", "investigate", "appraise", "recommend", "determine",
 }
 SKILL_UNDERSTANDING = {
     "explain", "describe", "distinguish", "differentiate", "illustrate",
-    "summarize", "classify", "discuss", "interpret",
+    "summarize", "classify", "discuss", "interpret", "relate",
 }
 SKILL_KNOWLEDGE = {
     "define", "state", "list", "identify", "name", "outline",
@@ -116,14 +126,69 @@ def _numeric_key(s: str) -> tuple[int, str]:
 # Field derivation
 # ---------------------------------------------------------------------------
 
-def clean_content_stmt(raw: str) -> str:
-    """Match the live-DB convention: strip trailing ';'/'.', capitalize first char.
+# Curated word-split rejoins: a non-word fragment + short continuation that the
+# PDF wrapped WITHOUT a hyphen, so the de-hyphenation pass can't see it and a
+# general "join short tokens" rule would wreck legitimate phrases ("drug use",
+# "first aid", "the use"). Mirrors the hyphen fix's allowlist philosophy: only
+# join confirmed artifacts, never guess. Applied case-insensitively, whole-token.
+WORD_SPLIT_REJOINS = {
+    "infectio us": "infectious",
+}
+_WORD_SPLIT_RES = {
+    re.compile(rf"\b{re.escape(bad)}\b", re.IGNORECASE): good
+    for bad, good in WORD_SPLIT_REJOINS.items()
+}
 
-    Embedded quotes/commas and internal casing are preserved -- only the leading
-    letter and trailing terminator are normalised."""
+# Curated single-token spelling corrections for unambiguous source typos (the
+# official PDF text itself is misspelled). Whole-word, case-insensitive; only
+# confirmed, non-interpretive fixes belong here.
+TYPO_FIXES = {
+    "conditios": "conditions",
+}
+_TYPO_RES = {
+    re.compile(rf"\b{re.escape(bad)}\b", re.IGNORECASE): good
+    for bad, good in TYPO_FIXES.items()
+}
+
+# A leaked trailing list/section number: a completed sentence ("... word.") with a
+# stray "<n>." appended (the next topic's number bled in during extraction, e.g.
+# "... blood groups. 5."). Conservative: requires the preceding sentence period and
+# a 1-2 digit number, so a genuine trailing number ("... base 10.") is untouched.
+_LEAKED_TRAILING_NUM_RE = re.compile(r"\.\s+\d{1,2}\.?\s*$")
+
+# Trailing CXC list-connector noise: ";", ".", ",", and a dangling "and"/"or" left
+# from list-formatted objectives ("...active transport; and,"). Stripped iteratively
+# in addition to the plain ';'/'.' terminators.
+_TRAILING_PUNCT_RE = re.compile(r"[;.,\s]+$")
+_TRAILING_CONNECTOR_RE = re.compile(r"\b(?:and|or)$", re.IGNORECASE)
+
+
+def clean_content_stmt(raw: str) -> str:
+    """Normalise an objective statement for the live-DB convention.
+
+    Order: (1) rejoin known no-hyphen word-splits; (2) drop a leaked trailing
+    section number; (3) iteratively strip trailing ';'/'.'/',' and dangling
+    'and'/'or' connectors; (4) capitalize the first letter. Embedded quotes/commas
+    and internal casing are preserved."""
     s = (raw or "").strip()
-    while s and s[-1] in ";.":
-        s = s[:-1].rstrip()
+
+    # (1) word-split rejoin (2a) + curated single-token typo corrections
+    for rx, good in _WORD_SPLIT_RES.items():
+        s = rx.sub(good, s)
+    for rx, good in _TYPO_RES.items():
+        s = rx.sub(good, s)
+
+    # (2) leaked trailing section/list number
+    s = _LEAKED_TRAILING_NUM_RE.sub(".", s).strip()
+
+    # (3) trailing punctuation + list connectors (2b), iterated to stability
+    while True:
+        before = s
+        s = _TRAILING_PUNCT_RE.sub("", s)
+        s = _TRAILING_CONNECTOR_RE.sub("", s).rstrip()
+        if s == before:
+            break
+
     if s:
         s = s[0].upper() + s[1:]
     return s

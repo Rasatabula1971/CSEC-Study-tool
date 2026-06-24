@@ -89,14 +89,19 @@ def _normalize_subject_id(subject: str) -> str:
             return canon
     raise ValueError(f"unknown subject: {subject!r}")
 
-# Notes are the primary source. When fewer than MIN_NOTES_CHUNKS come back the
-# composer also pulls past papers and mark schemes so the lesson still has
-# something concrete to rewrite (it just lowers the confidence floor).
+# Notes are the primary source, but the mark-scheme/past-paper pull is ADDITIVE:
+# it runs for every objective, not only when notes are thin. A noisy or
+# heading-only notes top-k (syllabus headings, index lines, duplicate source-card
+# URL fragments) can crowd out the real teaching content, which for some objectives
+# lives in answer keys and past papers (e.g. flotation definitions). Notes still
+# come first and still drive local_confidence_floor; ADDITIVE_K is kept small so the
+# merged set stays bounded.
 NOTES_TABLE = "vec_notes"
 PAST_PAPERS_TABLE = "vec_past_papers"
 MARK_SCHEMES_TABLE = "vec_mark_schemes"
 NOTES_K = 15
-FALLBACK_K = 3
+ADDITIVE_K = 5      # top-K pulled from EACH of past_papers + mark_schemes, always
+FALLBACK_K = 3      # retained for backwards-compat; superseded by ADDITIVE_K
 MIN_NOTES_CHUNKS = 2
 
 # Short table -> display source name, used in the summary "sources" column.
@@ -366,10 +371,13 @@ def candidate_chunks(db: sqlite3.Connection, subject_id: str, objective: dict,
                      embed_fn=ollama_embed) -> list[dict]:
     """Source chunks to ground the lesson in, ordered notes-first.
 
-    Top-5 from vec_notes on the objective's content_stmt. If fewer than
-    MIN_NOTES_CHUNKS notes come back, also pull top-3 from vec_past_papers AND
-    vec_mark_schemes, de-duplicated by chunk.id and appended after the notes
-    (notes stay primary). Returns [] when the objective has no content_stmt.
+    Top-NOTES_K from vec_notes on the objective's content_stmt, ALWAYS followed by
+    top-ADDITIVE_K from vec_past_papers AND vec_mark_schemes (same query), de-duplicated
+    by chunk.id and appended after the notes so notes stay primary. The mark-scheme/
+    past-paper pull is additive (runs for every objective, not just when notes < 2):
+    a noisy/heading-only notes top-k can crowd out the genuine teaching content that
+    lives in answer keys and past papers. Notes remain first and still drive
+    local_confidence_floor. Returns [] when the objective has no content_stmt.
     """
     query = objective.get("content_stmt")
     if not query:
@@ -378,13 +386,12 @@ def candidate_chunks(db: sqlite3.Connection, subject_id: str, objective: dict,
     query_vec = serialize_vec(embed_fn(query))
     chunks = _vec_search(db, NOTES_TABLE, query_vec, subject_id, NOTES_K)
 
-    if len(chunks) < MIN_NOTES_CHUNKS:
-        seen = {c["id"] for c in chunks}
-        for table in (PAST_PAPERS_TABLE, MARK_SCHEMES_TABLE):
-            for c in _vec_search(db, table, query_vec, subject_id, FALLBACK_K):
-                if c["id"] not in seen:
-                    chunks.append(c)
-                    seen.add(c["id"])
+    seen = {c["id"] for c in chunks}
+    for table in (PAST_PAPERS_TABLE, MARK_SCHEMES_TABLE):
+        for c in _vec_search(db, table, query_vec, subject_id, ADDITIVE_K):
+            if c["id"] not in seen:
+                chunks.append(c)
+                seen.add(c["id"])
     return chunks
 
 

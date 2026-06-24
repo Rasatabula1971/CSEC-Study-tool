@@ -10,9 +10,23 @@ enable_office_adapter: true
 extra_source_roots:
   - 'D:\GPT Folder CSEC\App_Upload_Staging\03_KNOWLEDGE_BASE\Economics\04_NOTES\Bridge_Section_8'
   - 'D:\GPT Folder CSEC\App_Upload_Staging\03_KNOWLEDGE_BASE\Economics\04_NOTES\Supplemental_Notes'
+# GAP STATUS (updated 2026-06-22, after the Office-adapter re-ingest + NOTES_K=15):
+# The two original gaps below were RESOLVED by ingesting the Bridge/Supplemental
+# .docx notes via the office adapter -- ECON-6.8 and ECON-8.6 now have written
+# lessons. Three genuine content-DEPTH residuals remain (the corpus names the topic
+# but carries no teachable detail); these are NOT retrieval/ranking issues --
+# NOTES_K=15 and the office re-ingest were both tried and did not resolve these three.
+# Confirmed via Sonnet's own specific refusal reasons (quoted below). The Gopie CSEC
+# textbook covers all three but ingesting it is pending a copyright/licensing decision
+# not yet made:
+#   D:\GPT Folder CSEC\resources\raw\2027\Economics\textbooks_open_books\economics-for-csec-examinations_compress.pdf
 known_gaps:
-  - "S6 Obj8: no Caribbean AI lesson (Nominal/Real/Potential Output)"
-  - "S8 Obj3-6: Caribbean AI coverage stops at Obj2"
+  - "RESOLVED via office adapter: S6 Obj8 (ECON-6.8, Nominal/Real/Potential Output) -- lesson written"
+  - "RESOLVED via office adapter: S8 Obj3-6 (incl. ECON-8.6) -- lesson written"
+  - "ECON-1.2 (Distinguish micro/macroeconomics): corpus names the two branches but gives no definitions, distinguishing characteristics, areas of study, or examples -- cannot teach an Explain-level lesson honestly. Real source-breadth gap, not retrieval."
+  - "ECON-1.7 (Factors affecting economic decisions of economic agents): corpus names the topic and lists household/firm/government as agents but gives no specific factors, definitions, or explanations. Real source-breadth gap, not retrieval."
+  - "ECON-2.11 (Merits/demerits of economic systems): corpus lists merits of the mixed system only; no merits/demerits for the traditional, command, or free-market systems. Real source-breadth gap, not retrieval."
+  - "Gopie CSEC textbook (economics-for-csec-examinations_compress.pdf, path in comment above) covers all three of 1.2/1.7/2.11 -- ingest pending a deliberate copyright/licensing decision, not yet made."
 skip_patterns:
   - '_Review Needed'
   - '_download_*'

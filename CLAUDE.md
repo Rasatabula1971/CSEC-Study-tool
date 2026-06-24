@@ -333,6 +333,35 @@ CREATE VIRTUAL TABLE IF NOT EXISTS vec_mark_schemes
 
 ---
 
+## Subject ID Prefix Convention
+
+Every subject's `objective_id` prefix is derived from
+`backend/ingest_v2/subject_prefix.py`'s `prefix_for(subject_id: str) -> str`,
+backed by the single source-of-truth dict `SUBJECT_PREFIX`:
+
+```python
+SUBJECT_PREFIX = {
+    "Principles_of_Business": "POB",
+    "Economics": "ECON",
+    "Mathematics": "MATH",
+    "English": "ENG",
+    "Principles_of_Accounts": "POA",
+    "Integrated_Science": "INTSCI",
+    "Information_Technology": "IT",
+}
+```
+
+**Never hardcode a prefix in extraction or conversion scripts.** Always call
+`prefix_for(subject_id)` and let it raise `ValueError` on an unrecognized
+subject rather than guessing. Note that `INTSCI` (not the more obvious
+`ISCI`) is correct for Integrated_Science — `ISCI` is only the legacy
+Bridge-filename form, which `test_generic_office.py` enforces gets
+reconciled (rebound) to `INTSCI`, never used as the canonical prefix itself.
+If a new extraction script's output uses the wrong prefix, fix the script —
+do not change `SUBJECT_PREFIX` or the rebind test to match the script.
+
+---
+
 ## sqlite-vec API (Python)
 
 ```python
@@ -540,6 +569,99 @@ def is_in_scope(db: sqlite3.Connection,
 
 ---
 
+## Two-Pass Objective Matching (backend/ingest.py)
+
+`best_objective()` (line ~181, via helper `_match_objective()`) binds a
+chunk to an objective in two passes, never one:
+
+- **Pass 1** — match against `content_stmt` only (`use_title=False`).
+  This preserves every already-confident binding exactly as before.
+- **Pass 2** — only for chunks that fell below threshold in Pass 1, retry
+  against `content_stmt` + the chunk's section/topic title
+  (`use_title=True`). This rescues real content whose vocabulary overlaps
+  the topic title but not the (often terse) objective statement itself —
+  e.g. a chunk about household cleaning agents that doesn't share words
+  with "Examine the effects of..." but does share words with the topic
+  title "HOUSEHOLD CHEMICALS."
+
+`MIN_KEYWORD_OVERLAP = 2` (line ~52) is never lowered to "fix" a thin
+review queue — a threshold of 1 binds nearly as much junk (metadata,
+SBA-admin boilerplate) as real content. If the review queue is still
+real-content-heavy after the two-pass enrichment, the fix is a richer
+matchable corpus (titles, key terms), not a lower threshold.
+
+This change is shared infrastructure (not subject-specific) and is
+regression-checked against POB and Economics before being trusted on any
+new subject — confirm identical match counts on the existing locked
+subjects' corpora before relying on a change here for a new one.
+
+---
+
+## Lesson Retrieval: Additive, Not Conditional Fallback (backend/ingest_lessons.py)
+
+`candidate_chunks()` (line ~370) builds the source set for lesson
+composition. As of the Integrated_Science build, retrieval is **additive**:
+
+- `NOTES_K = 15` — top-15 from `vec_notes`, always pulled first (primary,
+  and what drives `local_confidence_floor`).
+- `ADDITIVE_K = 5` — top-5 from `vec_past_papers` **and** top-5 from
+  `vec_mark_schemes`, always appended after notes, regardless of how many
+  notes chunks were found.
+- `FALLBACK_K` / `MIN_NOTES_CHUNKS` are retained only for backwards
+  compatibility / historical tests — they are no longer the active gate.
+
+**Why the old design failed:** the previous gate only pulled mark-scheme/
+past-paper content when `notes < 2` — i.e. it assumed "few notes results"
+meant "thin content." But a noisy notes corpus (e.g. syllabus-heading
+chunks, textbook index-line fragments, duplicate boilerplate) can return a
+full 15 results that are all low-value, so the gate never fires even though
+the actual teaching content sits, well-ranked, in `vec_mark_schemes`. This
+surfaced on `INTSCI-3.3.7` (flotation): 59 chunks were correctly *bound* to
+the objective, but the top-15 semantic match on the bare `content_stmt`
+query was entirely headings and index lines — the real Archimedes'
+principle definitions ranked outside the top 40 in `vec_notes` but inside
+the top 5 in `vec_mark_schemes` for the identical query.
+
+**Lesson for future subjects:** "few results" and "wrong results" are
+distinct failure modes. A binding-coverage check (does the objective have
+chunks bound at all?) is necessary but not sufficient — also check what the
+*lesson composer's actual retrieval query* surfaces, especially for
+objectives whose syllabus content_stmt is terse or whose corpus leans
+toward textbook front-matter / indexes over teaching prose.
+
+---
+
+## Before Assuming "insufficient_source": Check for a Binding Gap First
+
+If lesson generation reports `insufficient_source` for an objective despite
+the subject's corpus plausibly containing relevant material, do not assume
+the content doesn't exist. Check, in order:
+
+1. Does the objective have any bound chunks at all? If yes, are they
+   actually on-topic (read the chunk text), or did they bind on generic
+   shared words in the content_stmt (e.g. "conditions," "determine")?
+2. Search `ingest_review_queue` for the objective's real subject-matter
+   keywords (not the content_stmt's generic words). Relevant content often
+   sits there, correctly un-bound by the keyword matcher but still present
+   in the corpus.
+3. Check neighboring objectives' bound chunks for misbinds — a chunk
+   discussing the right topic can bind to the *wrong* objective if it
+   happens to share more keywords with a neighbor's content_stmt. This is
+   especially likely when one objective's syllabus heading literally lists
+   sub-topics ("(a)... (b)... (c)...") that read like a different
+   objective's content.
+
+Two real cases (Integrated_Science): `INTSCI-3.2.3` (tides) had zero bound
+chunks but 5 genuine matches sitting in the review queue. `INTSCI-3.3.7`
+(flotation) had 20 bound chunks — all off-topic — while the real content
+(4 distinct sources, including the literal syllabus heading for 3.3.7) was
+misbound to two neighboring objectives. Both were fixed by manual rebind/
+promote, not by sourcing new material. Only escalate to "we need new source
+content" after confirming the existing corpus genuinely has nothing — same
+standard as the Economics Gopie-textbook decision.
+
+---
+
 ## SSD Safety Rules
 
 Always check at startup:
@@ -621,10 +743,88 @@ If a dependency is not in this list, ask before adding it.
 
 ---
 
+## Syllabus Extraction Pattern (proven on Economics + Integrated_Science)
+
+When onboarding a new subject's syllabus from a PDF, follow this sequence —
+it was hardened against real failures (a truncated objective, two fake
+"objectives" from booklet boilerplate, and unexplained numbering gaps that
+all slipped through a first-pass extraction).
+
+1. **Identify the canonical source via content, not filename.** Filename
+   keyword matching can miss real matches — e.g. `\bsyllabus\b` fails to
+   match `syllabus_effectiveforexamsfrom2027.pdf` because `_` is a word
+   character. Always run a content-keyword scan (CXC, CSEC, syllabus, SYLL)
+   across candidate files in addition to filename matching.
+
+2. **If multiple candidate editions exist, diff them section-by-section
+   before trusting either.** Use a section-aware diff (split on detected
+   headers, then `difflib` per section) and explicitly flag any
+   objective-like statement present in one edition but not the other.
+   Don't assume the newer-looking filename is the correct edition — verify.
+
+3. **Extract with per-page column-boundary detection, not a fixed threshold.**
+   CXC syllabi often place the Specific Objectives / Explanatory Notes
+   column boundary at different x-coordinates on different pages or modules.
+   See `tools/extract_isci_objectives.py`'s `_objective_col_boundary()` /
+   `DEFAULT_OBJ_COL_BOUNDARY` for the working pattern — compute the boundary
+   per page from a marker regex (e.g. `EXPL_MARKER_RE` matching `(a)`/`(i)`
+   sub-markers) rather than hardcoding one x-value for the whole document.
+
+4. **Run a gap-resolution pass — every numbering gap explicitly resolved,
+   never left ambiguous.** After extraction, list the full objective-number
+   sequence per topic/section. For any gap (e.g. `4.1, 4.3` with no `4.2`),
+   re-scan that page range and report whether the number genuinely doesn't
+   exist in the source or was missed by the parser. Do not ship an
+   extraction with unexplained gaps.
+
+5. **De-hyphenate conservatively — never blanket-join.** PDF line-wraps can
+   split words (`inter- conversion` → `interconversion`) but legitimate
+   compounds must survive (`non-soapy` stays hyphenated). Use a curated,
+   reviewed rule (see `dehyphenate()` / `SOLID_WRAP_PREFIXES` /
+   `_HYPHEN_WRAP_RE` in `extract_isci_objectives.py`) and print a full
+   before/after diff for spot-check — don't apply a general "join short
+   fragments" heuristic.
+
+6. **Verify exam_weight against the syllabus's own "Format of the
+   Examination" section — never inherit it from another subject's
+   pattern.** Economics and Integrated_Science both ended up `Both` for
+   every objective, but that was *verified independently* against each
+   subject's actual assessment-grid text, not assumed because the other
+   subject happened to use `Both`. A different subject's syllabus could
+   genuinely split objectives across papers — check the source, every time.
+
+7. **Extend the skill_type verb list per-subject as new command words
+   appear — and ground each addition in CXC's own skill bands, not in
+   what another subject happened to need.** Integrated_Science required
+   adding examine/investigate/appraise/recommend/determine (→ Application)
+   and relate (→ Understanding). Mathematics will likely need its own set
+   (solve/derive/prove/simplify) — expect this, don't be surprised by it.
+
+---
+
 ## Build Stage Tracker
 
 Update this section when a stage is complete.
 The current stage is the first unchecked box.
+
+**A subject is not "done" until it clears three separate gates, in order —
+do not conflate any of them when reporting status:**
+
+1. **Syllabus locked** — `syllabus_locked = 1`, all objectives `verified = 1`,
+   `exam_weight` populated (not `TBD`) and checked against the syllabus's
+   own assessment section.
+2. **Ingested** — source documents chunked, embedded, and bound to
+   objectives (`chunks` + `vec_*` tables populated). Check *coverage*
+   (every objective has ≥1 bound chunk), not just record counts — a subject
+   can show thousands of indexed chunks and still have real per-objective
+   gaps.
+3. **Lessons generated** — `objective_lessons` has a row for every
+   objective. "Ingested" does NOT mean "ready to study" — composing the
+   canonical lesson is a distinct, separate step (Claude Sonnet, build-time)
+   that happens after ingestion, not as part of it.
+
+When asked "is subject X ready," report all three gates' status
+individually, not a single yes/no.
 
 - [x] **Stage 1** — Storage & Schema: folder structure, schema.sql, init_db.py, backup.bat ✓ 2026-06-12 (SSD root D:\CSEC_AI_STUDY_PARTNER; init_db OK, backup OK, 8/8 tests pass)
 - [x] **Stage 2** — Syllabus Lock: syllabus_parser.py, export_for_review.py, lock_subject.py ✓ 2026-06-12 (POB SYLL 17 extracted → 10 sections/116 objectives loaded into E: DB, all verified=1, review xlsx exported, syllabus_locked=1; 32/32 tests pass; other 6 subjects still gated)
@@ -659,6 +859,35 @@ The current stage is the first unchecked box.
     (77 objectives, after recovering 3 tail-truncated ones from 74), MCQ topic map
     resolved (203/203, 0 review), `syllabus_locked=1`, and canonical lessons generated
     via Claude Sonnet (build-time composition only; runtime grading stays Ollama).
+  - **Integrated_Science is the SECOND subject through the lock gate (2026-06-22,
+    `syllabus_locked=1`).** Built fresh from the canonical 2027 PDF (CXC 23/G/SYLL 23,
+    191pg) rather than the flawed prior extraction. New build-time tooling under
+    `tools/`: `sort_gpt_folder.py` (read-only intake triage of the GPT-folder dump),
+    `inspect_syllabus_candidates.py`, `diff_syllabus_editions.py` (confirmed the
+    2027-effective edition is objective-identical to the amended-Oct-2025 print — only
+    SBA-admin/whitespace differs), and `extract_isci_objectives.py` (PyMuPDF block/line
+    extraction: module from the running `MODULE N:` header, objective from left-column
+    `N.M` lines, per-page EXPLANATORY-column boundary to kill cross-column bleed,
+    conservative de-hyphenation). **114 objectives** (vs the old 105 that had a truncated
+    6.7, two booklet-instruction false rows, and intra-topic gaps), 0 duplicates.
+    objective_id = `{module}.{topic}.{objprinted}` → e.g. `INTSCI-2.1.3`; the framework
+    `INTSCI` prefix (subject_prefix.prefix_for, NOT the ISCI Bridge-filename form) is
+    derived, not hard-coded — test_generic_office.py's ISCI→INTSCI rebind still passes.
+    `build_syllabus_csv.py` widened: `SECTION_RE` `(\d+)`→`([\d.]+)` for dotted
+    module.topic sections (POB/Econ regression-checked identical); skill-verb sets
+    extended (examine/investigate/appraise/recommend/determine→Application,
+    relate→Understanding) clearing all 36 UNCLASSIFIED→0; `clean_content_stmt` gained
+    curated word-split rejoin (`infectio us`→`infectious`), typo fix
+    (`conditios`→`conditions`), trailing `; and,` connector + leaked-section-number
+    stripping. `exam_weight=Both` for all 114, **verified against the syllabus PDF's
+    FORMAT OF THE EXAMINATIONS + Assessment Grid B** (assessment is by profile dimension
+    KC/UK/XS across Paper 01 + Paper 02, both sampling all three modules; no per-objective
+    paper mapping) — not inherited from Economics. Loaded via syllabus_parser.py (subject
+    row + 19 sections + 114 objectives), all `verified=1`, then locked. CSV at
+    `E:\...\Integrated_Science\00_SYLLABUS\integrated_science_syllabus_raw.csv`. Next:
+    ingestion (notes/past papers/mark schemes) + canonical-lesson generation via the
+    ingest_v2 path. exam_weight P1/P2 split remains the only deferred refinement (Both is
+    correct per the PDF; a finer per-objective split is not supported by the syllabus text).
   - **Three independent PRs merged to `main` 2026-06-22** (commits 5e17b88 / 77e8c9e /
     df34995; branches deleted):
       * **#20** — Gemini SDK migration `google.generativeai` → `google.genai` (build-time
@@ -676,9 +905,16 @@ The current stage is the first unchecked box.
     Bridge/Supplemental check (per-subject counts: Integrated_Science 99, Mathematics 85,
     Principles_of_Accounts 50, English 2, Information_Technology 0) and the ISCI/INTSCI &
     ENGA/ENG prefix-reconciliation note.
-  - **Remaining (still syllabus-gated): Mathematics, Integrated_Science,
-    Principles_of_Accounts, English, Information_Technology.** Suite 494 passing on `main`
-    post-merge (1 skipped = the manual POB parity gate).
+  - **Locked subjects (in scope): Principles_of_Business, Economics, Integrated_Science.**
+    **Remaining (still syllabus-gated): Mathematics, Principles_of_Accounts, English,
+    Information_Technology.** Suite 496 passing, 1 skipped (the manual POB parity
+    gate) — the +2 tests are from the additive lesson-retrieval fix. NOTE:
+    Integrated_Science is now FULLY BUILT through all three gates: syllabus locked
+    (114/114 objectives in scope), INGESTED (114/114 objectives bound to ≥1 chunk),
+    and LESSONS GENERATED (114/114 canonical lessons via Claude Sonnet). Two real
+    binding-gap fixes were applied during the build — INTSCI-3.2.3 (tides) and
+    INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'" above. The
+    first real student session is the remaining step.
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---
