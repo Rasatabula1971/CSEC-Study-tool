@@ -1,0 +1,115 @@
+section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
+INTSCI-S1.1,1.1,UNITS OF LIFE,INTSCI-1.1.1,1,"Analyse the processes of diffusion, osmosis and active transport",Application,Analyse,Both
+INTSCI-S1.1,1.1,UNITS OF LIFE,INTSCI-1.1.2,2,Examine animal and plant cells,Application,Examine,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.1,1,Distinguish between asexual and sexual reproduction,Understanding,Distinguish,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.2,2,Examine various methods of asexual reproduction in plants,Application,Examine,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.3,3,Examine the process of sexual reproduction in plants,Application,Examine,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.4,4,Analyse growth patterns in plants,Application,Analyse,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.5,5,Describe the methods used in the production of crops,Understanding,Describe,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.6,6,Relate soil fertility to the physical and chemical properties of soil,Understanding,Relate,Both
+INTSCI-S1.2,1.2,REPRODUCTION AND GROWTH IN PLANTS,INTSCI-1.2.7,7,Evaluate the impact of soil erosion on food production,Application,Evaluate,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.1,1,"Outline various methods Budding, of asexual reproduction fragmentation, parthenogenesis. in animals; Refer to Module 1, Topic 2, SO 2 – Budding in plants",Knowledge,Outline,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.2,2,Describe the structure and function of the sexual reproductive organs in humans,Understanding,Describe,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.3,3,Analyse the menstrual cycle in humans,Application,Analyse,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.4,4,Discuss the stages of pregnancy,Understanding,Discuss,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.5,5,Discuss the methods of birth control,Understanding,Discuss,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.6,6,Assess the importance of pre-natal and post-natal care of mothers and babies,Application,Assess,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.7,7,Compare growth patterns of males and females,Application,Compare,Both
+INTSCI-S1.3,1.3,REPRODUCTION AND GROWTH IN ANIMALS,INTSCI-1.3.8,8,Discuss the need for human population control,Understanding,Discuss,Both
+INTSCI-S1.4,1.4,TRANSPORT SYSTEMS,INTSCI-1.4.1,1,Justify the need for transport systems within a living organism,Application,Justify,Both
+INTSCI-S1.4,1.4,TRANSPORT SYSTEMS,INTSCI-1.4.2,2,Relate the structures in transport systems to their functions,Understanding,Relate,Both
+INTSCI-S1.4,1.4,TRANSPORT SYSTEMS,INTSCI-1.4.3,3,Distinguish among the different blood groups,Understanding,Distinguish,Both
+INTSCI-S1.5,1.5,EXCRETION,INTSCI-1.5.1,1,Distinguish between excretion and egestion,Understanding,Distinguish,Both
+INTSCI-S1.5,1.5,EXCRETION,INTSCI-1.5.2,2,"Explain the mechanism of excretion by the lungs, skin and kidneys in humans",Understanding,Explain,Both
+INTSCI-S1.5,1.5,EXCRETION,INTSCI-1.5.3,3,Identify the methods of excretion in flowering plants,Knowledge,Identify,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.1,1,Describe the sense organs and their functions,Understanding,Describe,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.2,2,Relate the structures of the mammalian eye to their functions,Understanding,Relate,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.3,3,Analyse sight defects,Application,Analyse,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.4,4,Relate the structures of the mammalian ear to their functions,Understanding,Relate,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.5,5,Relate the structures of the nervous system to their functions,Understanding,Relate,Both
+INTSCI-S1.6,1.6,SENSE ORGANS AND COORDINATION,INTSCI-1.6.6,6,Relate the structures of the endocrine system to their functions,Understanding,Relate,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.1,1,Discuss selected microbes,Understanding,Discuss,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.2,2,Discuss communicable/infectious disease,Understanding,Discuss,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.3,3,Outline how the principles of immunisation are used in the control of communicable/infectious diseases,Knowledge,Outline,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.4,4,Discuss non-communicable/infectious diseases,Understanding,Discuss,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.5,5,Examine the physiological effects of exercise,Application,Examine,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.6,6,Evaluate the effects of drug use,Application,Evaluate|Use,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.7,7,Discuss the importance of practising good personal hygiene,Understanding,Discuss,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.8,8,Discuss conditions that encourage the breeding of household pests and parasites,Understanding,Discuss,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.9,9,Recommend appropriate methods of pest control,Application,Recommend,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.10,10,Describe various types of food contaminants,Understanding,Describe,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.11,11,Determine conditions which promote the growth of microorganisms,Application,Determine,Both
+INTSCI-S1.7,1.7,HEALTH,INTSCI-1.7.12,12,Apply the principles used in food preservation,Application,Apply,Both
+INTSCI-S2.1,2.1,CONSERVATION OF ENERGY,INTSCI-2.1.1,1,Explain the concept of energy,Understanding,Explain,Both
+INTSCI-S2.1,2.1,CONSERVATION OF ENERGY,INTSCI-2.1.2,2,Discuss the interconversion and conservation of mass energy,Understanding,Discuss,Both
+INTSCI-S2.1,2.1,CONSERVATION OF ENERGY,INTSCI-2.1.3,3,Examine the role of photosynthesis in the conversion of energy,Application,Examine,Both
+INTSCI-S2.1,2.1,CONSERVATION OF ENERGY,INTSCI-2.1.4,4,Analyse the transfer of energy in the environment,Application,Analyse,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.1,1,Examine the importance of food as a source of energy,Application,Examine,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.2,2,Examine the process of digestion in humans,Application,Examine,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.3,3,Relate the structure of the teeth to their function in human digestion,Understanding,Relate,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.4,4,Evaluate the importance of respiration in providing energy to organisms,Application,Evaluate,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.5,5,Distinguish between aerobic and anaerobic respiration,Understanding,Distinguish,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.6,6,Examine the mechanism of breathing,Application,Examine,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.7,7,Explain the importance of gaseous exchange in organisms,Understanding,Explain,Both
+INTSCI-S2.2,2.2,ENERGY IN LIFE PROCESSES,INTSCI-2.2.8,8,Explain the effects of smoking on the gaseous exchange process,Understanding,Explain,Both
+INTSCI-S2.3,2.3,FOSSIL FUELS AND ALTERNATIVE SOURCES OF ENERGY,INTSCI-2.3.1,1,Examine the use of fossil fuels,Application,Examine|Use,Both
+INTSCI-S2.3,2.3,FOSSIL FUELS AND ALTERNATIVE SOURCES OF ENERGY,INTSCI-2.3.2,2,Appraise the extent to which alternative sources of energy can be used in the Caribbean,Application,Appraise,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.1,1,Examine the use of conductors of electricity,Application,Examine|Use,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.2,2,Examine the flow of electricity in circuits,Application,Examine,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.3,3,Assess the consumption of electricity in the home,Application,Assess,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.4,4,Discuss the safety features of electrical devices,Understanding,Discuss,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.5,5,Discuss energy conservation measures,Understanding,Discuss,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.6,6,Compare artificial sources of light,Application,Compare,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.7,7,Discuss first aid methods for treating electrical accidents,Understanding,Discuss,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.8,8,Discuss the hazards associated with electricity,Understanding,Discuss,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.9,9,Discuss the various methods of extinguishing fires,Understanding,Discuss,Both
+INTSCI-S2.4,2.4,ELECTRICITY AND LIGHTING,INTSCI-2.4.10,10,Explain the appropriate use of conventional protective gear/wear,Application,Explain|Use,Both
+INTSCI-S2.5,2.5,TEMPERATURE CONTROL AND VENTILATION,INTSCI-2.5.1,1,Examine the application of the methods of heat transfer,Application,Examine,Both
+INTSCI-S2.5,2.5,TEMPERATURE CONTROL AND VENTILATION,INTSCI-2.5.2,2,Outline the use of thermostats in household appliances,Application,Outline|Use,Both
+INTSCI-S2.5,2.5,TEMPERATURE CONTROL AND VENTILATION,INTSCI-2.5.3,3,Compare the types of thermometers,Application,Compare,Both
+INTSCI-S2.5,2.5,TEMPERATURE CONTROL AND VENTILATION,INTSCI-2.5.4,4,Explain temperature regulation in humans,Understanding,Explain,Both
+INTSCI-S2.5,2.5,TEMPERATURE CONTROL AND VENTILATION,INTSCI-2.5.5,5,Explain the need for proper ventilation,Understanding,Explain,Both
+INTSCI-S3.1,3.1,THE UNIVERSE AND OUR SOLAR SYSTEM,INTSCI-3.1.1,1,Identify the components of the universe,Knowledge,Identify,Both
+INTSCI-S3.1,3.1,THE UNIVERSE AND OUR SOLAR SYSTEM,INTSCI-3.1.2,2,Explain how bodies stay in orbit,Understanding,Explain,Both
+INTSCI-S3.1,3.1,THE UNIVERSE AND OUR SOLAR SYSTEM,INTSCI-3.1.3,3,Describe the solar system,Understanding,Describe,Both
+INTSCI-S3.1,3.1,THE UNIVERSE AND OUR SOLAR SYSTEM,INTSCI-3.1.4,4,Discuss how earth is affected by other bodies,Understanding,Discuss,Both
+INTSCI-S3.1,3.1,THE UNIVERSE AND OUR SOLAR SYSTEM,INTSCI-3.1.5,5,Discuss human’s exploration of the universe,Understanding,Discuss,Both
+INTSCI-S3.2,3.2,THE TERRESTRIAL ENVIRONMENT,INTSCI-3.2.1,1,Examine the effects of air masses in the Caribbean,Application,Examine,Both
+INTSCI-S3.2,3.2,THE TERRESTRIAL ENVIRONMENT,INTSCI-3.2.2,2,Examine the weather patterns in the Caribbean,Application,Examine,Both
+INTSCI-S3.2,3.2,THE TERRESTRIAL ENVIRONMENT,INTSCI-3.2.3,3,Examine the effects of tides,Application,Examine,Both
+INTSCI-S3.2,3.2,THE TERRESTRIAL ENVIRONMENT,INTSCI-3.2.4,4,Explain the causes of the different types of volcanic eruptions,Understanding,Explain,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.1,1,Discuss the properties of water,Understanding,Discuss,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.2,2,Distinguish between hard and soft water,Understanding,Distinguish,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.3,3,Explain the uses of water,Understanding,Explain,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.4,4,Describe the various methods used locally for fishing,Understanding,Describe,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.5,5,Evaluate the effects of water pollution on aquatic life,Application,Evaluate,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.6,6,Investigate methods of purifying water,Application,Investigate,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.7,7,Determine the conditions for flotation,Application,Determine,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.8,8,Explain importance of navigational devices used at sea,Understanding,Explain,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.9,9,Identify water safety devices,Knowledge,Identify,Both
+INTSCI-S3.3,3.3,WATER AND THE AQUATIC ENVIRONMENT,INTSCI-3.3.10,10,Discuss the effects of diving on the human body,Understanding,Discuss,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.1,1,Investigate the principles of forces,Application,Investigate,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.2,2,Describe gravity as a force,Understanding,Describe,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.3,3,Determine the centre of gravity,Application,Determine,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.4,4,Investigate equilibrium,Application,Investigate,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.5,5,Examine the principle of momentum conservation,Application,Examine,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.6,6,Explain the functions of simple machines,Understanding,Explain,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.7,7,Relate the structure of the skeleton to its functions,Understanding,Relate,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.8,8,Explain how the skeletal muscles function in the movement of the limb,Understanding,Explain,Both
+INTSCI-S3.4,3.4,FORCES,INTSCI-3.4.9,9,Examine the efficiency of simple machines,Application,Examine,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.1,1,Relate the physical properties of metals and non-metals to their uses,Understanding,Relate,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.2,2,Compare the reactivity of metals,Application,Compare,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.3,3,Discuss the advantages and disadvantages of using cooking or canning utensils made of aluminium,Understanding,Discuss,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.4,4,Discuss the benefits of using alloys to make household items,Understanding,Discuss,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.5,5,Examine the conditions which cause rusting,Application,Examine,Both
+INTSCI-S3.5,3.5,METALS AND NON-METALS,INTSCI-3.5.6,6,Discuss the methods used to reduce or prevent tarnishing of metals,Understanding,Discuss,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.1,1,Discuss the uses of common household chemicals,Understanding,Discuss,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.2,2,"Examine the properties of acids, bases and salts",Application,Examine,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.3,3,Differentiate among the properties of the states of matter,Understanding,Differentiate,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.4,4,Examine the properties of mixtures,Application,Examine,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.5,5,Determine appropriate separation techniques,Application,Determine,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.6,6,Explain the effects of cleaning agents on household appliances,Understanding,Explain,Both
+INTSCI-S3.6,3.6,HOUSEHOLD CHEMICALS,INTSCI-3.6.7,7,Distinguish between soapy (soap) and soapless detergents,Understanding,Distinguish,Both
+INTSCI-S3.7,3.7,POLLUTANTS AND ENVIRONMENT,INTSCI-3.7.1,1,Discuss the effects of air pollution,Understanding,Discuss,Both
+INTSCI-S3.7,3.7,POLLUTANTS AND ENVIRONMENT,INTSCI-3.7.2,2,Justify the importance of community hygiene to the environment,Application,Justify,Both
+INTSCI-S3.7,3.7,POLLUTANTS AND ENVIRONMENT,INTSCI-3.7.3,3,Discuss the use of plastics,Application,Discuss|Use,Both

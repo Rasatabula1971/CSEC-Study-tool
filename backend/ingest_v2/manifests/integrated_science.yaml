@@ -1,0 +1,27 @@
+subject_id: Integrated_Science
+display_name: Integrated Science
+source_root: 'D:\GPT Folder CSEC\Organized_CSEC_2027\Integrated Science'
+syllabus_csv: backend/ingest_v2/syllabus_csvs/integrated_science.csv
+mcq_topic_map: backend/ingest_v2/mcq_topic_maps/integrated_science.yaml
+paper_2_grading_enabled: false  # set true only if real mark schemes exist
+# OFFICE ADAPTER DEFERRED (2026-06-22). The 99 purpose-built Bridge .docx lessons in
+# App_Upload_Staging\...\Integrated_Science\04_NOTES\Bridge_Objective_Notes are named
+# with FLAT/global topic ids (ISCI-1.x ... ISCI-20.x), but the locked syllabus uses
+# 3-part module.topic.objective ids (INTSCI-{m}.{t}.{o}). GenericOfficeAdapter parses a
+# 2-part id and rebuilds INTSCI-8.3 etc., which does NOT exist in the locked syllabus, so
+# every Bridge note would route to no-match. Enabling this needs a flat-topic -> module.topic
+# remap first (and the old vs new section boundaries differ: 20 flat sections vs our 19),
+# so it is intentionally OFF until that reconciliation is done.
+enable_office_adapter: false
+# Claim the 99 hand-authored .md notes (Supplemental Gap Sources / Miss Francois / KCR /
+# Collins mark-scheme .md) that no other adapter owns. Leading-underscore index/coverage
+# artifacts are excluded by the adapter. POB/Econ leave this False (parity unaffected).
+enable_markdown_adapter: true
+# extra_source_roots: (none yet — add the Bridge_Objective_Notes path once the id remap lands)
+skip_patterns:
+  - '_Review Needed'
+  - '_download_*'
+  - '__pycache__'
+  - '.venv'
+  - '.git'
+  - 'App_Upload_Staging'

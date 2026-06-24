@@ -1,0 +1,14 @@
+# =====================================================================
+# Integrated Science MCQ topic map  --  Kerwin Springer bank -> INTSCI ids
+# =====================================================================
+# SKELETON — Phase 3 topic->objective mapping is DEFERRED (2026-06-22).
+# Until the 15 bank topics (and their subtopics) are mapped to real INTSCI
+# objective_ids against the full CXC 23/G/SYLL 23 CONTENT text, every MCQ
+# falls through to the 'REVIEW' sentinel (confidence=review) by design — see
+# KerwinMCQAdapter._resolve order: subtopic_overrides -> default_objective ->
+# REVIEW. An empty topic_map is valid and intentionally routes the whole bank to
+# review rather than guessing a binding. Replace this with the curated mapping
+# before counting MCQs as ingested.
+# =====================================================================
+
+topic_map: {}
