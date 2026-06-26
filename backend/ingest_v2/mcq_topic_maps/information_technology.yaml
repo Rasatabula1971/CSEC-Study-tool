@@ -1,0 +1,118 @@
+# =====================================================================
+# Information Technology MCQ topic map  --  Kerwin Springer bank -> IT objective_ids
+# =====================================================================
+# Resolution order in KerwinMCQAdapter._resolve:
+#   1. subtopic_overrides[question.subtopic]  -> confidence HIGH
+#   2. default_objective for the topic         -> confidence MEDIUM
+#   3. unmapped_objective sentinel 'REVIEW'     -> confidence review
+#
+# Built from all 104 (topic, subtopic) pairs in the 119-question live bank;
+# every target is a real objective_id in the locked 63-objective IT syllabus.
+# Subtopics whose best objective equals the topic default are intentionally
+# OMITTED (they fall through to the default at MEDIUM).
+# =====================================================================
+
+topic_map:
+  "Computer Hardware":
+    default_objective: IT-1.3
+    subtopic_overrides:
+      "3D printing": IT-1.6
+      "Banking input technology": IT-1.6
+      "CPU specifications": IT-1.9
+      "Direct data entry": IT-1.6
+      "Hardware vs software": IT-1.7
+      "I/O devices": IT-1.6
+      "Input devices": IT-1.6
+      "Output devices": IT-1.6
+      "Sensors": IT-1.6
+      "Storage specifications": IT-1.9
+      "System operations": IT-1.4
+      "User interface devices": IT-1.8
+
+  "Data Communication":
+    default_objective: IT-2.2
+    subtopic_overrides:
+      "Turnaround documents": IT-1.11
+      "Validation": IT-1.14
+      "Verification": IT-1.13
+      "Verification methods": IT-1.14
+
+  "Data and Information":
+    default_objective: IT-1.11
+    subtopic_overrides:
+      "Batch vs real-time processing": IT-1.15
+      "Data entry errors": IT-1.14
+
+  "Databases":
+    default_objective: IT-6.4
+    subtopic_overrides:
+      "Data types": IT-6.2
+      "Keys": IT-6.2
+      "Linking tables": IT-6.3
+
+  "Networks & Internet":
+    default_objective: IT-2.1
+    subtopic_overrides:
+      "Cloud storage": IT-1.5
+      "File transfer terms": IT-2.4
+      "Modems": IT-2.2
+      "Network hardware order": IT-2.2
+      "Telecommuting": IT-3.6
+      "Troubleshooting": IT-2.2
+
+  "Problem Solving & Programming":
+    default_objective: IT-7.6
+    subtopic_overrides:
+      "Algorithm components": IT-7.5
+      "Algorithm testing": IT-7.7
+      "Constants": IT-7.4
+      "Data types": IT-7.4
+      "Generations of programming languages": IT-8.1
+      "Programming languages": IT-8.1
+      "Programming process": IT-8.2
+      "Software lifecycle": IT-8.2
+      "Variable naming": IT-7.4
+
+  "Security & Ethics":
+    default_objective: IT-3.3
+    subtopic_overrides:
+      "Computer crimes": IT-3.2
+      "Denial of Service": IT-3.2
+      "Industrial espionage": IT-3.2
+
+  "Software":
+    default_objective: IT-1.7
+    subtopic_overrides:
+      "User interfaces": IT-1.8
+
+  "Spreadsheets":
+    default_objective: IT-5.7
+    subtopic_overrides:
+      "Absolute references": IT-5.5
+      "COUNTIF": IT-5.3
+      "Charts": IT-5.8
+      "Formula contents": IT-5.4
+      "Relative references": IT-5.5
+      "Stock balance formula": IT-5.4
+      "VLOOKUP": IT-5.3
+
+  "Storage & File Access":
+    default_objective: IT-1.15
+    subtopic_overrides:
+      "Floppy disk capacity": IT-1.3
+      "Magnetic tape": IT-1.3
+      "Optical disks": IT-1.3
+
+  "Web & Email":
+    default_objective: IT-2.4
+    subtopic_overrides:
+      "Hyperlinks": IT-4.11
+
+  "Word Processing":
+    default_objective: IT-4.2
+    subtopic_overrides:
+      "Document security": IT-4.5
+      "Editing modes": IT-4.3
+      "Form controls": IT-4.8
+      "Mail merge": IT-4.7
+      "Selecting text": IT-4.3

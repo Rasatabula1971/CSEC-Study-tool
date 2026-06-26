@@ -905,16 +905,26 @@ individually, not a single yes/no.
     Bridge/Supplemental check (per-subject counts: Integrated_Science 99, Mathematics 85,
     Principles_of_Accounts 50, English 2, Information_Technology 0) and the ISCI/INTSCI &
     ENGA/ENG prefix-reconciliation note.
-  - **Locked subjects (in scope): Principles_of_Business, Economics, Integrated_Science.**
-    **Remaining (still syllabus-gated): Mathematics, Principles_of_Accounts, English,
-    Information_Technology.** Suite 496 passing, 1 skipped (the manual POB parity
-    gate) — the +2 tests are from the additive lesson-retrieval fix. NOTE:
-    Integrated_Science is now FULLY BUILT through all three gates: syllabus locked
-    (114/114 objectives in scope), INGESTED (114/114 objectives bound to ≥1 chunk),
-    and LESSONS GENERATED (114/114 canonical lessons via Claude Sonnet). Two real
-    binding-gap fixes were applied during the build — INTSCI-3.2.3 (tides) and
-    INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'" above. The
-    first real student session is the remaining step.
+  - **Information_Technology is the FOURTH subject through all three gates
+    (2026-06-25).** Syllabus locked (63 objectives across 8 sections, exam_weight=Both
+    verified). INGESTED via the ingest_v2 markdown-adapter path (107 .md notes; manifest
+    `enable_markdown_adapter: true`, `enable_office_adapter: false`, no extra_source_roots
+    — IT had 0 Bridge/Supplemental .docx). All 63 objectives bound to ≥1 chunk after one
+    binding-gap fix: **IT-5.9** ("manipulate one or more worksheets") had 0 bound chunks —
+    the dedicated CSEC Hub note "Working with Multiple Worksheets" (9 chunks: create/
+    rename/delete/group/move/copy sheets, 3D formulas) had been misbound by the keyword
+    matcher across IT-1.1/4.11/4.8/4.1/1.15/1.11 on incidental shared words; rebound all 9
+    to IT-5.9 (donors retained ample coverage). LESSONS GENERATED: 63/63 canonical lessons
+    via Claude Sonnet, all conf 90 (62 first pass + IT-7.7 on one retry after a
+    quality_check_failed recall-question — a non-deterministic model output, not a content
+    gap). MCQ topic map resolves 104 (topic,subtopic) pairs from the 119-question Kerwin
+    bank. First real student session is the remaining step.
+  - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
+    Integrated_Science, Information_Technology.**
+    **Remaining (still syllabus-gated): Mathematics, Principles_of_Accounts, English.**
+    NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
+    (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
+    above (the IT-5.9 fix is the same misbind pattern).
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---
