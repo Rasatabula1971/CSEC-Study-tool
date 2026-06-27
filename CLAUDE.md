@@ -822,6 +822,7 @@ do not conflate any of them when reporting status:**
    objective. "Ingested" does NOT mean "ready to study" — composing the
    canonical lesson is a distinct, separate step (Claude Sonnet, build-time)
    that happens after ingestion, not as part of it.
+   **Gate 3 is SSD-only DB state. It is never committed to git.**
 
 When asked "is subject X ready," report all three gates' status
 individually, not a single yes/no.
@@ -970,9 +971,26 @@ individually, not a single yes/no.
     631 review queue. Backup taken pre_poa_textbook_ingest, ingest_v2 started
     background run. When complete: run `python backend/ingest_lessons.py
     --subject Principles_of_Accounts` for gate 3.
+  - **Principles_of_Accounts is the FIFTH subject through ALL THREE gates
+    (2026-06-27).** Post-enrichment ingestion verified: 5,909 chunks / 134 docs,
+    **106/106 objectives covered (0 at zero)**; only 2 thin (POA-4.7, POA-8.10 at 2
+    chunks each — genuinely sparse but on-topic, supplemented by semantic search at
+    composition time). Gate 3: ran `ingest_lessons.py --subject Principles_of_Accounts`
+    (Claude Sonnet, build-time) → **106/106 canonical lessons, all conf 90, 0 stale.**
+    4 objectives initially queued `quality_check_failed: recall_question is not a
+    question or command prompt`; 2 cleared on plain retry (non-deterministic model
+    output, the IT-7.7 pattern). The last 2 (POA-5.8 "Show the effect...", POA-9.8
+    "Appropriate profits...") were a real validator gap, NOT bad content: the model
+    produced valid CSEC scenario-first recall prompts ("...during the year. Show the
+    effect...", "...300,000 shares. Prepare the Appropriation Statement...") whose
+    leading command words were missing from `ingest_lessons._RECALL_COMMAND_WORDS`
+    (a Knowledge/Understanding-only whitelist). Fix: added the CSEC practical/
+    quantitative band — `prepare, show, record, construct, draw, complete` — to that
+    tuple; both then wrote at conf 90. (Mathematics rollout will likely extend it
+    again — solve/derive/prove/simplify; see the skill_type note.) test_lesson_prompt_v2
+    + test_lessons still pass (41/41).
   - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
-    Integrated_Science, Information_Technology.**
-    **Gate 2 complete, gate 3 pending: Principles_of_Accounts.**
+    Integrated_Science, Information_Technology, Principles_of_Accounts.**
     **Remaining (still syllabus-gated): Mathematics, English.**
     NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
     (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
