@@ -2884,6 +2884,35 @@ async def staging_auto_accept_and_ingest(subject_id: str, request: Request,
     }
 
 
+@app.get("/api/videos/{objective_id}")
+def videos_for_objective(objective_id: str, request: Request) -> dict:
+    """Return pre-qualified YouTube videos for one objective.
+
+    Always returns {videos: [...]} — empty list when none exist, never 404.
+    Each item: {title, url, channel, duration}.
+    """
+    rows = request.app.state.db.execute(
+        """
+        SELECT title, url, channel, duration_str
+        FROM   objective_videos
+        WHERE  objective_id = ?
+        ORDER  BY video_id
+        """,
+        (objective_id,),
+    ).fetchall()
+    return {
+        "videos": [
+            {
+                "title":    r["title"],
+                "url":      r["url"],
+                "channel":  r["channel"],
+                "duration": r["duration_str"],
+            }
+            for r in rows
+        ]
+    }
+
+
 @app.post("/api/backup")
 def take_backup(body: BackupRequest, response: Response) -> dict:
     """Copy the live DB to a timestamped, labelled backup on the SSD (Stage 14

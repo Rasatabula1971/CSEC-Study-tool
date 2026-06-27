@@ -902,3 +902,53 @@ def test_practice_question_endpoint_returns_question(real_client):
 def test_practice_question_endpoint_404_when_missing(real_client):
     res = real_client.get("/api/practice-question/D1/9z")
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Stage V2: GET /api/videos/{objective_id}
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def client_with_videos():
+    """real_client fixture extended with one objective_videos row on POB-1.1."""
+    db = _open_real_db()
+    _seed_panel_data(db)
+    db.execute(
+        """
+        INSERT INTO objective_videos
+            (objective_id, subject_id, url, title, channel, duration_str, source_file)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "POB-1.1", SUBJECT_S13,
+            "https://www.youtube.com/watch?v=abc123",
+            "Intro to Business",
+            "BizChannel",
+            "8:45",
+            "test_source.csv",
+        ),
+    )
+    db.commit()
+    app_module.app.state.db = db
+    yield TestClient(app_module.app)
+    db.close()
+
+
+def test_videos_endpoint_returns_list(client_with_videos):
+    res = client_with_videos.get("/api/videos/POB-1.1")
+    assert res.status_code == 200
+    body = res.json()
+    assert "videos" in body
+    assert len(body["videos"]) == 1
+    v = body["videos"][0]
+    assert v["title"] == "Intro to Business"
+    assert v["url"] == "https://www.youtube.com/watch?v=abc123"
+    assert v["channel"] == "BizChannel"
+    assert v["duration"] == "8:45"
+
+
+def test_videos_endpoint_empty_when_none(real_client):
+    """Objective with no videos returns empty list, never 404."""
+    res = real_client.get("/api/videos/POB-1.2")
+    assert res.status_code == 200
+    assert res.json() == {"videos": []}

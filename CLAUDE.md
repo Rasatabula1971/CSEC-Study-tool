@@ -1817,10 +1817,10 @@ Migration: **m019** in `apply_runtime_migrations`.
   - `objective_videos` table added to `schema.sql` + m019 in `apply_runtime_migrations`.
   - Tests: `tests/test_video_links.py` (5/5 pass); suite 501/501.
 
-- [ ] **Stage V2** — Runtime API endpoint
-  - `GET /api/videos/{objective_id}` → `[{title, url, channel, duration}]`
-    (empty list when none; never 404).
-  - 2 tests in `test_api.py`.
+- [x] **Stage V2** — Runtime API endpoint ✓ 2026-06-27
+  - `GET /api/videos/{objective_id}` → `{videos: [{title, url, channel, duration}]}`
+    (empty list when none; never 404). Ordered by insertion order (video_id ASC).
+  - 2 tests in `test_api.py` (returns list, empty-when-none); suite 503/503.
 
 - [ ] **Stage V3** — UI integration
   - `study_plan.html` + `chat.html`: "Watch" section rendered after the lesson block.
