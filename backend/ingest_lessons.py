@@ -254,7 +254,10 @@ def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
             return False, 'recall_question leaks the answer'
         is_question = qs.endswith('?')
         is_command = any(ql.startswith(cw + ' ') for cw in _RECALL_COMMAND_WORDS)
-        if not (is_question or is_command):
+        # Scenario-first prompts: "Revenue is $500. Calculate the profit margin."
+        # The command word appears after a sentence boundary, not at the start.
+        is_mid_command = any(f'. {cw} ' in ql for cw in _RECALL_COMMAND_WORDS)
+        if not (is_question or is_command or is_mid_command):
             return False, 'recall_question is not a question or command prompt'
     return True, None
 

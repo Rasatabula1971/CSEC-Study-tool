@@ -919,12 +919,64 @@ individually, not a single yes/no.
     quality_check_failed recall-question — a non-deterministic model output, not a content
     gap). MCQ topic map resolves 104 (topic,subtopic) pairs from the 119-question Kerwin
     bank. First real student session is the remaining step.
+  - **Principles_of_Accounts is the FIFTH subject through gates 1 and 2 (2026-06-26).**
+    Syllabus locked (106 objectives across 11 sections, exam_weight=Both verified).
+    INGESTED via the ingest_v2 markdown-adapter path (50 .md notes from Bridge/
+    Supplemental + additional sources; manifest `enable_markdown_adapter: true`,
+    `enable_office_adapter: false`). 2,286 chunks / 120 docs / 181 MCQs (Kerwin bank).
+    Post-ingest coverage fix required: 10 objectives had zero bound chunks after
+    ingestion (same misbind pattern as INTSCI-3.3.7 / IT-5.9). Resolved via a
+    two-pass rebind:
+      * **Pass 1 (keyword-based):** `_poa_rebind.py` — keyword search across donor
+        pools fixed 7 of 10. Side effect: 3 donors fully drained (POA-5.6, POA-7.1,
+        POA-7.3 went to 0); remediated immediately by `_poa_remediate.py` (53 sole-trader
+        ratio chunks restored to POA-5.6 from POA-9.10; 1 control-systems chunk restored
+        to POA-7.1 from POA-7.2; 1 error-distinction chunk restored to POA-7.3 from
+        POA-7.6).
+      * **Pass 2 (targeted manual):** For the 3 objectives with no keyword matches in
+        any donor pool (POA-7.11, POA-8.3, POA-8.10), identified specific high-signal
+        chunks in adjacent objectives and rebind 2 chunks each: POA-7.11 ← chunks
+        explaining control account balance significance (from POA-4.8/6.3); POA-8.3 ←
+        syllabus page + notes TOC listing "Reasons for Establishing Partnerships" (from
+        POA-8.5/7.13); POA-8.10 ← notes TOC "Preparing the Partnership Balance Sheet"
+        + past paper asking to prepare partnership balance sheet (from POA-6.3/5.4).
+    Final state: 106/106 objectives covered (0 at zero), min 1 chunk/objective.
+    POA-8.10 has 2 chunks (marginal — semantic search on vec_past_papers/mark_schemes
+    will supplement at lesson-composition time).
+    Distribution after all rebind/enrich passes: 14 at 1-2 chunks, 16 at 3-5, 30 at
+    6-10, 49 at 11+. The 14 thin objectives are genuinely sparse in the source corpus
+    (no donor content available); semantic search at lesson-generation time will
+    supplement. `backend/ollama_client.py` `ollama_embed` timeout increased 30 → 300s
+    (keep_alive=0 causes model reload per call; on this machine some reloads exceed 30s).
+    LESSONS NOT YET GENERATED — gate 3 still pending.
+  - **POA corpus enrichment (2026-06-26):** Three textbook PDFs found in the
+    Textbooks folder. `poa_csec_anwer_book.pdf` (433 pp) is 94% garbled
+    (scrambled font encoding; only 23/433 pages extractable). The `toaz.info`
+    CSEC POA textbook (548 pp) is fully scanned, 0 extractable chars. Both
+    added to manifest `skip_patterns`. `OpenStax Principles of Accounting
+    Volume 1 Financial Accounting.pdf` (973 pp, 100% clean text) IS usable,
+    but ingesting the full 973 pages would add ~5,700 duplicate chunks when
+    targeted extracts already cover the key sections. Instead: **10 targeted
+    chapter extracts** saved as .md files in
+    `D:\GPT Folder CSEC\Organized_CSEC_2027\POA\Notes\Textbook Extracts\`:
+    Ch2 (financial statements), Ch3 (ledgers/trial balance), Ch4 (adjustments),
+    Ch7 (accounting information systems / technology), Ch8 (internal controls),
+    Ch9 (bad debts/receivables), Ch11 (depreciation), Ch12 (payroll),
+    Ch14 (corporation final accounts), Ch15 (partnership accounting). Full
+    OpenStax PDF also added to skip_patterns. Additionally found **14 new
+    Kerwin Springer past papers** (2005-2008, 2017-2026) and several MoE SLMS
+    papers not yet in the DB. ingest_v2 dry-run: 829 generic_pdf (past papers)
+    + 3,425 markdown_notes = 4,254 total new records, 3,623 medium confidence,
+    631 review queue. Backup taken pre_poa_textbook_ingest, ingest_v2 started
+    background run. When complete: run `python backend/ingest_lessons.py
+    --subject Principles_of_Accounts` for gate 3.
   - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
     Integrated_Science, Information_Technology.**
-    **Remaining (still syllabus-gated): Mathematics, Principles_of_Accounts, English.**
+    **Gate 2 complete, gate 3 pending: Principles_of_Accounts.**
+    **Remaining (still syllabus-gated): Mathematics, English.**
     NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
     (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
-    above (the IT-5.9 fix is the same misbind pattern).
+    above (the IT-5.9 / POA-multi-objective fix is the same misbind pattern).
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---

@@ -29,7 +29,7 @@ def ollama_embed(text: str) -> list[float]:
     r = httpx.post(
         f"{OLLAMA}/api/embeddings",
         json={"model": MODEL_EMBED, "prompt": text, "keep_alive": 0},
-        timeout=30,
+        timeout=300,
     )
     r.raise_for_status()
     return r.json()["embedding"]
