@@ -123,6 +123,14 @@ _RECALL_COMMAND_WORDS = (
     "define", "state", "explain", "identify", "describe", "discuss",
     "distinguish", "outline", "list", "calculate", "compare", "contrast",
     "name", "give",
+    # CSEC practical/quantitative command words. Added for the Principles_of_Accounts
+    # rollout: "Prepare the ... account/statement" and "Show the effect of ..." are the
+    # canonical POA instructions, and POA-5.8 / POA-9.8 produced valid scenario-first
+    # recall prompts ("... during the year. Show the effect ...", "... 300,000 shares.
+    # Prepare the Appropriation Statement ...") that the original Knowledge/Understanding
+    # whitelist rejected. "record/construct/draw/complete" are the same band and recur in
+    # POA (and Mathematics will likely extend this further -- see CLAUDE.md skill_type note).
+    "prepare", "show", "record", "construct", "draw", "complete",
 )
 
 
