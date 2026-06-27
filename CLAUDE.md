@@ -1822,12 +1822,15 @@ Migration: **m019** in `apply_runtime_migrations`.
     (empty list when none; never 404). Ordered by insertion order (video_id ASC).
   - 2 tests in `test_api.py` (returns list, empty-when-none); suite 503/503.
 
-- [ ] **Stage V3** — UI integration
-  - `study_plan.html` + `chat.html`: "Watch" section rendered after the lesson block.
-    One card per video: title, channel, duration, "▶ Watch on YouTube" → `target="_blank"`.
-    Section hidden entirely when API returns `[]`.
-  - No iframes, no autoplay, no CDN.
-  - 2 structural tests (section present in served HTML; hidden-when-empty guard).
+- [x] **Stage V3** — UI integration ✓ 2026-06-27
+  - `study_plan.html`: `renderVideoSection(objectiveId, host)` async function appended
+    to `renderObjectiveLesson` (awaited after `renderLessonCard`); `.watch-section`
+    cards with title / channel / duration / "▶ Watch on YouTube" → `target="_blank"`.
+    Section not rendered at all when API returns `[]`.
+  - `chat.html`: `appendVideoCards(objectiveId, msgEl)` fire-and-forget after the teach
+    bubble; appends `.watch-section` inside the message element + re-scrolls.
+  - No iframes, no autoplay, no CDN. Both use the existing `escapeHtml`/`escHtml` helper.
+  - 2 structural tests in `test_chat.py`; suite 505/505.
 
 ### Run order (after stages are built)
 

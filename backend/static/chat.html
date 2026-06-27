@@ -271,6 +271,16 @@
     .feedback-btn:disabled { opacity: 0.5; cursor: default; }
     .feedback-thanks { font-size: var(--text-xs); color: var(--tick); margin-left: var(--space-1); }
 
+    /* Watch section (YouTube video links after lesson bubble) */
+    .watch-section { margin: 6px 0 6px 0; }
+    .watch-heading { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-dim); margin-bottom: 6px; }
+    .watch-card { display: block; background: var(--ink-2); border: var(--border); border-radius: 8px; padding: 10px 12px; text-decoration: none; color: inherit; transition: border-color 120ms ease; margin-bottom: 6px; }
+    .watch-card:hover { border-color: var(--booklet-bright, var(--booklet)); }
+    .watch-card:last-child { margin-bottom: 0; }
+    .watch-title { font-size: 13px; font-weight: 600; color: var(--paper); margin-bottom: 2px; }
+    .watch-meta { font-size: 11px; color: var(--paper-dim); }
+    .watch-cta { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--booklet); font-weight: 600; }
+
     /* Input states */
     .input-wrap.disabled { opacity: 0.6; pointer-events: none; }
     .input-textarea.clearing { opacity: 0; transition: opacity 100ms ease; }
@@ -641,6 +651,29 @@
     return msg;
   }
 
+  // Fetch and append YouTube video cards below the lesson message element.
+  // Fire-and-forget (no await at call site) — videos appear slightly after the bubble.
+  async function appendVideoCards(objectiveId, msgEl) {
+    if (!objectiveId || !msgEl) return;
+    let videos = [];
+    try {
+      const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(objectiveId)}`);
+      if (res.ok) videos = (await res.json()).videos || [];
+    } catch {}
+    if (!videos.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'watch-section';
+    sec.innerHTML = '<div class="watch-heading">Watch</div>' +
+      videos.map(v =>
+        `<a class="watch-card" href="${escapeHtml(v.url)}" target="_blank" rel="noopener noreferrer">` +
+        `<div class="watch-title">${escapeHtml(v.title)}</div>` +
+        `<div class="watch-meta">${escapeHtml(v.channel || '')}${v.duration ? ' · ' + escapeHtml(v.duration) : ''}</div>` +
+        `<span class="watch-cta">▶ Watch on YouTube</span></a>`
+      ).join('');
+    msgEl.appendChild(sec);
+    scrollToBottom();
+  }
+
   // Centred, muted divider label shown when the mode auto-switches (not a bubble).
   function appendModeDivider(text) {
     hideEmptyState();
@@ -964,9 +997,12 @@
         // canonical-lesson field, same one study_plan.html reads). The legacy
         // aliases stay as defensive fallbacks; JSON.stringify is the last resort.
         const text = data.lesson_text || data.lesson || data.text || data.response || JSON.stringify(data);
-        appendMessage('ai', text, { objectiveId: data.objective_id });
+        const lessonMsg = appendMessage('ai', text, { objectiveId: data.objective_id });
         // Lesson rendered → ready the student to be quizzed.
-        if (respondedRoute === 'teach') autoSwitchToGrade();
+        if (respondedRoute === 'teach') {
+          autoSwitchToGrade();
+          if (data.objective_id) appendVideoCards(data.objective_id, lessonMsg);
+        }
       }
 
     } catch (err) {
