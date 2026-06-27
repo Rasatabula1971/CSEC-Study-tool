@@ -104,6 +104,25 @@ def resolve_objective_id(content_stmt: str, stmt_map: dict[str, str]) -> str | N
     return None
 
 
+def _ensure_table(db: sqlite3.Connection) -> None:
+    """Create objective_videos if the FastAPI app hasn't run m019 yet."""
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS objective_videos (
+            video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+            subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+            url          TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            channel      TEXT,
+            duration_str TEXT,
+            source_file  TEXT NOT NULL,
+            added_at     TEXT DEFAULT (datetime('now')),
+            UNIQUE(objective_id, url)
+        )
+    """)
+    db.commit()
+
+
 def load_videos(
     db: sqlite3.Connection,
     pipeline_dir: Path,
@@ -115,6 +134,9 @@ def load_videos(
     Returns a stats dict:
       {subject: {loaded, skipped_flag, unresolved, already_present, csv_missing}}
     """
+    if not dry_run:
+        _ensure_table(db)
+
     stats: dict[str, dict] = {}
 
     subjects = (
