@@ -1809,14 +1809,13 @@ Migration: **m019** in `apply_runtime_migrations`.
 
 ### Stages
 
-- [ ] **Stage V1** — Schema + load script (build-time)
+- [x] **Stage V1** — Schema + load script (build-time) ✓ 2026-06-27
   - `backend/load_video_links.py` (PHASE: build): reads `*_final_review.csv` from
     `--video-pipeline-dir` (default `D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline`),
-    3-step resolver, `INSERT OR IGNORE` on `(objective_id, url)`, `@backup_first('pre_video_load')`,
-    `--subject` / `--dry-run` flags.
-  - Add `objective_videos` to `schema.sql` + m019 to `apply_runtime_migrations`.
-  - Tests: `tests/test_video_links.py` (5 tests: load writes row, dry-run no-write,
-    idempotent re-run, skip-unlocked-subject, resolver strips trailing-and).
+    3-step resolver (exact → strip trailing "; and" → prefix-40), `INSERT OR IGNORE`
+    on `(objective_id, url)`, `@backup_first('pre_video_load')`, `--subject` / `--dry-run` flags.
+  - `objective_videos` table added to `schema.sql` + m019 in `apply_runtime_migrations`.
+  - Tests: `tests/test_video_links.py` (5/5 pass); suite 501/501.
 
 - [ ] **Stage V2** — Runtime API endpoint
   - `GET /api/videos/{objective_id}` → `[{title, url, channel, duration}]`

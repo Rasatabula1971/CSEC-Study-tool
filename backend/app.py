@@ -686,6 +686,27 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """,
     )
 
+    # m019: objective_videos table — pre-qualified YouTube links keyed to objectives,
+    # loaded by backend/load_video_links.py (PHASE: build). Runtime path reads only.
+    _run_migration(
+        db, "m019_objective_videos",
+        "objective_videos table for pre-qualified YouTube links",
+        """
+        CREATE TABLE IF NOT EXISTS objective_videos (
+            video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+            subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+            url          TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            channel      TEXT,
+            duration_str TEXT,
+            source_file  TEXT NOT NULL,
+            added_at     TEXT DEFAULT (datetime('now')),
+            UNIQUE(objective_id, url)
+        )
+        """,
+    )
+
     # Upload session 1: make sure the SSD staging tree exists for every locked
     # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
     # clearer error at upload time.
