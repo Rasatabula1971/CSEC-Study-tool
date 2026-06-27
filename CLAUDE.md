@@ -1022,12 +1022,29 @@ individually, not a single yes/no.
     tuple; both then wrote at conf 90. (Mathematics rollout will likely extend it
     again — solve/derive/prove/simplify; see the skill_type note.) test_lesson_prompt_v2
     + test_lessons still pass (41/41).
+  - **Mathematics is the SIXTH subject through ALL THREE gates (2026-06-27).**
+    Syllabus locked (159 objectives across 15 sections / 3 modules, exam_weight=Both
+    verified against PDF Assessment Grid). INGESTED via the ingest_v2 markdown-adapter
+    path (85 .md notes + 86 past-paper PDFs + 31 mark-scheme PDFs; `enable_markdown_adapter:
+    true`, `enable_office_adapter: false`); 4,678 chunks / 217 docs. 21 zero-chunk
+    binding gaps fixed by targeted rebind before lesson generation (same misbind pattern
+    as INTSCI-3.3.7 / IT-5.9 / POA-multi-objective; MATH-2.1.9 was over-bound to 429
+    chunks). Gate 3: ran `ingest_lessons.py --subject Mathematics` (Claude Sonnet,
+    build-time) → **159/159 canonical lessons, all conf 90, 0 stale.** Two pre-flight
+    objective corrections applied before composition (MATH-2.2.4, 2.3.9, 2.3.17, 2.4.6).
+    Main run: 148 written, 11 queued (quality_check_failed: recall_question) — root cause
+    was `_RECALL_COMMAND_WORDS` missing the CXC Mathematics quantitative band
+    (Solve/Determine/Compute/Convert/Represent); extended that tuple + 2 regression tests;
+    all 11 then wrote. 131 video links loaded (4 unresolved, 5 dupes from 133-row CSV).
+    MCQ topic map covers 513 Kerwin questions across 12 topics. Tests: 510/510 (510 pass,
+    1 skip — the 2 new Math recall-validator tests).
   - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
-    Integrated_Science, Information_Technology, Principles_of_Accounts.**
-    **Remaining (still syllabus-gated): Mathematics, English.**
+    Integrated_Science, Information_Technology, Principles_of_Accounts,
+    Mathematics.**
+    **Remaining (still syllabus-gated): English.**
     NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
     (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
-    above (the IT-5.9 / POA-multi-objective fix is the same misbind pattern).
+    above (the IT-5.9 / POA-multi-objective / MATH-2.1.9 fix is the same misbind pattern).
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---
@@ -1803,7 +1820,7 @@ no iframes, no autoplay.
 | `it_final_review.csv`  | Information_Technology | 52 | 0 non-OK |
 | `eco_final_review.csv` | Economics | 69 | 0 non-OK |
 | `is_final_review.csv`  | Integrated_Science | 103 | 0 non-OK |
-| `mat_final_review.csv` | Mathematics | 133 | 7 VIDEO_REUSED — **deferred** until Math syllabus locked |
+| `mat_final_review.csv` | Mathematics | 133 | 7 VIDEO_REUSED — **loaded** 2026-06-27 (131 inserted, 4 unresolved, 5 dupes) |
 
 `VIDEO_REUSED_*` flag = same URL matched to multiple objectives; valid content,
 not a quality rejection — load these rows alongside `OK` rows.
