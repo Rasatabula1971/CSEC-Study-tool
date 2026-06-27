@@ -131,6 +131,17 @@ _RECALL_COMMAND_WORDS = (
     # whitelist rejected. "record/construct/draw/complete" are the same band and recur in
     # POA (and Mathematics will likely extend this further -- see CLAUDE.md skill_type note).
     "prepare", "show", "record", "construct", "draw", "complete",
+    # CSEC Mathematics command band. Added for the Mathematics rollout: Math objectives
+    # are overwhelmingly Application-skill, so Sonnet's recall prompts open with these
+    # imperatives ("Solve the equation ...", "Determine the gradient ...", "Convert
+    # 0.75 to a fraction"). The original Knowledge/Understanding + POA whitelist rejected
+    # 11 valid Math lessons (Compute/Convert/Solve/Determine/Represent leads). Grounded in
+    # the CXC Mathematics skill bands (the syllabus command_words column), not invented.
+    "solve", "determine", "compute", "evaluate", "simplify", "derive", "prove",
+    "express", "convert", "factorise", "factorize", "substitute", "rewrite",
+    "represent", "sketch", "estimate", "measure", "locate", "obtain", "differentiate",
+    "interpret", "translate", "change", "divide", "order", "plot", "find", "write",
+    "apply", "use",
 )
 
 

@@ -1,0 +1,23 @@
+subject_id: English
+display_name: English
+source_root: 'D:\GPT Folder CSEC\Organized_CSEC_2027\English A'
+syllabus_csv: backend/ingest_v2/syllabus_csvs/english.csv
+mcq_topic_map: backend/ingest_v2/mcq_topic_maps/english.yaml
+paper_2_grading_enabled: false
+# English A notes: 10 .md files (ChromeStudy x7, CSEC Hub x1, Supplemental x2)
+# No Bridge/Supplemental .docx — notes are already .md. No Kerwin MCQ bank.
+enable_office_adapter: false
+enable_markdown_adapter: true
+known_gaps: []
+skip_patterns:
+  - '_Review Needed'
+  - '_Audit_Source_Cards'
+  - '_download_*'
+  - '__pycache__'
+  - '.venv'
+  - '.git'
+  - 'App_Upload_Staging'
+  - 'Practice Questions'
+  - 'Textbooks'
+  - 'Subject Reports'
+  - 'Worked Solutions'
