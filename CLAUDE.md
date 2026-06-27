@@ -1752,3 +1752,91 @@ suite **445/445** with 0 failures.
 **No further UI/launcher work should be started** unless one of the above recurs or
 Rylee reports something new from actual use. Per PDR v3.2: the next legitimate input
 is reality, not engineering review.
+
+---
+
+## Video Links feature (3 stages)
+
+Pre-qualified YouTube videos mapped to objectives via the
+`D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline\` pipeline
+(SSD-only, never committed). Videos are served as external links only —
+no iframes, no autoplay.
+
+### Source data
+
+| File | Subject | OK rows | Notes |
+|---|---|---|---|
+| `poa_final_review.csv` | Principles_of_Accounts | 53 | 3 VIDEO_REUSED (loaded) |
+| `it_final_review.csv`  | Information_Technology | 52 | 0 non-OK |
+| `eco_final_review.csv` | Economics | 69 | 0 non-OK |
+| `is_final_review.csv`  | Integrated_Science | 103 | 0 non-OK |
+| `mat_final_review.csv` | Mathematics | 133 | 7 VIDEO_REUSED — **deferred** until Math syllabus locked |
+
+`VIDEO_REUSED_*` flag = same URL matched to multiple objectives; valid content,
+not a quality rejection — load these rows alongside `OK` rows.
+
+### ID resolution
+
+Pipeline CSVs use sequential IDs (`POA-001`, `IT-001`, …).
+Real DB IDs are `POA-1.1`, `IT-1.1`, etc.
+Resolution is via `content_stmt` join, three passes in order:
+
+1. Exact match (lowercase strip)
+2. Strip trailing `; and` suffix then exact match
+3. Prefix match on first 40 characters
+
+Unresolvable rows are logged (not failed) — they do not block the load.
+Mathematics rows are skipped entirely until `syllabus_locked = 1` for that subject.
+
+### Schema (`objective_videos`)
+
+```sql
+CREATE TABLE IF NOT EXISTS objective_videos (
+    video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+    subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    channel      TEXT,
+    duration_str TEXT,
+    source_file  TEXT NOT NULL,
+    added_at     TEXT DEFAULT (datetime('now')),
+    UNIQUE(objective_id, url)
+);
+```
+
+Migration: **m019** in `apply_runtime_migrations`.
+
+### Stages
+
+- [ ] **Stage V1** — Schema + load script (build-time)
+  - `backend/load_video_links.py` (PHASE: build): reads `*_final_review.csv` from
+    `--video-pipeline-dir` (default `D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline`),
+    3-step resolver, `INSERT OR IGNORE` on `(objective_id, url)`, `@backup_first('pre_video_load')`,
+    `--subject` / `--dry-run` flags.
+  - Add `objective_videos` to `schema.sql` + m019 to `apply_runtime_migrations`.
+  - Tests: `tests/test_video_links.py` (5 tests: load writes row, dry-run no-write,
+    idempotent re-run, skip-unlocked-subject, resolver strips trailing-and).
+
+- [ ] **Stage V2** — Runtime API endpoint
+  - `GET /api/videos/{objective_id}` → `[{title, url, channel, duration}]`
+    (empty list when none; never 404).
+  - 2 tests in `test_api.py`.
+
+- [ ] **Stage V3** — UI integration
+  - `study_plan.html` + `chat.html`: "Watch" section rendered after the lesson block.
+    One card per video: title, channel, duration, "▶ Watch on YouTube" → `target="_blank"`.
+    Section hidden entirely when API returns `[]`.
+  - No iframes, no autoplay, no CDN.
+  - 2 structural tests (section present in served HTML; hidden-when-empty guard).
+
+### Run order (after stages are built)
+
+```bash
+# Load all four currently-locked subjects at once
+python backend/load_video_links.py --dry-run
+python backend/load_video_links.py
+
+# When Mathematics is later locked:
+python backend/load_video_links.py --subject Mathematics
+```
