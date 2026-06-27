@@ -1038,10 +1038,26 @@ individually, not a single yes/no.
     all 11 then wrote. 131 video links loaded (4 unresolved, 5 dupes from 133-row CSV).
     MCQ topic map covers 513 Kerwin questions across 12 topics. Tests: 510/510 (510 pass,
     1 skip — the 2 new Math recall-validator tests).
+  - **English is the SEVENTH subject (gate 1 complete 2026-06-27, gates 2-3 in
+    progress).** Syllabus locked: 76 objectives across 9 sections (3 modules ×
+    3 skill profiles: Understanding / Analysing / Evaluating and Creating). ID
+    scheme ENG-{module}.{section}.{obj_num} (e.g. ENG-2.2.8). exam_weight=Both
+    verified against Assessment Grid II (Paper 01 + Paper 02 both test all three
+    skill profiles). Extractor: word-level PDF coordinate extraction (x0 < 170),
+    sequential module-page scan (ranges 24-34, 38-52, 56-67, 0-indexed); fixed
+    E&C column-boundary cutoff (the "1)" word of "(Module 1)" was at x0=199, just
+    outside the gate) and Module 3 general-objectives bleed-in. `build_syllabus_csv.py`
+    extended with English-specific command words: extract/recognise (Knowledge),
+    trace/deduce/explore (Understanding), create/communicate/collaborate/
+    organise/present/formulate (Application) — 0 UNCLASSIFIED.
+    10 markdown notes (ChromeStudy x7, CSEC Hub x1, Supplemental x2) + 32 past
+    papers + 2 mark schemes + 1 specimen. No Kerwin MCQ bank. Ingestion started;
+    5,598 dry-run records (3,199 PDF + 2,399 markdown). Lessons pending gate 2
+    completion.
   - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
     Integrated_Science, Information_Technology, Principles_of_Accounts,
     Mathematics.**
-    **Remaining (still syllabus-gated): English.**
+    **Remaining (English: gate 1 done, gates 2-3 in progress 2026-06-27).**
     NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
     (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
     above (the IT-5.9 / POA-multi-objective / MATH-2.1.9 fix is the same misbind pattern).
