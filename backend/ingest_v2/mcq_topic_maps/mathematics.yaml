@@ -1,0 +1,161 @@
+# =====================================================================
+# Mathematics MCQ topic map  --  Kerwin Springer bank -> MATH objective_ids
+# =====================================================================
+# Resolution order in KerwinMCQAdapter._resolve:
+#   1. subtopic_overrides[question.subtopic]  -> confidence HIGH
+#   2. default_objective for the topic         -> confidence MEDIUM
+#   3. unmapped_objective sentinel 'REVIEW'    -> confidence review
+#
+# Built from 513 questions across 12 topics in the Kerwin Springer bank.
+# All 159 objectives across 15 sections of the locked Mathematics syllabus.
+# Subtopics are very granular (379 unique pairs); only high-signal overrides
+# are listed here. The rest fall through to the topic default at MEDIUM.
+# =====================================================================
+
+topic_map:
+  "Number theory":
+    default_objective: MATH-1.1.1
+    subtopic_overrides:
+      "Prime numbers": MATH-1.1.2
+      "Prime factorization": MATH-1.1.2
+      "HCF and LCM": MATH-1.1.3
+      "LCM": MATH-1.1.3
+      "HCF": MATH-1.1.3
+      "Number bases": MATH-1.1.5
+      "Bases": MATH-1.1.5
+      "Binary": MATH-1.1.5
+      "Significant figures": MATH-1.1.7
+      "Standard form": MATH-1.1.8
+      "Scientific notation": MATH-1.1.8
+      "Surds": MATH-1.1.9
+      "Square roots": MATH-1.1.9
+      "BODMAS": MATH-1.1.4
+      "Order of operations": MATH-1.1.4
+      "Squares and square roots": MATH-1.1.9
+
+  "Consumer arithmetic":
+    default_objective: MATH-1.2.1
+    subtopic_overrides:
+      "Profit and loss": MATH-1.2.2
+      "Percentage profit": MATH-1.2.2
+      "Discount": MATH-1.2.3
+      "Sales tax": MATH-1.2.3
+      "VAT": MATH-1.2.3
+      "Simple interest": MATH-1.2.5
+      "Compound interest": MATH-1.2.6
+      "Hire purchase": MATH-1.2.7
+      "Currency conversion": MATH-1.2.8
+      "Exchange rates": MATH-1.2.8
+      "Wages and salaries": MATH-1.2.1
+      "Utilities": MATH-1.2.4
+      "Insurance": MATH-1.2.10
+
+  "Sets":
+    default_objective: MATH-1.3.1
+    subtopic_overrides:
+      "Venn diagrams": MATH-1.3.6
+      "Venn diagram": MATH-1.3.6
+      "Union and intersection": MATH-1.3.5
+      "Subsets": MATH-1.3.3
+      "Complement": MATH-1.3.4
+      "Universal set": MATH-1.3.2
+
+  "Algebra":
+    default_objective: MATH-1.5.1
+    subtopic_overrides:
+      "Laws of indices": MATH-1.5.3
+      "Indices": MATH-1.5.3
+      "Binary operations": MATH-1.1.11
+      "Binary operation": MATH-1.1.11
+      "Direct variation": MATH-1.5.13
+      "Inverse variation": MATH-1.5.13
+      "Factorising": MATH-1.5.5
+      "Factorization": MATH-1.5.5
+      "Solving equations": MATH-1.5.7
+      "Linear equations": MATH-1.5.7
+      "Quadratic equations": MATH-1.5.9
+      "Simultaneous equations": MATH-1.5.8
+      "Inequalities": MATH-1.5.10
+      "Sequences": MATH-2.1.6
+      "Arithmetic sequences": MATH-2.1.6
+      "Arithmetic progression word problem": MATH-2.1.7
+
+  "Functions and relations":
+    default_objective: MATH-2.3.1
+    subtopic_overrides:
+      "Graphs of functions": MATH-2.3.5
+      "Quadratic graphs": MATH-2.3.5
+      "Linear graphs": MATH-1.6.3
+      "Gradient": MATH-1.6.4
+      "Equation of a line": MATH-1.6.5
+      "Inverse functions": MATH-2.3.4
+      "Composite functions": MATH-2.3.3
+      "Domain and range": MATH-2.3.2
+
+  "Geometry":
+    default_objective: MATH-2.4.1
+    subtopic_overrides:
+      "Transformations": MATH-3.3.1
+      "Reflection": MATH-3.3.2
+      "Rotation": MATH-3.3.3
+      "Translation": MATH-3.3.4
+      "Enlargement": MATH-3.3.5
+      "Circle theorems": MATH-2.4.5
+      "Pythagoras": MATH-2.4.3
+      "Angles": MATH-2.4.1
+      "Similar triangles": MATH-2.4.4
+      "Area": MATH-1.4.5
+      "Perimeter": MATH-1.4.1
+      "Volume": MATH-1.4.7
+      "Surface area": MATH-1.4.6
+      "Locus": MATH-2.4.8
+
+  "Trigonometry":
+    default_objective: MATH-2.4.9
+    subtopic_overrides:
+      "Sine rule": MATH-2.4.12
+      "Cosine rule": MATH-2.4.12
+      "Bearing": MATH-2.4.13
+      "Elevation and depression": MATH-2.4.10
+
+  "Statistics":
+    default_objective: MATH-2.2.1
+    subtopic_overrides:
+      "Mean": MATH-2.2.4
+      "Median": MATH-2.2.5
+      "Mode": MATH-2.2.3
+      "Frequency distribution": MATH-2.2.2
+      "Cumulative frequency": MATH-2.2.8
+      "Box-and-whisker": MATH-2.2.9
+      "Scatter diagram": MATH-2.2.10
+
+  "Probability":
+    default_objective: MATH-3.1.1
+    subtopic_overrides:
+      "Tree diagrams": MATH-3.1.5
+      "Conditional probability": MATH-3.1.4
+
+  "Matrices":
+    default_objective: MATH-3.4.1
+    subtopic_overrides:
+      "Matrix operations": MATH-3.4.3
+      "Determinant": MATH-3.4.5
+      "Inverse matrix": MATH-3.4.6
+      "Solving systems": MATH-3.4.8
+
+  "Vectors":
+    default_objective: MATH-3.2.1
+    subtopic_overrides:
+      "Resultant vectors": MATH-3.2.3
+      "Position vectors": MATH-3.2.2
+      "Magnitude": MATH-3.2.4
+
+  "Transformations":
+    default_objective: MATH-3.3.1
+    subtopic_overrides:
+      "Reflection": MATH-3.3.2
+      "Rotation": MATH-3.3.3
+      "Translation": MATH-3.3.4
+      "Enlargement": MATH-3.3.5
+      "Combined transformations": MATH-3.3.6
+      "Matrices and transformations": MATH-3.4.7

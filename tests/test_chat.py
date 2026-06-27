@@ -66,3 +66,29 @@ def test_study_plan_renders_video_section():
     assert "await renderVideoSection(objective.objective_id,host)" in STUDY_PLAN_HTML
     # The function must exist.
     assert "async function renderVideoSection(" in STUDY_PLAN_HTML
+
+
+# ---------------------------------------------------------------------------
+# Visualize feature in chat.html (ported from study_plan.html)
+# ---------------------------------------------------------------------------
+
+def test_chat_appends_visualize_button_on_teach():
+    # appendVisualizeButton must be called in the teach branch before appendVideoCards.
+    assert "appendVisualizeButton(data.objective_id, lessonMsg)" in HTML
+    # Must appear before the video cards call in the same teach block.
+    assert HTML.index("appendVisualizeButton(data.objective_id, lessonMsg)") < HTML.index("appendVideoCards(data.objective_id, lessonMsg)")
+
+
+def test_chat_has_visual_dialog_html():
+    # The shared <dialog> element must exist (single overlay, shared across all lesson bubbles).
+    assert 'id="visualDialog"' in HTML
+    assert 'id="visualIframe"' in HTML
+    assert 'id="visualDialogClose"' in HTML
+
+
+def test_chat_has_open_visual_dialog_function():
+    # The openVisualDialog function and its dynamic-element wiring must be present.
+    assert "function openVisualDialog(objectiveId, btn, hint)" in HTML
+    assert "function appendVisualizeButton(objectiveId, msgEl)" in HTML
+    # Close wiring IIFE must reference the dialog by ID (not study_plan.html's $ shorthand).
+    assert "document.getElementById('visualDialog')" in HTML

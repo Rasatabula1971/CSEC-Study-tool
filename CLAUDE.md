@@ -762,13 +762,46 @@ all slipped through a first-pass extraction).
    objective-like statement present in one edition but not the other.
    Don't assume the newer-looking filename is the correct edition — verify.
 
-3. **Extract with per-page column-boundary detection, not a fixed threshold.**
-   CXC syllabi often place the Specific Objectives / Explanatory Notes
-   column boundary at different x-coordinates on different pages or modules.
-   See `tools/extract_isci_objectives.py`'s `_objective_col_boundary()` /
-   `DEFAULT_OBJ_COL_BOUNDARY` for the working pattern — compute the boundary
-   per page from a marker regex (e.g. `EXPL_MARKER_RE` matching `(a)`/`(i)`
-   sub-markers) rather than hardcoding one x-value for the whole document.
+3. **Use the canonical extraction module — never re-implement column logic.**
+   `tools/extraction/syllabus_extractor_base.py` is the authoritative, subject-
+   agnostic implementation. Every `extract_<subject>_objectives.py` script
+   MUST import `_detect_gutter`, `_left_text`, and `validate_objectives` from
+   it — do NOT copy column logic from Math's or Integrated_Science's scripts.
+   A fix in the base module then protects every subject at once. **When the
+   English extractor is built, it imports from this module — it does not copy
+   from `extract_math_objectives.py` or `extract_isci_objectives.py`.**
+
+   The module was hardened (on the Math build) against two concrete bug classes
+   that block-level extraction falls into on CXC's two-column layout:
+
+   - **Column-bbox bleed.** PyMuPDF's `"blocks"` mode merges text across the
+     column gutter — a left-margin `(i)` note marker glued to right-column note
+     text becomes one block spanning `x0≈68→x1≈532`, so an `x0 < threshold`
+     filter *leaks* note text into the left column (and drops wide-but-
+     legitimate objective blocks). `_left_text` filters at the **word** level
+     (centroid vs. a per-page gutter) instead. `_detect_gutter` finds the
+     gutter as the midpoint of the widest empty x-projection strip — which is
+     guaranteed to sit at/after the left column's right edge, so a right-aligned
+     left-column word is never clipped (the earlier `min(right-column x0)`
+     heuristic *did* clip tail words like *ratio/sets/vector* and is wrong).
+     This caused MATH-2.3.17 (note "(i) the interval of the domain…" bled in).
+   - **Eager-termination truncation.** A statement assembler that latches on
+     the first `;` then drops any line not starting with `(` loses line-wrapped
+     tails such as "…vertices of / solids; and, / (e) classes of solids" and
+     "…the co-ordinates of the / midpoint". With a clean left column the
+     statement is simply every line up to the next stop signal (next marker /
+     section header / noise) — see `_extract_obj_statement` in the Math script.
+     This caused MATH-2.3.9 and MATH-2.4.6.
+
+   `validate_objectives` is the layout-independent QA net: it flags truncation
+   (trailing connector/preposition), note bleed (roman-numeral enumerators),
+   garble (stray math-typesetting residue, e.g. the MATH-2.2.4 `a(x+h)²+k`
+   formula the PDF text layer itself emits broken), and too-short statements —
+   surfacing them BEFORE the CSV is loaded and lessons are composed. Run it
+   every build and resolve every flag against the PDF. (Predecessor reference:
+   `extract_isci_objectives.py`'s `_objective_col_boundary()` /
+   `DEFAULT_OBJ_COL_BOUNDARY` was the first per-page-boundary attempt; the base
+   module supersedes it.)
 
 4. **Run a gap-resolution pass — every numbering gap explicitly resolved,
    never left ambiguous.** After extraction, list the full objective-number

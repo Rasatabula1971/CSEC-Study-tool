@@ -1,0 +1,160 @@
+section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.1,1,Distinguish among sets of numbers,Understanding,Distinguish,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.2,2,"Compute powers of real numbers of the form 𝓍𝑎, where 𝑎∈ℚ",Application,Compute,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.3,3,Evaluate numerical expressions using any of the four basic operations on real numbers,Application,Evaluate,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.4,4,"Convert among fractions, percents and decimals",Application,Convert,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.5,5,List the set of factors and multiples of a given integer,Knowledge,List,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.6,6,Compute the H.C.F. or L.C.M. of two or more positive integers,Application,Compute,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.7,7,State the value of a digit of a numeral in a given base,Knowledge,State,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.8,8,Convert from one set of units to another,Application,Convert,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.9,9,"Express a value to a given number of: (a) significant figures; and, (b) decimal places",Application,Express,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.10,10,Use properties of numbers and operations in computational tasks,Application,Use,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.11,11,Calculate any fraction or percentage of a given quantity,Application,Calculate,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.12,12,Write any rational number in scientific notation,Application,Write,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.13,13,Express one quantity as a fraction or percentage of another,Application,Express,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.14,14,Compare quantities,Application,Compare,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.15,15,Order a set of real numbers,Application,Order,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.16,16,Compute terms of a sequence given a rule,Application,Compute,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.17,17,Derive an appropriate rule given the terms of a sequence,Application,Derive,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.18,18,Divide a quantity in a given ratio,Application,Divide,Both
+MATH-S1.1,1.1,NUMBER THEORY AND COMPUTATION,MATH-1.1.19,19,Solve problems involving concepts in number theory and computation,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.1,1,"Calculate: (a) discount; (b) sales tax; (c) profit; and, (d) loss",Application,Calculate,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.2,2,"Calculate: (a) percentage profit; and, (b) percentage loss",Application,Calculate,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.3,3,"Express a profit, loss, discount, markup and purchase tax, as a percentage of some value",Application,Express,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.4,4,"Solve problems involving marked price, selling price, cost price, profit, loss or discount",Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.5,5,Solve problems involving payments by instalments as in the case of hire purchase and mortgages,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.6,6,Solve problems involving simple interest,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.7,7,Solve problems involving compound interest,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.8,8,Solve problems involving appreciation and depreciation,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.9,9,Solve problems involving measures and money,Application,Solve,Both
+MATH-S1.2,1.2,CONSUMER ARITHMETIC,MATH-1.2.10,10,"Solve problems involving: (a) rates and taxes; (b) utilities; (c) invoices and shopping bills; (d) salaries and wages; and, (e) insurance and investments",Application,Solve,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.1,1,Explain concepts relating to sets,Understanding,Explain,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.2,2,Represent a set in various forms,Application,Represent,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.3,3,List subsets of a given set,Knowledge,List,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.4,4,"Determine elements in intersections, unions and complements of sets",Application,Determine,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.5,5,Describe relationships among sets using set notation and symbols,Understanding,Describe,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.6,6,Draw Venn diagrams to represent relationships among sets,Application,Draw|Represent,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.7,7,Use Venn diagrams to represent the relationships among sets,Application,Use|Represent,Both
+MATH-S1.3,1.3,SETS,MATH-1.3.8,8,"Solve problems in Number Theory, Algebra and Geometry using concepts in set theory",Application,Solve,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.1,1,"Convert units of length, mass, area, volume, capacity",Application,Convert,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.2,2,"Use the appropriate SI unit of measure for area, volume, capacity, mass, temperature and time (24-hour clock) and other derived quantities",Application,Use|Measure,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.3,3,Determine the perimeter of a plane shape,Application,Determine,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.4,4,Calculate the length of an arc of a circle,Application,Calculate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.5,5,Estimate the area of plane shapes,Application,Estimate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.6,6,Calculate the area of polygons and circles,Application,Calculate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.7,7,Calculate the area of a sector of a circle,Application,Calculate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.8,8,Calculate the surface area of solids,Application,Calculate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.9,9,Calculate the volume of solids,Application,Calculate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.10,10,"Solve the problems involving the relations among time, distance and speed",Application,Solve,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.11,11,Estimate the margin of error for a given measurement,Application,Estimate,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.12,12,Use scales and scale drawings to determine distances and areas,Application,Use|Determine,Both
+MATH-S1.4,1.4,MEASUREMENT,MATH-1.4.13,13,Solve problems involving measurement,Application,Solve,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.1,1,"Use symbols to represent numbers, operations, variables and relations",Application,Use|Represent,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.2,2,Translate between algebraic symbols and worded expressions,Understanding,Translate,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.3,3,Evaluate arithmetic operations involving directed numbers,Application,Evaluate,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.4,4,Simplify algebraic expressions using the four basic operations,Application,Simplify,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.5,5,Evaluate expressions involving binary operations (other than the four basic operations),Application,Evaluate,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.6,6,Substitute numbers for variables in algebraic expressions,Application,Substitute,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.7,7,Apply the distributive law to factorise or expand algebraic expressions; (𝑎+ 𝑏)(𝑥+ 𝑦) = 𝑎𝑥+ 𝑏𝑥+ 𝑎𝑦+ 𝑏𝑦,Application,Apply|Factorise,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.8,8,Simplify algebraic fractions,Application,Simplify,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.9,9,Use the laws of indices to manipulate expressions with integral indices,Application,Use,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.10,10,Solve linear equations in one unknown,Application,Solve,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.11,11,Solve a simple linear inequality in one unknown,Application,Solve,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.12,12,Change the subject of formulae,Application,Change,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.13,13,Factorise simple algebraic expressions,Application,Factorise,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.14,14,Solve worded problems,Application,Solve,Both
+MATH-S1.5,1.5,ALGEBRA 1,MATH-1.5.15,15,Prove two algebraic expressions to be identical,Application,Prove,Both
+MATH-S1.6,1.6,INTRODUCTION TO GRAPHS,MATH-1.6.1,1,Draw graphs of linear functions,Application,Draw,Both
+MATH-S1.6,1.6,INTRODUCTION TO GRAPHS,MATH-1.6.2,2,Determine the intercepts of the graph of linear functions,Application,Determine,Both
+MATH-S1.6,1.6,INTRODUCTION TO GRAPHS,MATH-1.6.3,3,Solve problems involving graphs of linear functions,Application,Solve,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.1,1,Differentiate between sample and population attributes,Understanding,Differentiate,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.2,2,Construct a frequency table for a given set of data,Application,Construct,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.3,3,Construct statistical diagrams,Application,Construct,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.4,4,Determine measures of central tendency for raw ungrouped data,Application,Determine,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.5,5,"Determine when it is most appropriate to use the mean, median and mode as the average for a set of data",Application,Determine|Use,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.6,6,"Determine the measures of dispersion (spread) for raw, ungrouped data",Application,Determine,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.7,7,Analyse statistical diagrams,Application,Analyse,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.8,8,Use standard deviation to compare sets of ungrouped data,Application,Use|Compare,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.9,9,Determine the proportion or percentage of the sample above or below a given value from raw ungrouped data or frequency table,Application,Determine,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.10,10,Identify the sample space for simple experiment,Knowledge,Identify,Both
+MATH-S2.1,2.1,STATISTICS 1,MATH-2.1.11,11,Make inference(s) from statistics,Understanding,Make,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.1,1,Factorise algebraic expressions,Application,Factorise,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.2,2,Change the subject of formulae,Application,Change,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.3,3,"Solve simultaneous linear equations, in two unknowns, algebraically",Application,Solve,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.4,4,Rewrite a quadratic expression in the form a(x + h)² + k,Application,Rewrite,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.5,5,Solve quadratic equations algebraically,Application,Solve,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.6,6,Solve worded problems,Application,Solve,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.7,7,Solve a pair of equations in two variables when one equation is quadratic or non-linear and the other linear,Application,Solve,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.8,8,Represent direct and inverse variation symbolically,Application,Represent,Both
+MATH-S2.2,2.2,ALGEBRA 2,MATH-2.2.9,9,Solve problems involving direct variation and inverse variation,Application,Solve,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.1,1,Explain basic concepts associated with relations,Understanding,Explain,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.2,2,Represent a relation in various ways,Application,Represent,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.3,3,State the characteristics that define a function,Knowledge,State|Define,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.4,4,Use functional notation,Application,Use,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.5,5,Distinguish between a relation and a function,Understanding,Distinguish,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.6,6,Determine the gradient of a straight line,Application,Determine,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.7,7,Determine the equation of a straight line,Application,Determine,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.8,8,Solve problems involving the gradient of parallel and perpendicular lines,Application,Solve,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.9,9,"Determine from co-ordinates on a line segment: (a) the length; and, (b) the co-ordinates of the midpoint",Application,Determine,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.10,10,Solve a pair of simultaneous linear equations in two unknowns graphically,Application,Solve,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.11,11,Derive the composition of functions,Application,Derive,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.12,12,State the relationship between a function and its inverse,Knowledge,State,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.13,13,Derive the inverse of a function,Application,Derive,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.14,14,Evaluate a function 𝑓(𝑥) at a given value of 𝑥,Application,Evaluate,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.15,15,Draw the graph of a quadratic function,Application,Draw,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.16,16,Use the graph of a quadratic function to identify its features,Application,Use|Identify,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.17,17,Interpret the graph of a quadratic function,Understanding,Interpret,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.18,18,Determine the equation of the axis of symmetry and the maximum or minimum value of a quadratic function expressed in the form 𝑎(𝑥+ ℎ)2 + 𝑘,Application,Determine,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.19,19,Sketch the graph of a quadratic function expressed in the form 𝑦= 𝑎(𝑥+ ℎ)2 + 𝑘 and determine the number of roots,Application,Sketch|Determine,Both
+MATH-S2.3,2.3,"RELATIONS, FUNCTIONS AND GRAPHS 1",MATH-2.3.20,20,Solve problems involving graphs of linear and non-linear functions,Application,Solve,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.1,1,Explain concepts relating to geometry,Understanding,Explain,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.2,2,Draw angles and line segments accurately using appropriate instruments,Application,Draw,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.3,3,Measure angles and line segments accurately using appropriate instruments,Application,Measure,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.4,4,"Construct lines, angles, and polygons using appropriate instruments",Application,Construct,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.5,5,Identify the type(s) of symmetry possessed by a given plane figure,Knowledge,Identify,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.6,6,"Solve geometric problems using properties of: (a) lines, angles, and polygons; (b) congruent triangles; (c) similar figures; (d) faces, edges and vertices of solids; and, (e) classes of solids",Application,Solve,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.7,7,Use Pythagoras’ theorem to solve problems,Application,Use|Solve,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.8,8,Define the trigonometric ratios of acute angles in a right triangle,Knowledge,Define,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.9,9,Relate objects in the physical world to geometric objects,Understanding,Relate,Both
+MATH-S2.4,2.4,GEOMETRY AND TRIGONOMETRY 1,MATH-2.4.10,10,Apply the trigonometric ratios to solve problems,Application,Apply|Solve,Both
+MATH-S2.5,2.5,VECTORS AND MATRICES 1,MATH-2.5.1,1,Explain concepts associated with vectors,Understanding,Explain,Both
+MATH-S2.5,2.5,VECTORS AND MATRICES 1,MATH-2.5.2,2,Simplify expressions involving vectors,Application,Simplify,Both
+MATH-S2.5,2.5,VECTORS AND MATRICES 1,MATH-2.5.3,3,Explain basic concepts associated with matrices,Understanding,Explain,Both
+MATH-S2.5,2.5,VECTORS AND MATRICES 1,MATH-2.5.4,4,Solve problems involving matrix operations,Application,Solve,Both
+MATH-S2.5,2.5,VECTORS AND MATRICES 1,MATH-2.5.5,5,Use matrices to solve simple problems in Arithmetic and Algebra,Application,Use|Solve,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.1,1,Construct a frequency table for a given set of data,Application,Construct,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.2,2,Determine class features for a given set of data,Application,Determine,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.3,3,Construct statistical diagrams,Application,Construct,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.4,4,Determine measures of central tendency for raw grouped data,Application,Determine,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.5,5,Determine the measures of dispersion (spread) for grouped data,Application,Determine,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.6,6,Use standard deviation to compare sets of data,Application,Use|Compare,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.7,7,Draw cumulative frequency curve (Ogive),Application,Draw,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.8,8,Analyse statistical diagrams,Application,Analyse,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.9,9,"Determine the proportion or percentage of the sample above or below a given value from raw grouped data, frequency table or cumulative frequency curve",Application,Determine,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.10,10,Determine experimental and theoretical probabilities of simple events,Application,Determine,Both
+MATH-S3.1,3.1,STATISTICS 2,MATH-3.1.11,11,Make inference(s) from statistics,Understanding,Make,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.1,1,Draw a graph to represent a linear inequality in two variables,Application,Draw|Represent,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.2,2,Represent the solution of linear inequalities in one variable,Application,Represent,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.3,3,Use linear programming techniques to graphically solve problems involving two variables,Application,Use|Solve,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.4,4,Draw graphs of non-linear functions,Application,Draw,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.5,5,Interpret graphs of functions,Understanding,Interpret,Both
+MATH-S3.2,3.2,"RELATIONS, FUNCTIONS AND GRAPHS 2",MATH-3.2.6,6,Solve problems involving graphs of linear and non-linear functions,Application,Solve,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.1,1,Solve geometric problems using properties of circles and circle theorems,Application,Solve,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.2,2,Represent translations in a plane using vectors,Application,Represent,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.3,3,"Determine and represent the location of: (a) the image of an object under a transformation; and, (b) an object given the image",Application,Determine|Represent,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.4,4,State the relationship between an object and its image in the plane under geometric transformations,Knowledge,State,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.5,5,Describe a transformation given an object and its image,Understanding,Describe,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.6,6,Locate the image of an object under a combination of transformations,Application,Locate,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.7,7,Use the sine and cosine rules to solve problems involving triangles,Application,Use|Solve,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.8,8,Calculate the area of a triangle given two sides and the angle they form,Application,Calculate,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.9,9,Calculate the area of a segment of a circle,Application,Calculate,Both
+MATH-S3.3,3.3,GEOMETRY AND TRIGONOMETRY 2,MATH-3.3.10,10,Solve problems involving bearings,Application,Solve,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.1,1,"Write the position vector of a point 𝑃(𝑎, 𝑏) as 𝑂𝑃 ⃗⃗⃗⃗⃗ = (𝑎 𝑏) where 𝑂 is the origin (0,0)",Application,Write,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.2,2,Determine the magnitude of a vector,Application,Determine,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.3,3,Determine the direction of a vector,Application,Determine,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.4,4,Use vectors to solve problems in geometry,Application,Use|Solve,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.5,5,Evaluate the determinant of a ‘2 x 2’ matrix,Application,Evaluate,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.6,6,Define the multiplicative inverse of a non-singular square matrix,Knowledge,Define,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.7,7,Obtain the inverse of a non-singular ‘2 x 2’ matrix,Application,Obtain,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.8,8,Determine a ‘2 x 2’ matrix associated with a specified transformation,Application,Determine,Both
+MATH-S3.4,3.4,VECTORS AND MATRICES 2,MATH-3.4.9,9,"Use matrices to solve simple problems in Arithmetic, Algebra and Geometry",Application,Use|Solve,Both

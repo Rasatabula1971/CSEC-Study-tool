@@ -1,0 +1,24 @@
+subject_id: Mathematics
+display_name: Mathematics
+source_root: 'D:\GPT Folder CSEC\Organized_CSEC_2027\Mathematics'
+syllabus_csv: backend/ingest_v2/syllabus_csvs/mathematics.csv
+mcq_topic_map: backend/ingest_v2/mcq_topic_maps/mathematics.yaml
+paper_2_grading_enabled: false  # set true only if real mark schemes exist
+# Bridge/Supplemental .docx count for Mathematics: 85 .md notes in Notes/
+# -- no App_Upload_Staging .docx extras; all notes are already .md.
+enable_office_adapter: false
+# 85 .md notes in Notes/ (Caribbean AI, Supplemental gap sources, etc.) -- must be enabled.
+enable_markdown_adapter: true
+known_gaps: []
+skip_patterns:
+  - '_Review Needed'
+  - '_Audit_Source_Cards'
+  - '_download_*'
+  - '__pycache__'
+  - '.venv'
+  - '.git'
+  - 'App_Upload_Staging'
+  - 'youtube videos'
+  - 'Practice Questions'
+  - 'Textbooks'
+  - 'Subject Reports'

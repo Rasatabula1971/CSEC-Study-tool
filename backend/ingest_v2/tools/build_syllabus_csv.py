@@ -79,6 +79,13 @@ COMMAND_VERBS = [
     "Analyse", "Analyze", "Evaluate", "Assess", "Examine", "Investigate",
     "Appraise", "Recommend", "Determine", "Compare",
     "Contrast", "Justify", "Draw", "Sketch", "Construct", "Interpret",
+    # Mathematics-specific command words (verified against CXC skill bands):
+    # Application: solve/simplify/factorise/factorize/prove/show/derive/convert/
+    #              express/write/find/order (quantitative / procedural work)
+    "Solve", "Simplify", "Factorise", "Factorize", "Prove", "Show",
+    "Derive", "Convert", "Express", "Write", "Find", "Order", "Represent",
+    "Divide", "Estimate", "Change", "Translate", "Substitute", "Rewrite",
+    "Measure", "Locate", "Obtain", "Make",
 ]
 
 # skill_type derivation. Precedence highest -> lowest: Application beats
@@ -96,10 +103,17 @@ SKILL_APPLICATION = {
     "use", "apply", "calculate", "compute", "analyse", "analyze",
     "evaluate", "assess", "compare", "contrast", "justify", "draw", "sketch",
     "construct", "examine", "investigate", "appraise", "recommend", "determine",
+    # Mathematics additions (procedural / proof-based work → Application)
+    "solve", "simplify", "factorise", "factorize", "prove", "show",
+    "derive", "convert", "express", "write", "find", "order", "represent",
+    "divide", "estimate", "change", "substitute", "rewrite", "measure",
+    "locate", "obtain",
 }
 SKILL_UNDERSTANDING = {
     "explain", "describe", "distinguish", "differentiate", "illustrate",
     "summarize", "classify", "discuss", "interpret", "relate",
+    "translate",  # converting between representations — comprehension
+    "make",       # "make inference(s)" — comprehension/interpretation
 }
 SKILL_KNOWLEDGE = {
     "define", "state", "list", "identify", "name", "outline",
