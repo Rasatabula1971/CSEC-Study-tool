@@ -72,10 +72,14 @@ try:
 except (AttributeError, ValueError):
     pass
 
+_ssd = os.getenv("SSD_ROOT")
 DEFAULT_PDF = (
-    r"E:\CSEC_AI_STUDY_PARTNER\03_KNOWLEDGE_BASE\Integrated_Science"
-    r"\00_SYLLABUS\csec-integrated-science-syllabus_effectiveforexamsfrom2027.pdf"
-)
+    os.path.join(
+        _ssd, "03_KNOWLEDGE_BASE", "Integrated_Science", "00_SYLLABUS",
+        "csec-integrated-science-syllabus_effectiveforexamsfrom2027.pdf",
+    )
+    if _ssd else None
+)  # derives from SSD_ROOT; pass --pdf explicitly if SSD_ROOT is unset
 DEFAULT_OUT = (
     Path(__file__).resolve().parents[1]
     / "backend" / "ingest_v2" / "source_data"
@@ -383,7 +387,8 @@ def report(rows, headers_sample, module_titles, out_path, wrote: bool, changes=N
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--pdf", default=DEFAULT_PDF, help="canonical syllabus PDF")
+    ap.add_argument("--pdf", default=DEFAULT_PDF, required=(DEFAULT_PDF is None),
+                    help="canonical syllabus PDF (defaults to SSD_ROOT/03_KNOWLEDGE_BASE/...)")
     ap.add_argument("--output", default=str(DEFAULT_OUT), help="master-map CSV output")
     ap.add_argument("--dry-run", action="store_true", help="summary only, do not write")
     args = ap.parse_args()

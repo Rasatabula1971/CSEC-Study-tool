@@ -46,9 +46,11 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 from db.backup import backup_first  # noqa: E402
 
-DEFAULT_PIPELINE_DIR = Path(
-    r"D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline"
-)
+DEFAULT_PIPELINE_DIR = (
+    Path(os.getenv("VIDEO_PIPELINE_DIR"))
+    if os.getenv("VIDEO_PIPELINE_DIR")
+    else None
+)  # set VIDEO_PIPELINE_DIR in .env or pass --video-pipeline-dir; no D:\ fallback
 
 # Short prefix in the CSV filenames -> subject_id in the DB.
 SUBJECT_MAP: dict[str, str] = {
@@ -266,7 +268,11 @@ def main() -> None:
         "--video-pipeline-dir",
         type=Path,
         default=DEFAULT_PIPELINE_DIR,
-        help=f"Directory containing *_final_review.csv files (default: {DEFAULT_PIPELINE_DIR})",
+        required=(DEFAULT_PIPELINE_DIR is None),
+        help=(
+            "Directory containing *_final_review.csv files. "
+            "Defaults to VIDEO_PIPELINE_DIR env var; pass explicitly if unset."
+        ),
     )
     args = parser.parse_args()
 

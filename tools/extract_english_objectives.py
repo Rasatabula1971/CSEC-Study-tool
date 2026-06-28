@@ -64,10 +64,7 @@ except (AttributeError, ValueError):
 
 PREFIX = prefix_for("English")  # "ENG"
 
-DEFAULT_PDF = (
-    r"D:\GPT Folder CSEC\Organized_CSEC_2027\English A\Syllabus"
-    r"\csec-english-syllabus-amended-2026-for-exams-2027v2.pdf"
-)
+DEFAULT_PDF = None  # builder's staging path varies — pass --pdf explicitly
 DEFAULT_OUT = _REPO_ROOT / "backend" / "ingest_v2" / "syllabus_csvs" / "english.csv"
 
 # Left column boundary — specific objectives sit at x0 < 170
@@ -228,7 +225,8 @@ _CSV_FIELDS = ["subject", "context", "objective_number", "objective"]
 
 def main():
     ap = argparse.ArgumentParser(description="Extract CSEC English A objectives from PDF.")
-    ap.add_argument("--pdf", default=DEFAULT_PDF)
+    ap.add_argument("--pdf", default=DEFAULT_PDF, required=True,
+                    help="Path to the CSEC English A syllabus PDF")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()

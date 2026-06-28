@@ -41,8 +41,8 @@ from gemini_client import gemini_chat, is_gemini_available  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-SSD_ROOT = os.getenv("SSD_ROOT", r"D:\CSEC_AI_STUDY_PARTNER")
-VISUALS_DIR = Path(SSD_ROOT) / "05_VISUALS"
+SSD_ROOT = os.getenv("SSD_ROOT")  # no fallback — derive from env, never guess a drive letter
+VISUALS_DIR = Path(SSD_ROOT) / "05_VISUALS" if SSD_ROOT else None
 # Allow a different model for visual generation (higher output-token limit helps
 # with completeness). Falls back to GEMINI_MODEL from gemini_client if unset.
 VISUAL_GEMINI_MODEL = os.getenv("VISUAL_GEMINI_MODEL") or None
@@ -168,6 +168,10 @@ def generate_visual(
                 "error": "GEMINI_API_KEY not set — visual generation requires Gemini"}
 
     # 3. Prepare output path
+    if VISUALS_DIR is None:
+        return {"ok": False, "file_path": None, "cached": False,
+                "error": "SSD_ROOT is not set — cannot locate the visuals cache. "
+                         "Set SSD_ROOT in .env (e.g. SSD_ROOT=E:\\CSEC_AI_STUDY_PARTNER)."}
     subject_id = obj_row["subject_id"]
     out_dir = VISUALS_DIR / subject_id
     try:
