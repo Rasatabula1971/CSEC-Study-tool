@@ -60,6 +60,7 @@
     .plan-jump-row { display: flex; gap: 8px; align-items: center; }
     .plan-jump-input { flex: 1; min-width: 0; padding: 8px 12px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-body); font-family: var(--font-mono); font-size: 14px; outline: none; }
     .plan-jump-input:focus { border-color: var(--accent-blue); }
+    .plan-jump-input::placeholder { color: var(--text-muted, #999); opacity: 0.6; }
     .plan-jump-btn { flex-shrink: 0; padding: 8px 16px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; }
     .plan-jump-error { font-size: 12px; color: var(--accent-red); }
     .plan-jump-error:empty { display: none; }
@@ -1055,5 +1056,6 @@
   async function init(){await fetchSubjects();enterPlanMode();updateSubmitBtn();updateWordCount();}
   init();
 </script>
+<div class="footer-note">Done for the day? Close this tab, then wait a few seconds before unplugging the SSD.</div>
 </body>
 </html>

@@ -36,11 +36,12 @@ def test_no_raw_dump_first_chain():
     assert "const text = data.lesson ||" not in HTML
 
 
-def test_lesson_text_precedes_json_stringify_fallback():
-    # JSON.stringify(data) stays only as the last-resort fallback, and `lesson_text`
-    # must come before it (so a real lesson is never stringified).
-    assert "JSON.stringify(data)" in HTML
-    assert HTML.index("data.lesson_text") < HTML.index("JSON.stringify(data)")
+def test_lesson_text_guard_replaces_json_stringify():
+    # Fix 5: JSON.stringify(data) as a visible fallback was removed. Instead, missing
+    # lesson fields are caught early with a console.error + friendly message.
+    assert "JSON.stringify(data)" not in HTML
+    assert "console.error('Unexpected teach response shape:" in HTML
+    assert "data.lesson_text" in HTML
 
 
 def test_bubble_preserves_paragraph_breaks():

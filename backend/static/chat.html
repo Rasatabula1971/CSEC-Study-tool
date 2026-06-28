@@ -1043,6 +1043,12 @@
         opt.textContent = s.display_name;
         subjectSelect.appendChild(opt);
       });
+
+      // Restore last-used subject from localStorage, fallback to first in list
+      const saved = localStorage.getItem('last_subject');
+      const target = saved && data.some(s => s.subject_id === saved) ? saved : data[0].subject_id;
+      subjectSelect.value = target;
+      subjectSelect.dispatchEvent(new Event('change'));
     } catch {
       // API not yet running — keep static options
     }
@@ -1154,8 +1160,9 @@
       hideThinking();
 
       if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        appendMessage('error', `Request failed (${res.status}). ${errText}`);
+        const errText = await res.text().catch(() => '');
+        console.error(`/api/chat HTTP ${res.status}:`, errText);
+        appendMessage('error', "Something went wrong. Try again, or message Dad if it keeps happening.");
         return;
       }
 
@@ -1167,7 +1174,8 @@
         } else if (data.error === 'no_mark_scheme') {
           appendMessage('ai', "No mark scheme found for that question. Try a question from an ingested past paper.");
         } else {
-          appendMessage('error', `Error: ${data.error}`);
+          console.error('API error:', data.error);
+          appendMessage('error', "Something went wrong. Try again, or message Dad if it keeps happening.");
         }
         return;
       }
@@ -1187,7 +1195,12 @@
         // teach route — backend returns the lesson under `lesson_text` (the v2
         // canonical-lesson field, same one study_plan.html reads). The legacy
         // aliases stay as defensive fallbacks; JSON.stringify is the last resort.
-        const text = data.lesson_text || data.lesson || data.text || data.response || JSON.stringify(data);
+        if (!data.lesson_text && !data.lesson && !data.text && !data.response) {
+          console.error('Unexpected teach response shape:', data);
+          appendMessage('error', "Something went wrong. Try again, or message Dad if it keeps happening.");
+          return;
+        }
+        const text = data.lesson_text || data.lesson || data.text || data.response;
         const lessonMsg = appendMessage('ai', text, { objectiveId: data.objective_id });
         // Lesson rendered → ready the student to be quizzed.
         if (respondedRoute === 'teach') {
@@ -1199,11 +1212,8 @@
 
     } catch (err) {
       hideThinking();
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        appendMessage('error', "Couldn't reach the study system. Make sure Ollama and the FastAPI server are running, then try again.");
-      } else {
-        appendMessage('error', `Something went wrong: ${err.message}`);
-      }
+      console.error('sendMessage error:', err);
+      appendMessage('error', "Something went wrong. Try again, or message Dad if it keeps happening.");
     } finally {
       state.isSending = false;
       updateSendState();
@@ -1219,6 +1229,7 @@
     const opt = subjectSelect.options[subjectSelect.selectedIndex];
     state.subjectId      = opt.value;
     state.subjectDisplay = opt.textContent.trim();
+    if (opt.value) localStorage.setItem('last_subject', opt.value);
     setSubjectDisplay(state.subjectId ? state.subjectDisplay : '');
     // Subject changed: invalidate the question list so it refetches.
     state.questionsSubject = '';
@@ -1320,5 +1331,6 @@
     </div>
   </div>
 </dialog>
+<div class="footer-note">Done for the day? Close this tab, then wait a few seconds before unplugging the SSD.</div>
 </body>
 </html>
