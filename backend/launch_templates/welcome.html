@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="20;url=http://127.0.0.1:8000">
+  <title>Welcome — CSEC Study Partner</title>
+  <style>
+    :root {
+      --ink:        #101814;
+      --ink-2:      #18241E;
+      --rule:       #2E4039;
+      --booklet:    #2D5B8A;
+      --booklet-bright: #4A82C4;
+      --paper:      #F4EFE3;
+      --paper-dim:  #B7B3A6;
+      --highlighter: #F2D544;
+      --tick:       #5BBF7B;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: Georgia, 'Times New Roman', serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      max-width: 560px;
+      width: 90%;
+      background: var(--ink-2);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 2.5rem 2.5rem 2rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: normal;
+      color: var(--highlighter);
+      margin-bottom: 1.25rem;
+      letter-spacing: 0.01em;
+    }
+
+    p {
+      line-height: 1.7;
+      color: var(--paper-dim);
+      margin-bottom: 1rem;
+    }
+
+    ol {
+      padding-left: 1.4rem;
+      margin-bottom: 1rem;
+    }
+
+    li {
+      line-height: 1.7;
+      color: var(--paper-dim);
+      margin-bottom: 0.4rem;
+    }
+
+    strong {
+      color: var(--paper);
+      font-weight: bold;
+    }
+
+    .countdown {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--rule);
+      font-size: 0.85rem;
+      color: var(--paper-dim);
+      font-family: 'Courier New', monospace;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--tick);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hi Rylee — welcome to your study system.</h1>
+
+    <p>This SSD has everything you need: lessons, past papers, mark schemes, and the AI tutor.
+       The first time you open it takes about 30 seconds to get ready. After that it's instant.</p>
+
+    <p>Two things:</p>
+
+    <ol>
+      <li>Always close the system with the <strong>Stop Studying</strong> shortcut before you
+          unplug the SSD. The browser tab won't be enough.</li>
+      <li>If anything goes wrong, message Dad. Don't try to fix it yourself — there's nothing
+          you can break by waiting.</li>
+    </ol>
+
+    <div class="countdown">
+      <span class="dot"></span>Closing this page in 20 seconds, then your study screen will open.<br>
+      If the study screen doesn't load right away, wait 30 seconds and refresh the page.
+    </div>
+  </div>
+</body>
+</html>
