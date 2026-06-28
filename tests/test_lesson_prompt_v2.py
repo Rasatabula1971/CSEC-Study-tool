@@ -154,6 +154,21 @@ def test_validate_accepts_math_command_recall_prompts():
         assert ok is True and why is None, f"rejected valid Math prompt: {prompt!r} ({why})"
 
 
+def test_validate_accepts_english_command_recall_prompts():
+    """English rollout: recall prompts open with CSEC English command words
+    (Extract/Analyse/Present/Formulate/Recognise...). The Math/POA-era whitelist
+    rejected 6 valid English lessons until the English command band was added."""
+    for prompt in [
+        "Extract two pieces of explicit information from the passage above.",
+        "Analyse how the writer creates a tense atmosphere in this extract.",
+        "Present a counter-argument to the writer's main claim.",
+        "Formulate a topic sentence for a paragraph on the dangers of social media.",
+        "Recognise the text structure used in the passage and name it.",
+    ]:
+        ok, why = il._validate_lesson_quality(_clean_body(350), [prompt])
+        assert ok is True and why is None, f"rejected valid English prompt: {prompt!r} ({why})"
+
+
 def test_validate_still_rejects_junk_recall_prompt():
     """The widened whitelist must not let genuine junk through (no '?' / no command word)."""
     ok, why = il._validate_lesson_quality(_clean_body(350), ["multiple-choice"])

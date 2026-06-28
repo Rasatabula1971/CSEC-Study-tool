@@ -142,6 +142,14 @@ _RECALL_COMMAND_WORDS = (
     "represent", "sketch", "estimate", "measure", "locate", "obtain", "differentiate",
     "interpret", "translate", "change", "divide", "order", "plot", "find", "write",
     "apply", "use",
+    # CSEC English A command band. Added for the English rollout: English objectives
+    # span a wide skill set, so Sonnet's recall prompts open with these imperatives
+    # ("Extract the main idea ...", "Analyse how the writer ...", "Present an argument
+    # ..."). Grounded in the English objectives' own command_words column, not invented;
+    # -ise/-ize spelling variants included so either form is accepted.
+    "extract", "recognise", "recognize", "analyse", "analyze", "assess", "examine",
+    "explore", "formulate", "present", "organise", "organize", "relate", "trace",
+    "deduce", "create", "communicate", "collaborate",
 )
 
 

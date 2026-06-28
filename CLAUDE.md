@@ -1051,13 +1051,24 @@ individually, not a single yes/no.
     trace/deduce/explore (Understanding), create/communicate/collaborate/
     organise/present/formulate (Application) — 0 UNCLASSIFIED.
     10 markdown notes (ChromeStudy x7, CSEC Hub x1, Supplemental x2) + 32 past
-    papers + 2 mark schemes + 1 specimen. No Kerwin MCQ bank. Ingestion started;
-    5,598 dry-run records (3,199 PDF + 2,399 markdown). Lessons pending gate 2
-    completion.
+    papers + 2 mark schemes + 1 specimen. No Kerwin MCQ bank.
+  - **English gate 2 complete (2026-06-27).** ingest_v2 run (applied): 52 files
+    seen, 47 processed; 3,812 chunks indexed (3,199 generic_pdf + 2,399 markdown;
+    969 past_paper / 316 specimen / 311 mark_scheme / 4,002 notes by content_type);
+    1,786 review-queue entries. 21 zero-chunk objectives fixed via targeted rebind
+    (100 chunks moved total — same cross-module parallel misbind as INTSCI/IT/POA/
+    Math; English is unique in that identical skill objectives repeat across all 3
+    modules with the same content_stmt, causing the keyword binder to bind all
+    matching chunks to the Module 1 version). ENG-3.3.8 ("Assess the effects of
+    persuasive devices") was over-bound at 1,588 chunks and used as donor for
+    Module 3 E&C zero-coverage objectives. Final state: 76/76 objectives covered,
+    0 at zero. Gate 3 pending: run `python backend/ingest_lessons.py --subject
+    English` with ANTHROPIC_API_KEY set in .env.
   - **Locked + FULLY BUILT (all three gates): Principles_of_Business, Economics,
     Integrated_Science, Information_Technology, Principles_of_Accounts,
     Mathematics.**
-    **Remaining (English: gate 1 done, gates 2-3 in progress 2026-06-27).**
+    **Remaining (English: gates 1-2 done, gate 3 pending — needs ANTHROPIC_API_KEY
+    in .env then run ingest_lessons.py --subject English).**
     NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
     (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
     above (the IT-5.9 / POA-multi-objective / MATH-2.1.9 fix is the same misbind pattern).
