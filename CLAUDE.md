@@ -1137,6 +1137,30 @@ individually, not a single yes/no.
 
 ---
 
+## Bootstrap Layer Tracker (SSD Packaging)
+
+Tracks tasks from `SSD_BOOTSTRAP_PLAN.md` Section 8 — packaging the study system
+onto a standalone SSD for Rylee's use independent of the dev laptop. Deliberately
+uses "Bootstrap Task" numbering (BT-1 … BT-7), not "Stage", to avoid collision
+with the Build Stage Tracker above.
+
+**Reference spec:** `SSD_BOOTSTRAP_PLAN.md` (repo root) — Section 8 defines all
+seven tasks listed here.
+
+| # | Task | Status | Verified location |
+|---|---|---|---|
+| BT-1 | Bootstrap scripts (4 `.bat` + `welcome.html` in `backend/launch_templates/`) | ✓ Complete | `backend/launch_templates/`: `launch.bat`, `START_STUDYING.bat`, `first_run.bat`, `shutdown.bat`, `welcome.html` — all 5 present |
+| BT-2 | Build script (`tools/build_ssd.ps1`) | ✓ Complete | `tools/build_ssd.ps1` exists |
+| BT-3 | `/health` endpoint hardening — must return HTTP 200 the moment FastAPI is up, even if Ollama is unreachable | ✓ Complete | `backend/app.py` line 765: `async def _background_prewarm()` + line 801: `asyncio.create_task(_background_prewarm())` — blocking pre-warm moved off the lifespan startup path |
+| BT-4 | Drive-letter-agnostic config audit — remove every hardcoded `D:\` fallback | ✓ Complete | Verified: `generate_visual.py:44` `SSD_ROOT = os.getenv("SSD_ROOT")` (no fallback); `extract_isci_objectives.py:75–82` derives from `os.getenv("SSD_ROOT")`, falls back to `None`; `extract_english_objectives.py:67` `DEFAULT_PDF = None`; `extract_math_objectives.py:63` `DEFAULT_PDF = None`; `load_video_links.py:49–53` derives from `VIDEO_PIPELINE_DIR` env var, no `D:\` fallback |
+| BT-5 | Backup-on-launch — copy `csec.sqlite` to `07_BACKUPS\` before starting FastAPI | ✓ Complete (two files, different mechanisms) | **`backend/launch_templates/launch.bat`** (SSD launcher): lines 14–21, pure `copy /y` with skip-if-today's-backup-exists guard. **`launch/start.bat`** (dev launcher): lines 50–56, calls `backup_database('launch')` from `backend/db/backup.py` (rolling 30-file prune). Both in repo, both verified present. |
+| BT-6 | Clean-shutdown handling — `app.py` lifespan `finally: db.close()` reachable on graceful stop | ✓ Complete (graceful path verified + WAL hardening added) | `backend/app.py` `finally: app.state.db.close()` is present and correct for graceful shutdowns (Ctrl+C, SIGTERM). `taskkill /F` calls Windows `TerminateProcess()`, so no Python cleanup runs on a force-kill — durability cannot depend on the `finally`. Addressed in `open_db()` (commit 5f9f0a0): `PRAGMA journal_mode=WAL` + `synchronous=NORMAL`. WAL recovers automatically on the next open and is never corrupted by a mid-write process kill; committed writes survive a force-kill. Regression-pinned by `tests/test_api.py::test_open_db_uses_wal_journal_mode`. |
+| BT-7 | Clean-VM smoke test — boot the full stack from the SSD on a machine with no dev tools | ⬜ Not started | Requires a clean Windows 11 VM or spare machine. Cannot be done in code. |
+
+**Notes on BT-5 dual-file situation:** The two backup implementations serve different audiences. `backend/launch_templates/launch.bat` is the *SSD-resident* launcher (copied to the SSD by `build_ssd.ps1`) — it uses a pure batch `copy` with a date-stamp guard (one backup per calendar day). `launch/start.bat` is the *dev machine* launcher — it delegates to `backup_database()` from `backend/db/backup.py`, which uses a timestamp format (seconds resolution) and prunes to 30 files. The dev launcher's mechanism is strictly better (pruning, module reuse), but both are correct for their context.
+
+---
+
 ## Upload Material feature (build-phase, 4 sessions)
 
 A `PHASE: build` content-preparation flow: drop a PDF/Word file in the browser,
