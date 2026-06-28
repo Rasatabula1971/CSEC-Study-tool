@@ -47,6 +47,14 @@ if not exist "%SSD_ROOT%" (
     exit /b 1
 )
 
+REM ── Pre-launch backup ────────────────────────────────────────
+REM Copies csec.sqlite to 07_BACKUPS\ before starting the server.
+REM Uses backend/db/backup.py so pruning (keep 30) is applied automatically.
+REM Skips silently if the DB is missing (first run before init_db.py).
+echo Backing up database...
+python -c "import sys,os; sys.path.insert(0,'%~dp0..\backend'); from dotenv import load_dotenv; load_dotenv('%~dp0..\.env'); from db.backup import backup_database; backup_database('launch')" 2>nul || echo   (backup skipped -- DB not found or backup module unavailable)
+echo.
+
 echo Starting Ollama...
 start "" ollama serve
 timeout /t 3 /nobreak >nul
