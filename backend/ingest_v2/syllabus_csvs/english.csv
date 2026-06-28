@@ -1,77 +1,77 @@
 section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
-ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing; CXC CXC",Understanding,Explain,Both
-ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.2,2,"Identify effective use of parts of speech word combinations, unusual turn of a phrase; CXC",Application,Identify|Use,Both
-ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.3,3,"Identify facts and opinions, stated explicitly; (all)",Knowledge,Identify,Both
-ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.4,4,Extract implied information; CXC,Knowledge,Extract,Both
+ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing",Understanding,Explain,Both
+ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.2,2,"Identify effective use of parts of speech word combinations, unusual turn of a phrase",Application,Identify|Use,Both
+ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.3,3,"Identify facts and opinions, stated explicitly",Knowledge,Identify,Both
+ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.4,4,Extract implied information,Knowledge,Extract,Both
 ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.5,5,Identify stated or implied time sequence,Knowledge,Identify,Both
 ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.6,6,"Extract specific information from what is read, heard or viewed",Knowledge,Extract,Both
-ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.7,7,Recognise cause- effect relationships,Knowledge,Recognise,Both
+ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.7,7,Recognise cause-effect relationships,Knowledge,Recognise,Both
 ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.8,8,Recognise different text structures,Knowledge,Recognise,Both
 ENG-S1.1,1.1,UNDERSTANDING — INFORMATIVE DISCOURSE,ENG-1.1.9,9,Identify passages in which the main purpose is informative (expository) rather than literary or persuasive,Knowledge,Identify,Both
-ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility; CXC",Application,Use,Both
+ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility",Application,Use,Both
 ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.2,2,Use punctuation accurately to convey meaning with clarity and with facility,Application,Use,Both
-ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.3,3,Draw valid conclusions and inferences from information presented; (all) CXC,Application,Draw,Both
-ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.4,4,"Trace the development of main and subordinate ideas; and, (all)",Understanding,Trace,Both
+ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.3,3,Draw valid conclusions and inferences from information presented,Application,Draw,Both
+ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.4,4,Trace the development of main and subordinate ideas,Understanding,Trace,Both
 ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.5,5,Distinguish between denotative and connotative language,Understanding,Distinguish,Both
 ENG-S1.2,1.2,ANALYSING — INFORMATIVE DISCOURSE,ENG-1.2.6,6,"Interpret tables and pictorial communication, such as diagrams, conventional signs and symbols",Understanding,Interpret,Both
-ENG-S1.3,1.3,EVALUATING AND CREATING — INFORMATIVE DISCOURSE,ENG-1.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility; CXC,Application,Create,Both
-ENG-S1.3,1.3,EVALUATING AND CREATING — INFORMATIVE DISCOURSE,ENG-1.3.2,2,"Communicate in appropriate language factual information clearly, concisely and adequately in: (a) oral/ written instructions; (b) oral/ written reports; (c) summaries; and, (d) expositions. CXC CXC CXC",Application,Communicate,Both
-ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing; CXC CXC",Understanding,Explain,Both
+ENG-S1.3,1.3,EVALUATING AND CREATING — INFORMATIVE DISCOURSE,ENG-1.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility,Application,Create,Both
+ENG-S1.3,1.3,EVALUATING AND CREATING — INFORMATIVE DISCOURSE,ENG-1.3.2,2,"Communicate in appropriate language factual information clearly, concisely and adequately in: (a) oral/ written instructions; (b) oral/ written reports; (c) summaries; and, (d) expositions.",Application,Communicate,Both
+ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing",Understanding,Explain,Both
 ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.2,2,"Identify effective use of parts of speech, word combinations and unusual turn of a phase",Application,Identify|Use,Both
-ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.3,3,"Identify facts and opinions, stated explicitly; (all)",Knowledge,Identify,Both
-ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.4,4,Extract implied information; CXC,Knowledge,Extract,Both
-ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.5,5,Identify stated or implied time sequence; CXC,Knowledge,Identify,Both
+ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.3,3,"Identify facts and opinions, stated explicitly",Knowledge,Identify,Both
+ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.4,4,Extract implied information,Knowledge,Extract,Both
+ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.5,5,Identify stated or implied time sequence,Knowledge,Identify,Both
 ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.6,6,"Extract specific information from what is read, heard or viewed",Knowledge,Extract,Both
 ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.7,7,Identify the choice of narrative perspectives,Knowledge,Identify,Both
 ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.8,8,"Identify characteristics, form and structure of different literary genres",Knowledge,Identify,Both
 ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.9,9,Identify the literary elements and structures in texts,Knowledge,Identify,Both
-ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.10,10,"Identify attitudes, mood and setting of a play. CXC",Knowledge,Identify,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility; CXC",Application,Use,Both
+ENG-S2.1,2.1,UNDERSTANDING — LITERARY DISCOURSE,ENG-2.1.10,10,"Identify attitudes, mood and setting of a play.",Knowledge,Identify,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility",Application,Use,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.2,2,Use punctuation accurately to convey meaning with clarity and with facility,Application,Use,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.3,3,Draw valid conclusions and inferences from information presented; CXC,Application,Draw,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.3,3,Draw valid conclusions and inferences from information presented,Application,Draw,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.4,4,Trace the development of main and subordinate ideas,Understanding,Trace,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.5,5,"Deduce reasons, motives and narrative choice of perspectives",Understanding,Deduce,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.6,6,Explain connotations in the use of words and in the presentation of ideas; CXC,Application,Explain|Use,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.6,6,Explain connotations in the use of words and in the presentation of ideas,Application,Explain|Use,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.7,7,Distinguish between connotative and denotative meaning,Understanding,Distinguish,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.8,8,Discuss literary devices and techniques used in literary works,Understanding,Discuss,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.9,9,"Explain the writer’s purpose, audience and context; CXC",Understanding,Explain,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.9,9,"Explain the writer’s purpose, audience and context",Understanding,Explain,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.10,10,Explain the significance of the literary elements and structures in texts,Understanding,Explain,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.11,11,Examine the situation in a drama performance; CXC,Application,Examine,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.11,11,Examine the situation in a drama performance,Application,Examine,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.12,12,Examine how writers use elements of literature to develop themes and ideas,Application,Examine|Use,Both
-ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.13,13,Examine the links among the elements of literature and how they function to achieve the writer’s purpose; CXC,Application,Examine,Both
+ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.13,13,Examine the links among the elements of literature and how they function to achieve the writer’s purpose,Application,Examine,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.14,14,Use appropriate literary jargon to respond to literary works,Application,Use,Both
 ENG-S2.2,2.2,ANALYSING — LITERARY DISCOURSE,ENG-2.2.15,15,Explore a variety of socio-historical contexts in literary works,Understanding,Explore,Both
-ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility; CXC,Application,Create,Both
+ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility,Application,Create,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.2,2,"Analyse implicit themes in novels, short stories, poems and plays",Application,Analyse,Both
-ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.3,3,"Interpret the different uses of tone, mood, register, code and style in literary forms in relation to the author’s intention; CXC",Understanding,Interpret,Both
+ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.3,3,"Interpret the different uses of tone, mood, register, code and style in literary forms in relation to the author’s intention",Understanding,Interpret,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.4,4,"Evaluate the writer’s choice of poetic, narrative and dramatic elements and techniques to create meaning",Application,Evaluate|Create,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.5,5,Analyse how various contexts influence literature,Application,Analyse,Both
-ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.6,6,Create a variety of personal responses to literary texts; CXC,Application,Create,Both
+ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.6,6,Create a variety of personal responses to literary texts,Application,Create,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.7,7,Relate issues and ideas in literary texts to their personal lives,Understanding,Relate,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.8,8,Collaborate with peers to produce creative responses to literary works,Application,Collaborate,Both
 ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.9,9,"Explain how attitudes, mood and setting influence the actions and interaction of actors in the performance of a play",Understanding,Explain,Both
-ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.10,10,Organise ideas to communicate emotions and imaginative interpretations of experience. CXC,Application,Organise|Communicate,Both
-ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing; CXC",Understanding,Explain,Both
-ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.2,2,"Identify effective use of parts of speech word combinations, unusual turn of a phrase; CXC",Application,Identify|Use,Both
+ENG-S2.3,2.3,EVALUATING AND CREATING — LITERARY DISCOURSE,ENG-2.3.10,10,Organise ideas to communicate emotions and imaginative interpretations of experience.,Application,Organise|Communicate,Both
+ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.1,1,"Explain meaning conveyed through word choice and grammar, punctuation and paragraphing",Understanding,Explain,Both
+ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.2,2,"Identify effective use of parts of speech word combinations, unusual turn of a phrase",Application,Identify|Use,Both
 ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.3,3,"Identify facts and opinions, stated explicitly",Knowledge,Identify,Both
-ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.4,4,Extract implied information; CXC,Knowledge,Extract,Both
+ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.4,4,Extract implied information,Knowledge,Extract,Both
 ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.5,5,Identify stated or implied time sequence,Knowledge,Identify,Both
 ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.6,6,"Extract specific information from what is read, heard or viewed",Knowledge,Extract,Both
-ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.7,7,Detect connotations in the use of words and in the presentation of ideas; CXC,Application,Use,Both
+ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.7,7,Detect connotations in the use of words and in the presentation of ideas,Application,Use,Both
 ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.8,8,Identify the range of devices and techniques of persuasion employed in social discourse and by the mass media,Knowledge,Identify,Both
 ENG-S3.1,3.1,UNDERSTANDING — PERSUASIVE DISCOURSE,ENG-3.1.9,9,Identify a range of devices and techniques used to produce a persuasive essay,Knowledge,Identify,Both
-ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility; CXC",Application,Use,Both
-ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.2,2,Use punctuation accurately to convey meaning with clarity and with facility; CXC,Application,Use,Both
+ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.1,1,"Use appropriate diction, grammatical forms and suitable punctuation and paragraphing to convey meaning with clarity and with facility",Application,Use,Both
+ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.2,2,Use punctuation accurately to convey meaning with clarity and with facility,Application,Use,Both
 ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.3,3,Draw valid conclusions and inferences from information presented,Application,Draw,Both
 ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.4,4,Trace the development of main and subordinate ideas,Understanding,Trace,Both
-ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.5,5,Distinguish factual statements from opinions expressed in various forms; CXC,Understanding,Distinguish,Both
+ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.5,5,Distinguish factual statements from opinions expressed in various forms,Understanding,Distinguish,Both
 ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.6,6,"Interpret tables and pictorial communication, such as diagrams, conventional signs and symbols",Understanding,Interpret,Both
 ENG-S3.2,3.2,ANALYSING — PERSUASIVE DISCOURSE,ENG-3.2.7,7,"Explain the effectiveness of language devices used in written, visual and oral forms to persuade",Understanding,Explain,Both
-ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility; CXC,Application,Create,Both
+ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.1,1,Create suitable paragraphs to convey meaning with clarity and with facility,Application,Create,Both
 ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.2,2,"Communicate reasoned evaluative comments on proposals and situations of various kinds, in language that is clear and appropriate to the occasion",Application,Communicate,Both
-ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.3,3,"Create persuasive oral, visual and written works to effect emotional responses from the audience; CXC",Application,Create,Both
+ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.3,3,"Create persuasive oral, visual and written works to effect emotional responses from the audience",Application,Create,Both
 ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.4,4,Present a logical argument using suitable techniques,Application,Present,Both
 ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.5,5,Formulate an informed position on topical issues,Application,Formulate,Both
 ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.6,6,"Compare ideas and themes as presented in different oral, written and visual works",Application,Compare,Both
 ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.7,7,Evaluate the use of connotative language to persuade an audience,Application,Evaluate|Use,Both
-ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.8,8,"Assess the effects of persuasive devices and techniques used in written, oral and visual works. CXC  PRESCRIBED TEXTS TEXTS PRESCRIBED FOR TEXT DRAMA Four Type A Questions Twelfth Night Anansi POETRY Two Type B Questions Selections from A World (New Edition) POEMS PRESCRIBED FOR TEXT An African Thunderstorm Once Upon a Time Little Boy Crying West Indies, U.S.A. Sonnet Composed Upon Birdshooting Season The Woman Speaks to Employed Her Son It is the Constant Image A Lesson for this Sunday A Stone’s Throw Test Match Sabina Park My Parents Landscape Painter, Jamaica Dulce et Decorum Est This is the dark time, my Ol’Higue Mirror South Death be Not Proud Dreaming Black Boy PROSE FICTION Novel – Four Type A questions For the Life of Laetitia CXC OTHER LITERATURE IN Animal Farm SHORT STORY – TWO Selections from a World (New Edition) SHORT STORIES PRESCRIBED TEXT Raymond’s Run Blood Brothers The Man of the House Georgia and Them There The Two Grandmothers Berry Mom Luby and the Social To Da-duh, in Memoriam What Happened? Mint Tea TEXTS PRESCRIBED FOR TEXT DRAMA Two Questions will be Macbeth Highway in the Sun (All POETRY Two Questions will be Selections from A World (Third Edition) POEMS PRESCRIBED FOR Two type B Questions TEXT A Grandfather Sings A Quartet of Daffodils A Song in the Front Yard A Stone’s Throw Attention CXC",Application,Assess,Both
+ENG-S3.3,3.3,EVALUATING AND CREATING — PERSUASIVE DISCOURSE,ENG-3.3.8,8,"Assess the effects of persuasive devices and techniques used in written, oral and visual works.",Application,Assess,Both
