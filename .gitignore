@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 *.sqlite
 *.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
 # Bootstrap/scratch artifacts (kept locally, not in VCS)
 *.zip

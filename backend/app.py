@@ -132,6 +132,18 @@ def open_db(db_path: str) -> sqlite3.Connection:
     sqlite_vec.load(db)
     db.enable_load_extension(False)
     db.execute("PRAGMA foreign_keys = ON")
+    # Crash-safety for unclean shutdowns. The lifespan's `finally: db.close()` does
+    # NOT run on a taskkill /F (Windows TerminateProcess kills the process without
+    # unwinding Python), so durability must come from SQLite itself, not cleanup code.
+    #   journal_mode=WAL  -- committed transactions live in the -wal file; on the next
+    #     open SQLite recovers automatically, and the DB is never left corrupted by a
+    #     mid-write process kill (unlike a torn rollback journal). WAL is a persistent
+    #     property stored in the DB header, so this one call converts the file for good.
+    #   synchronous=NORMAL -- the recommended WAL companion: committed data survives an
+    #     application crash (process kill), and the DB stays consistent even on an OS
+    #     crash/power loss (at worst the very last transaction is lost, never corruption).
+    db.execute("PRAGMA journal_mode = WAL")
+    db.execute("PRAGMA synchronous = NORMAL")
     db.row_factory = sqlite3.Row
     return db
 

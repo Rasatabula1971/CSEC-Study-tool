@@ -37,6 +37,23 @@ def client():
 
 
 # ---------------------------------------------------------------------------
+# Runtime DB durability: open_db must put the connection in WAL mode so an
+# unclean process kill (taskkill /F -- the lifespan's finally: db.close() never
+# runs) cannot corrupt the DB and committed writes survive on the next open.
+# ---------------------------------------------------------------------------
+def test_open_db_uses_wal_journal_mode(tmp_path):
+    db_path = tmp_path / "wal_check.sqlite"
+    db = app_module.open_db(str(db_path))
+    try:
+        mode = db.execute("PRAGMA journal_mode").fetchone()[0]
+        sync = db.execute("PRAGMA synchronous").fetchone()[0]
+        assert str(mode).lower() == "wal"
+        assert sync == 1  # 1 == NORMAL, the recommended WAL companion
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # /health
 # ---------------------------------------------------------------------------
 def test_health_returns_200(client, monkeypatch):
