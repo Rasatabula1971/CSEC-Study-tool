@@ -774,21 +774,43 @@ def ensure_staging_dirs(db: sqlite3.Connection) -> None:
         )
 
 
+async def _background_prewarm() -> None:
+    """Load the chat model into Ollama's RAM after routes start serving.
+
+    Runs as an asyncio task scheduled just before the lifespan yields, so
+    launch.bat's /health poll succeeds immediately rather than waiting up to
+    120 s for the cold model load. If the pre-warm fails, the first real
+    student request pays the cold-load cost instead — acceptable trade-off.
+    """
+    import asyncio as _asyncio
+    loop = _asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: ollama_chat(
+                [{"role": "user", "content": "ready"}],
+                system="Respond with one word: ready.",
+            ),
+        )
+        logger.info("Ollama pre-warm complete — chat model is resident.")
+    except Exception as exc:
+        logger.warning("Ollama pre-warm failed (%s) -- first response may be slow.", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio as _asyncio
+
     ssd_root = os.getenv("SSD_ROOT")
     if ssd_root and not os.path.exists(ssd_root):
         sys.exit(f"ERROR: SSD not mounted at {ssd_root}. Plug in the drive and restart.")
 
     if ollama_health():
-        # Pre-warm: one tiny chat call loads the 3B chat model into RAM now (held by
-        # ollama_chat's keep_alive=30m), so the first Submit of the session doesn't
-        # pay the cold model-load tax. Non-fatal -- a failure just warns.
-        try:
-            ollama_chat([{"role": "user", "content": "ready"}],
-                        system="Respond with one word: ready.")
-        except Exception as exc:
-            logger.warning("Ollama pre-warm failed (%s) -- first response may be slow.", exc)
+        # Schedule pre-warm as a background task so it runs AFTER yield.
+        # Previously this was a blocking call here, which delayed the lifespan
+        # yield by up to 120 s on a cold model load — long enough for launch.bat's
+        # /health polling loop to time out before routes were even served.
+        _asyncio.create_task(_background_prewarm())
     else:
         logger.warning("Ollama is not reachable at %s -- study mode will surface the "
                         "error. Starting the app anyway.", os.getenv("OLLAMA_BASE"))

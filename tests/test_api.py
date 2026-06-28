@@ -64,6 +64,40 @@ def test_health_returns_200(client, monkeypatch):
     assert body == {"status": "ok", "ollama": False, "db": True}
 
 
+def test_health_200_when_ollama_unreachable_cold_start(monkeypatch):
+    """launch.bat polls /health to detect FastAPI readiness on cold start.
+
+    Ollama may not be up yet (or model still loading) at the moment the first
+    poll fires.  /health must return 200 with ollama=False rather than raising
+    or returning a non-200 — the handler must never let an Ollama failure
+    propagate as an HTTP error.
+    """
+    monkeypatch.setattr(app_module, "ollama_health", lambda: False)
+    app_module.app.state.db = MagicMock()
+    client = TestClient(app_module.app)
+    res = client.get("/health")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ollama"] is False
+    assert body["db"] is True
+
+
+def test_health_200_before_db_initialised(monkeypatch):
+    """If /health is hit in the narrow window before the DB is opened, it must
+    still return 200 — db=False is the correct degraded response, not a 500."""
+    monkeypatch.setattr(app_module, "ollama_health", lambda: False)
+    # Simulate no db attribute on app.state yet
+    if hasattr(app_module.app.state, "db"):
+        del app_module.app.state.db
+    client = TestClient(app_module.app)
+    res = client.get("/health")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["db"] is False
+
+
 # ---------------------------------------------------------------------------
 # /api/status  (grading-engine indicator -- driven by CLOUD_MODE)
 # ---------------------------------------------------------------------------
