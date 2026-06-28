@@ -157,6 +157,16 @@
     .visualize-btn svg { flex: none; }
     .visualize-hint { font-size: 12px; color: var(--text-faint); }
 
+    /* ===== Watch section (YouTube video links) ===== */
+    .watch-section { margin-top: 14px; }
+    .watch-heading { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+    .watch-card { display: block; background: var(--surface-raised, #1a1d24); border: 1px solid var(--border-card); border-radius: 8px; padding: 10px 12px; text-decoration: none; color: inherit; transition: border-color 120ms ease; margin-bottom: 6px; }
+    .watch-card:hover { border-color: var(--accent-blue); }
+    .watch-card:last-child { margin-bottom: 0; }
+    .watch-title { font-size: 13px; font-weight: 600; color: var(--text-body); margin-bottom: 2px; }
+    .watch-meta { font-size: 11px; color: var(--text-muted); }
+    .watch-cta { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--accent-blue); font-weight: 600; }
+
     /* ===== Visual dialog — full-viewport overlay ===== */
     /*
      * Using an inner .vd-shell that is position:fixed;inset:0 rather than
@@ -714,6 +724,7 @@
       const recall=Array.isArray(data.recall_questions)?data.recall_questions.filter(q=>q&&q.trim()):[];
       state.recallQuestions=recall;
       renderLessonCard(host,lessonBody,recall,objective,opts);
+      await renderVideoSection(objective.objective_id,host);
       return recall[0]||'';
     }catch{host.innerHTML='';return '';}
   }
@@ -764,6 +775,27 @@
       });
     }
   }
+
+  // ===== Video section =======================================================
+  async function renderVideoSection(objectiveId,host){
+    if(!objectiveId||!host)return;
+    let videos=[];
+    try{
+      const res=await fetch(`${API_BASE}/api/videos/${encodeURIComponent(objectiveId)}`);
+      if(res.ok)videos=(await res.json()).videos||[];
+    }catch{}
+    if(!videos.length)return;
+    const sec=document.createElement('div');
+    sec.className='watch-section';
+    sec.innerHTML='<div class="watch-heading">Watch</div>'+
+      videos.map(v=>`<a class="watch-card" href="${escHtml(v.url)}" target="_blank" rel="noopener noreferrer">`+
+        `<div class="watch-title">${escHtml(v.title)}</div>`+
+        `<div class="watch-meta">${escHtml(v.channel||'')}${v.duration?' · '+escHtml(v.duration):''}</div>`+
+        `<span class="watch-cta">▶ Watch on YouTube</span></a>`).join('');
+    host.appendChild(sec);
+  }
+  // escHtml used by renderVideoSection (study_plan has no shared escapeHtml)
+  function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
   // ===== Visual dialog =======================================================
   function openVisualDialog(objectiveId,btn,hint){

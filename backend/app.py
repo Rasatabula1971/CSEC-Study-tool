@@ -686,6 +686,27 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """,
     )
 
+    # m019: objective_videos table — pre-qualified YouTube links keyed to objectives,
+    # loaded by backend/load_video_links.py (PHASE: build). Runtime path reads only.
+    _run_migration(
+        db, "m019_objective_videos",
+        "objective_videos table for pre-qualified YouTube links",
+        """
+        CREATE TABLE IF NOT EXISTS objective_videos (
+            video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+            subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+            url          TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            channel      TEXT,
+            duration_str TEXT,
+            source_file  TEXT NOT NULL,
+            added_at     TEXT DEFAULT (datetime('now')),
+            UNIQUE(objective_id, url)
+        )
+        """,
+    )
+
     # Upload session 1: make sure the SSD staging tree exists for every locked
     # subject. Best-effort -- a missing SSD just logs a warning here and surfaces a
     # clearer error at upload time.
@@ -2860,6 +2881,35 @@ async def staging_auto_accept_and_ingest(subject_id: str, request: Request,
         "skipped_low_confidence": skipped_low,
         "already_decided": already_decided,
         "queued_for_ingestion": queued_for_ingestion,
+    }
+
+
+@app.get("/api/videos/{objective_id}")
+def videos_for_objective(objective_id: str, request: Request) -> dict:
+    """Return pre-qualified YouTube videos for one objective.
+
+    Always returns {videos: [...]} — empty list when none exist, never 404.
+    Each item: {title, url, channel, duration}.
+    """
+    rows = request.app.state.db.execute(
+        """
+        SELECT title, url, channel, duration_str
+        FROM   objective_videos
+        WHERE  objective_id = ?
+        ORDER  BY video_id
+        """,
+        (objective_id,),
+    ).fetchall()
+    return {
+        "videos": [
+            {
+                "title":    r["title"],
+                "url":      r["url"],
+                "channel":  r["channel"],
+                "duration": r["duration_str"],
+            }
+            for r in rows
+        ]
     }
 
 

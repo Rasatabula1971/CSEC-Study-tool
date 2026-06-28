@@ -123,6 +123,33 @@ _RECALL_COMMAND_WORDS = (
     "define", "state", "explain", "identify", "describe", "discuss",
     "distinguish", "outline", "list", "calculate", "compare", "contrast",
     "name", "give",
+    # CSEC practical/quantitative command words. Added for the Principles_of_Accounts
+    # rollout: "Prepare the ... account/statement" and "Show the effect of ..." are the
+    # canonical POA instructions, and POA-5.8 / POA-9.8 produced valid scenario-first
+    # recall prompts ("... during the year. Show the effect ...", "... 300,000 shares.
+    # Prepare the Appropriation Statement ...") that the original Knowledge/Understanding
+    # whitelist rejected. "record/construct/draw/complete" are the same band and recur in
+    # POA (and Mathematics will likely extend this further -- see CLAUDE.md skill_type note).
+    "prepare", "show", "record", "construct", "draw", "complete",
+    # CSEC Mathematics command band. Added for the Mathematics rollout: Math objectives
+    # are overwhelmingly Application-skill, so Sonnet's recall prompts open with these
+    # imperatives ("Solve the equation ...", "Determine the gradient ...", "Convert
+    # 0.75 to a fraction"). The original Knowledge/Understanding + POA whitelist rejected
+    # 11 valid Math lessons (Compute/Convert/Solve/Determine/Represent leads). Grounded in
+    # the CXC Mathematics skill bands (the syllabus command_words column), not invented.
+    "solve", "determine", "compute", "evaluate", "simplify", "derive", "prove",
+    "express", "convert", "factorise", "factorize", "substitute", "rewrite",
+    "represent", "sketch", "estimate", "measure", "locate", "obtain", "differentiate",
+    "interpret", "translate", "change", "divide", "order", "plot", "find", "write",
+    "apply", "use",
+    # CSEC English A command band. Added for the English rollout: English objectives
+    # span a wide skill set, so Sonnet's recall prompts open with these imperatives
+    # ("Extract the main idea ...", "Analyse how the writer ...", "Present an argument
+    # ..."). Grounded in the English objectives' own command_words column, not invented;
+    # -ise/-ize spelling variants included so either form is accepted.
+    "extract", "recognise", "recognize", "analyse", "analyze", "assess", "examine",
+    "explore", "formulate", "present", "organise", "organize", "relate", "trace",
+    "deduce", "create", "communicate", "collaborate",
 )
 
 
@@ -254,7 +281,10 @@ def _validate_lesson_quality(lesson_text, recall_questions, command_words=None):
             return False, 'recall_question leaks the answer'
         is_question = qs.endswith('?')
         is_command = any(ql.startswith(cw + ' ') for cw in _RECALL_COMMAND_WORDS)
-        if not (is_question or is_command):
+        # Scenario-first prompts: "Revenue is $500. Calculate the profit margin."
+        # The command word appears after a sentence boundary, not at the start.
+        is_mid_command = any(f'. {cw} ' in ql for cw in _RECALL_COMMAND_WORDS)
+        if not (is_question or is_command or is_mid_command):
             return False, 'recall_question is not a question or command prompt'
     return True, None
 

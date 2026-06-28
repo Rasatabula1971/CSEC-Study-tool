@@ -24,12 +24,13 @@ MODEL_CHAT = os.getenv("MODEL_CHAT", "llama3.2:3b")
 MODEL_EMBED = os.getenv("MODEL_EMBED", "nomic-embed-text")
 
 
-def ollama_embed(text: str) -> list[float]:
-    """Embed one string. keep_alive=0 evicts the embedding model immediately."""
+def ollama_embed(text: str, keep_alive: int = 0) -> list[float]:
+    """Embed one string. keep_alive=0 evicts the embedding model immediately.
+    Pass keep_alive=300 for bulk build-time ingest to avoid per-call model reloads."""
     r = httpx.post(
         f"{OLLAMA}/api/embeddings",
-        json={"model": MODEL_EMBED, "prompt": text, "keep_alive": 0},
-        timeout=30,
+        json={"model": MODEL_EMBED, "prompt": text, "keep_alive": keep_alive},
+        timeout=300,
     )
     r.raise_for_status()
     return r.json()["embedding"]

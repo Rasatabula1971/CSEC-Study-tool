@@ -1,0 +1,10 @@
+# =====================================================================
+# English A MCQ topic map  --  (empty: no Kerwin Springer MCQ bank for English A)
+# =====================================================================
+# English A is assessed via P01 comprehension + P02 written tasks.
+# There is no structured multiple-choice question bank for this subject.
+# This stub satisfies the manifest schema; the KerwinMCQAdapter will produce
+# 0 records when run on this empty map.
+# =====================================================================
+
+topic_map: {}

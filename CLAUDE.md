@@ -762,13 +762,46 @@ all slipped through a first-pass extraction).
    objective-like statement present in one edition but not the other.
    Don't assume the newer-looking filename is the correct edition — verify.
 
-3. **Extract with per-page column-boundary detection, not a fixed threshold.**
-   CXC syllabi often place the Specific Objectives / Explanatory Notes
-   column boundary at different x-coordinates on different pages or modules.
-   See `tools/extract_isci_objectives.py`'s `_objective_col_boundary()` /
-   `DEFAULT_OBJ_COL_BOUNDARY` for the working pattern — compute the boundary
-   per page from a marker regex (e.g. `EXPL_MARKER_RE` matching `(a)`/`(i)`
-   sub-markers) rather than hardcoding one x-value for the whole document.
+3. **Use the canonical extraction module — never re-implement column logic.**
+   `tools/extraction/syllabus_extractor_base.py` is the authoritative, subject-
+   agnostic implementation. Every `extract_<subject>_objectives.py` script
+   MUST import `_detect_gutter`, `_left_text`, and `validate_objectives` from
+   it — do NOT copy column logic from Math's or Integrated_Science's scripts.
+   A fix in the base module then protects every subject at once. **When the
+   English extractor is built, it imports from this module — it does not copy
+   from `extract_math_objectives.py` or `extract_isci_objectives.py`.**
+
+   The module was hardened (on the Math build) against two concrete bug classes
+   that block-level extraction falls into on CXC's two-column layout:
+
+   - **Column-bbox bleed.** PyMuPDF's `"blocks"` mode merges text across the
+     column gutter — a left-margin `(i)` note marker glued to right-column note
+     text becomes one block spanning `x0≈68→x1≈532`, so an `x0 < threshold`
+     filter *leaks* note text into the left column (and drops wide-but-
+     legitimate objective blocks). `_left_text` filters at the **word** level
+     (centroid vs. a per-page gutter) instead. `_detect_gutter` finds the
+     gutter as the midpoint of the widest empty x-projection strip — which is
+     guaranteed to sit at/after the left column's right edge, so a right-aligned
+     left-column word is never clipped (the earlier `min(right-column x0)`
+     heuristic *did* clip tail words like *ratio/sets/vector* and is wrong).
+     This caused MATH-2.3.17 (note "(i) the interval of the domain…" bled in).
+   - **Eager-termination truncation.** A statement assembler that latches on
+     the first `;` then drops any line not starting with `(` loses line-wrapped
+     tails such as "…vertices of / solids; and, / (e) classes of solids" and
+     "…the co-ordinates of the / midpoint". With a clean left column the
+     statement is simply every line up to the next stop signal (next marker /
+     section header / noise) — see `_extract_obj_statement` in the Math script.
+     This caused MATH-2.3.9 and MATH-2.4.6.
+
+   `validate_objectives` is the layout-independent QA net: it flags truncation
+   (trailing connector/preposition), note bleed (roman-numeral enumerators),
+   garble (stray math-typesetting residue, e.g. the MATH-2.2.4 `a(x+h)²+k`
+   formula the PDF text layer itself emits broken), and too-short statements —
+   surfacing them BEFORE the CSV is loaded and lessons are composed. Run it
+   every build and resolve every flag against the PDF. (Predecessor reference:
+   `extract_isci_objectives.py`'s `_objective_col_boundary()` /
+   `DEFAULT_OBJ_COL_BOUNDARY` was the first per-page-boundary attempt; the base
+   module supersedes it.)
 
 4. **Run a gap-resolution pass — every numbering gap explicitly resolved,
    never left ambiguous.** After extraction, list the full objective-number
@@ -822,6 +855,7 @@ do not conflate any of them when reporting status:**
    objective. "Ingested" does NOT mean "ready to study" — composing the
    canonical lesson is a distinct, separate step (Claude Sonnet, build-time)
    that happens after ingestion, not as part of it.
+   **Gate 3 is SSD-only DB state. It is never committed to git.**
 
 When asked "is subject X ready," report all three gates' status
 individually, not a single yes/no.
@@ -848,7 +882,7 @@ individually, not a single yes/no.
 
 - [x] **Stage 14** — Backup Hardening + Version-Tracked Migrations: auto-backup before every destructive build script; schema_migrations ledger ✓ 2026-06-17 (backend/db/backup.py PHASE: build — backup_database(label) copies DB_PATH → {SSD_ROOT}/07_BACKUPS/csec_{YYYY-MM-DD_HHMMSS}_{label}.sqlite via shutil.copy2 (preserves mtime), raises RuntimeError on unmounted SSD / missing DB / failed copy, rolling prune keeps the 30 most-recent csec_*.sqlite by mtime; backup_first(label) decorator runs backup_database first and ABORTS the wrapped fn if the backup raises (functools.wraps). Decorated main() of every destructive build-time script: ingest.py='pre_ingest', ingest_lessons.py='pre_ingest_lessons', derive_syllabus_mark_points.py='pre_derive', recover_mark_points.py='pre_recover', ingest_worked_solutions.py='pre_ingest_solutions', db/syllabus_parser.py='pre_syllabus_parse', db/lock_subject.py='pre_lock_subject' (read-only scripts export_progress/feedback_report/ram_check/review_queue left undecorated). Import: backend/ scripts `from db.backup import backup_first`; db/ scripts add their own dir to sys.path then `from backup import backup_first`. app.py: schema_migrations(version PK, description, applied_at) ledger + _ensure_schema_migrations bootstrap (always-run, can't version-track its own creation) + _run_migration(db, version, description, sql) — skips if version recorded, else splits sql on ';' and runs each, records the row; an ALTER that hits 'duplicate column name' is recorded as '<desc> [pre-existing]' (so historical try/except ALTERs stop retrying), any other error rolls back + re-raises. apply_runtime_migrations refactored into two layers: (1) 11 version-tracked schema migrations m001_runtime_core_tables…m011_stage13_source_rank_column; (2) the three DATA backfills (command_word, source_rank, question_id→-stem) kept UNCONDITIONAL/idempotent on every call — tests insert rows then re-run migrations to backfill them, and later ingestion adds rows that still need normalising, so these must NOT be version-gated. Live E: DB backfilled: 11 rows in schema_migrations (m002-m006/m011 [pre-existing], the CREATEs applied). tests/test_backup.py (5: file-created, missing-SSD→RuntimeError, prune-keeps-30, decorator-backs-up-first, decorator-aborts-on-fail) + tests/test_schema_migrations.py (5: applies+records, no-op when applied, duplicate-column→[pre-existing], unexpected-error re-raises, apply_runtime_migrations twice = same row count); suite 293/293. Build-time mutations are now backup-guarded and migrations are version-idempotent — subject rollout (Stage 16) is safe.)
 - [ ] **Stage 15** — (reserved — further pre-rollout hardening, TBD in PDR v3.2)
-- [ ] **Stage 16** (was Stage 8) — Rollout: remaining six subjects through the lock gate
+- [x] **Stage 16** (was Stage 8) — Rollout: remaining six subjects through the lock gate ✓ 2026-06-27 (all seven subjects through all three gates; Mathematics + English completed this session — see the SIXTH/SEVENTH subject entries below)
   - IN PROGRESS (2026-06-22). **ingest_v2 framework built** — a source-family-aware
     adapter pipeline (CaribbeanAIAdapter, MoESLMSAdapter, KerwinMCQAdapter,
     GenericPDFAdapter, GenericOfficeAdapter) driven by per-subject YAML manifests with a
@@ -905,16 +939,200 @@ individually, not a single yes/no.
     Bridge/Supplemental check (per-subject counts: Integrated_Science 99, Mathematics 85,
     Principles_of_Accounts 50, English 2, Information_Technology 0) and the ISCI/INTSCI &
     ENGA/ENG prefix-reconciliation note.
-  - **Locked subjects (in scope): Principles_of_Business, Economics, Integrated_Science.**
-    **Remaining (still syllabus-gated): Mathematics, Principles_of_Accounts, English,
-    Information_Technology.** Suite 496 passing, 1 skipped (the manual POB parity
-    gate) — the +2 tests are from the additive lesson-retrieval fix. NOTE:
-    Integrated_Science is now FULLY BUILT through all three gates: syllabus locked
-    (114/114 objectives in scope), INGESTED (114/114 objectives bound to ≥1 chunk),
-    and LESSONS GENERATED (114/114 canonical lessons via Claude Sonnet). Two real
-    binding-gap fixes were applied during the build — INTSCI-3.2.3 (tides) and
-    INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'" above. The
-    first real student session is the remaining step.
+  - **Information_Technology is the FOURTH subject through all three gates
+    (2026-06-25).** Syllabus locked (63 objectives across 8 sections, exam_weight=Both
+    verified). INGESTED via the ingest_v2 markdown-adapter path (107 .md notes; manifest
+    `enable_markdown_adapter: true`, `enable_office_adapter: false`, no extra_source_roots
+    — IT had 0 Bridge/Supplemental .docx). All 63 objectives bound to ≥1 chunk after one
+    binding-gap fix: **IT-5.9** ("manipulate one or more worksheets") had 0 bound chunks —
+    the dedicated CSEC Hub note "Working with Multiple Worksheets" (9 chunks: create/
+    rename/delete/group/move/copy sheets, 3D formulas) had been misbound by the keyword
+    matcher across IT-1.1/4.11/4.8/4.1/1.15/1.11 on incidental shared words; rebound all 9
+    to IT-5.9 (donors retained ample coverage). LESSONS GENERATED: 63/63 canonical lessons
+    via Claude Sonnet, all conf 90 (62 first pass + IT-7.7 on one retry after a
+    quality_check_failed recall-question — a non-deterministic model output, not a content
+    gap). MCQ topic map resolves 104 (topic,subtopic) pairs from the 119-question Kerwin
+    bank. First real student session is the remaining step.
+  - **Principles_of_Accounts is the FIFTH subject through gates 1 and 2 (2026-06-26).**
+    Syllabus locked (106 objectives across 11 sections, exam_weight=Both verified).
+    INGESTED via the ingest_v2 markdown-adapter path (50 .md notes from Bridge/
+    Supplemental + additional sources; manifest `enable_markdown_adapter: true`,
+    `enable_office_adapter: false`). 2,286 chunks / 120 docs / 181 MCQs (Kerwin bank).
+    Post-ingest coverage fix required: 10 objectives had zero bound chunks after
+    ingestion (same misbind pattern as INTSCI-3.3.7 / IT-5.9). Resolved via a
+    two-pass rebind:
+      * **Pass 1 (keyword-based):** `_poa_rebind.py` — keyword search across donor
+        pools fixed 7 of 10. Side effect: 3 donors fully drained (POA-5.6, POA-7.1,
+        POA-7.3 went to 0); remediated immediately by `_poa_remediate.py` (53 sole-trader
+        ratio chunks restored to POA-5.6 from POA-9.10; 1 control-systems chunk restored
+        to POA-7.1 from POA-7.2; 1 error-distinction chunk restored to POA-7.3 from
+        POA-7.6).
+      * **Pass 2 (targeted manual):** For the 3 objectives with no keyword matches in
+        any donor pool (POA-7.11, POA-8.3, POA-8.10), identified specific high-signal
+        chunks in adjacent objectives and rebind 2 chunks each: POA-7.11 ← chunks
+        explaining control account balance significance (from POA-4.8/6.3); POA-8.3 ←
+        syllabus page + notes TOC listing "Reasons for Establishing Partnerships" (from
+        POA-8.5/7.13); POA-8.10 ← notes TOC "Preparing the Partnership Balance Sheet"
+        + past paper asking to prepare partnership balance sheet (from POA-6.3/5.4).
+    Final state: 106/106 objectives covered (0 at zero), min 1 chunk/objective.
+    POA-8.10 has 2 chunks (marginal — semantic search on vec_past_papers/mark_schemes
+    will supplement at lesson-composition time).
+    Distribution after all rebind/enrich passes: 14 at 1-2 chunks, 16 at 3-5, 30 at
+    6-10, 49 at 11+. The 14 thin objectives are genuinely sparse in the source corpus
+    (no donor content available); semantic search at lesson-generation time will
+    supplement. `backend/ollama_client.py` `ollama_embed` timeout increased 30 → 300s
+    (keep_alive=0 causes model reload per call; on this machine some reloads exceed 30s).
+    LESSONS NOT YET GENERATED — gate 3 still pending.
+  - **POA corpus enrichment (2026-06-26):** Three textbook PDFs found in the
+    Textbooks folder. `poa_csec_anwer_book.pdf` (433 pp) is 94% garbled
+    (scrambled font encoding; only 23/433 pages extractable). The `toaz.info`
+    CSEC POA textbook (548 pp) is fully scanned, 0 extractable chars. Both
+    added to manifest `skip_patterns`. `OpenStax Principles of Accounting
+    Volume 1 Financial Accounting.pdf` (973 pp, 100% clean text) IS usable,
+    but ingesting the full 973 pages would add ~5,700 duplicate chunks when
+    targeted extracts already cover the key sections. Instead: **10 targeted
+    chapter extracts** saved as .md files in
+    `D:\GPT Folder CSEC\Organized_CSEC_2027\POA\Notes\Textbook Extracts\`:
+    Ch2 (financial statements), Ch3 (ledgers/trial balance), Ch4 (adjustments),
+    Ch7 (accounting information systems / technology), Ch8 (internal controls),
+    Ch9 (bad debts/receivables), Ch11 (depreciation), Ch12 (payroll),
+    Ch14 (corporation final accounts), Ch15 (partnership accounting). Full
+    OpenStax PDF also added to skip_patterns. Additionally found **14 new
+    Kerwin Springer past papers** (2005-2008, 2017-2026) and several MoE SLMS
+    papers not yet in the DB. ingest_v2 dry-run: 829 generic_pdf (past papers)
+    + 3,425 markdown_notes = 4,254 total new records, 3,623 medium confidence,
+    631 review queue. Backup taken pre_poa_textbook_ingest, ingest_v2 started
+    background run. When complete: run `python backend/ingest_lessons.py
+    --subject Principles_of_Accounts` for gate 3.
+  - **Principles_of_Accounts is the FIFTH subject through ALL THREE gates
+    (2026-06-27).** Post-enrichment ingestion verified: 5,909 chunks / 134 docs,
+    **106/106 objectives covered (0 at zero)**; only 2 thin (POA-4.7, POA-8.10 at 2
+    chunks each — genuinely sparse but on-topic, supplemented by semantic search at
+    composition time). Gate 3: ran `ingest_lessons.py --subject Principles_of_Accounts`
+    (Claude Sonnet, build-time) → **106/106 canonical lessons, all conf 90, 0 stale.**
+    4 objectives initially queued `quality_check_failed: recall_question is not a
+    question or command prompt`; 2 cleared on plain retry (non-deterministic model
+    output, the IT-7.7 pattern). The last 2 (POA-5.8 "Show the effect...", POA-9.8
+    "Appropriate profits...") were a real validator gap, NOT bad content: the model
+    produced valid CSEC scenario-first recall prompts ("...during the year. Show the
+    effect...", "...300,000 shares. Prepare the Appropriation Statement...") whose
+    leading command words were missing from `ingest_lessons._RECALL_COMMAND_WORDS`
+    (a Knowledge/Understanding-only whitelist). Fix: added the CSEC practical/
+    quantitative band — `prepare, show, record, construct, draw, complete` — to that
+    tuple; both then wrote at conf 90. (Mathematics rollout will likely extend it
+    again — solve/derive/prove/simplify; see the skill_type note.) test_lesson_prompt_v2
+    + test_lessons still pass (41/41).
+  - **Mathematics is the SIXTH subject through ALL THREE gates (2026-06-27).**
+    Syllabus locked (159 objectives across 15 sections / 3 modules, exam_weight=Both
+    verified against PDF Assessment Grid). INGESTED via the ingest_v2 markdown-adapter
+    path (85 .md notes + 86 past-paper PDFs + 31 mark-scheme PDFs; `enable_markdown_adapter:
+    true`, `enable_office_adapter: false`); 4,678 chunks / 217 docs. 21 zero-chunk
+    binding gaps fixed by targeted rebind before lesson generation (same misbind pattern
+    as INTSCI-3.3.7 / IT-5.9 / POA-multi-objective; MATH-2.1.9 was over-bound to 429
+    chunks). Gate 3: ran `ingest_lessons.py --subject Mathematics` (Claude Sonnet,
+    build-time) → **159/159 canonical lessons, all conf 90, 0 stale.** Two pre-flight
+    objective corrections applied before composition (MATH-2.2.4, 2.3.9, 2.3.17, 2.4.6).
+    Main run: 148 written, 11 queued (quality_check_failed: recall_question) — root cause
+    was `_RECALL_COMMAND_WORDS` missing the CXC Mathematics quantitative band
+    (Solve/Determine/Compute/Convert/Represent); extended that tuple + 2 regression tests;
+    all 11 then wrote. 131 video links loaded (4 unresolved, 5 dupes from 133-row CSV).
+    MCQ topic map covers 513 Kerwin questions across 12 topics. Tests: 510/510 (510 pass,
+    1 skip — the 2 new Math recall-validator tests).
+  - **English is the SEVENTH subject (gate 1 complete 2026-06-27, gates 2-3 in
+    progress).** Syllabus locked: 76 objectives across 9 sections (3 modules ×
+    3 skill profiles: Understanding / Analysing / Evaluating and Creating). ID
+    scheme ENG-{module}.{section}.{obj_num} (e.g. ENG-2.2.8). exam_weight=Both
+    verified against Assessment Grid II (Paper 01 + Paper 02 both test all three
+    skill profiles). Extractor: word-level PDF coordinate extraction (x0 < 170),
+    sequential module-page scan (ranges 24-34, 38-52, 56-67, 0-indexed); fixed
+    E&C column-boundary cutoff (the "1)" word of "(Module 1)" was at x0=199, just
+    outside the gate) and Module 3 general-objectives bleed-in. `build_syllabus_csv.py`
+    extended with English-specific command words: extract/recognise (Knowledge),
+    trace/deduce/explore (Understanding), create/communicate/collaborate/
+    organise/present/formulate (Application) — 0 UNCLASSIFIED.
+    10 markdown notes (ChromeStudy x7, CSEC Hub x1, Supplemental x2) + 32 past
+    papers + 2 mark schemes + 1 specimen. No Kerwin MCQ bank.
+  - **English gate 2 complete (2026-06-27).** ingest_v2 run (applied): 52 files
+    seen, 47 processed; 3,812 chunks indexed (3,199 generic_pdf + 2,399 markdown;
+    969 past_paper / 316 specimen / 311 mark_scheme / 4,002 notes by content_type);
+    1,786 review-queue entries. 21 zero-chunk objectives fixed via targeted rebind
+    (100 chunks moved total — same cross-module parallel misbind as INTSCI/IT/POA/
+    Math; English is unique in that identical skill objectives repeat across all 3
+    modules with the same content_stmt, causing the keyword binder to bind all
+    matching chunks to the Module 1 version). ENG-3.3.8 ("Assess the effects of
+    persuasive devices") was over-bound at 1,588 chunks and used as donor for
+    Module 3 E&C zero-coverage objectives. Final state: 76/76 objectives covered,
+    0 at zero. Gate 3 pending: run `python backend/ingest_lessons.py --subject
+    English` with ANTHROPIC_API_KEY set in .env.
+  - **Mathematics is the SIXTH subject through ALL THREE gates (2026-06-27).**
+    Syllabus locked (159 objectives, 15 sections, exam_weight=Both verified). INGESTED
+    (4,678 chunks / 217 docs; 159/159 objectives covered after 21 binding-gap fixes).
+    LESSONS: 159/159 canonical lessons via Claude Sonnet, all conf 90.
+    Build notes:
+      * **Syllabus extractor hardened + factored to a shared module.** The Math
+        extraction had a truncated-objective + cross-column-bleed class of bug. Root
+        causes: (1) PyMuPDF "blocks" mode merges text across the column gutter, so an
+        `x0 < threshold` filter LEAKED right-column note text into the left column
+        (MATH-2.3.17 got "(i) the interval of the domain…") and (2) an eager
+        ';'-termination assembler DROPPED line-wrapped tails (MATH-2.3.9 lost
+        "midpoint"; MATH-2.4.6 lost "solids; and, (e) classes of solids"). Fixed by
+        WORD-LEVEL column filtering (centroid vs. a per-page gutter found as the widest
+        x-projection gap) + assemble-to-next-stop, and a `validate_objectives` QA pass
+        (truncation/note-bleed/garble/too-short). Extracted to the canonical
+        `tools/extraction/syllabus_extractor_base.py`; `extract_math_objectives.py`
+        imports it; CLAUDE.md "Syllabus Extraction Pattern" point 3 now points there.
+        4 objective statements were hand-corrected in the locked DB + CSV (MATH-2.2.4
+        garbled formula `a(x+h)²+k`, 2.3.9, 2.3.17, 2.4.6); the extractor's QA pass
+        cleanly reproduces 159 objectives flagging only the unparseable 2.2.4 formula.
+      * **Recall command-word whitelist extended for Math.** 11 lessons first queued
+        `quality_check_failed: recall_question is not a question or command prompt` —
+        Math's Application recall prompts open with `solve/determine/compute/convert/
+        represent…`, absent from `ingest_lessons._RECALL_COMMAND_WORDS` (the IT-7.7/POA
+        pattern, predicted in the skill_type note). Added the CXC Math command band
+        (grounded in the objectives' command_words) + 2 regression tests; 10/11 then
+        wrote, the last (MATH-1.2.7) on a plain retry (non-deterministic).
+  - **English is the SEVENTH (FINAL) subject through ALL THREE gates (2026-06-27).**
+    Syllabus locked (76 objectives, exam_weight=Both). INGESTED (3,812 chunks; 76/76
+    covered). LESSONS: 76/76 canonical lessons via Claude Sonnet, all conf 90.
+    Build notes:
+      * **Duplicate-objective binding gap (already resolved before this session).**
+        English A repeats the same objective text across modules (ENG-1.1.1 / 2.1.1 /
+        3.1.1 are identical), so the keyword matcher bound all chunks to the Module 1
+        instance and Modules 2 & 3 got zero — 21 zero-chunk gaps. A prior rebind gave
+        each empty duplicate its semantic top-5 (on-topic, verified); live DB showed 0
+        zero-chunk. 11 duplicate-content groups across modules (expected — same skill
+        assessed per module → near-identical lessons, which is correct).
+      * **Recall command-word whitelist extended for English.** 6 lessons queued the
+        same `recall_question…` failure — English verbs `extract/analyse/present/
+        formulate/recognise/…` were absent. Added the English command band (grounded in
+        the English objectives' command_words; `-ise/-ize` variants) + a regression
+        test; all 6 then wrote. `_RECALL_COMMAND_WORDS` now spans Knowledge/Understanding
+        + POA + Math + English bands — broad enough for any future subject.
+      * **ENG-1.1.8 `insufficient_source` was an extraction artifact, not a corpus gap.**
+        `content_stmt` carried a leaked `"; and, CXC"` marker; since lesson composition
+        retrieves PURELY on content_stmt (candidate_chunks → semantic search, not bound
+        chunks), the `CXC` tail dragged the query into exam/"assessment day" boilerplate
+        even though the real text-structure content sits in-subject (on ENG-1.1.7 /
+        ENG-3.3.8). Cleaning the artifact in DB + CSV → wrote at conf 90.
+      * **Content_stmt artifact sweep (done 2026-06-27).** The English extractor predates
+        `validate_objectives`, so it had leaked trailing markers (`"; CXC"`, `"; CXC CXC"`,
+        `"; (all)"`, `"; and, (all)"`) onto 34 of 76 content_stmt values, plus one severe
+        case (ENG-3.3.8 had a 1338-char prescribed-texts booklet dump appended) and one
+        de-hyphenation split (ENG-1.1.7 `"cause- effect"`). All cleaned in the live DB +
+        english.csv: truncate at the first leaked `CXC` token, strip trailing
+        `(all)/(none)/(some)` + dangling connectors, rejoin `cause-effect`. Curly
+        apostrophes (U+2019 in `writer's`/`author's`) were verified by codepoint and
+        LEFT INTACT — they only mis-render as a box in a cp1252 console, they are not
+        corruption. No lesson regeneration needed: the existing conf-90 lessons were spot-
+        checked on-topic (ENG-3.3.8 included — the composer focused on the leading
+        objective and ignored the trailing dump). The cleanup improves the stored
+        objective text students see and any future regeneration's retrieval query.
+  - **ALL SEVEN SUBJECTS LOCKED + FULLY BUILT (all three gates) as of 2026-06-27:
+    Principles_of_Business, Economics, Integrated_Science, Information_Technology,
+    Principles_of_Accounts, Mathematics, English. Stage 16 rollout is COMPLETE.**
+    NOTE: Integrated_Science build applied two real binding-gap fixes — INTSCI-3.2.3
+    (tides) and INTSCI-3.3.7 (flotation); see "Before Assuming 'insufficient_source'"
+    above (the IT-5.9 / POA-multi-objective / MATH-2.1.9 fix is the same misbind pattern).
 - [ ] **Stage 17** (was Stage 9) — Optional: Open WebUI front-end (v3.1); CrewAI orchestration (v3.2) — never Phase 1
 
 ---
@@ -1672,3 +1890,93 @@ suite **445/445** with 0 failures.
 **No further UI/launcher work should be started** unless one of the above recurs or
 Rylee reports something new from actual use. Per PDR v3.2: the next legitimate input
 is reality, not engineering review.
+
+---
+
+## Video Links feature (3 stages)
+
+Pre-qualified YouTube videos mapped to objectives via the
+`D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline\` pipeline
+(SSD-only, never committed). Videos are served as external links only —
+no iframes, no autoplay.
+
+### Source data
+
+| File | Subject | OK rows | Notes |
+|---|---|---|---|
+| `poa_final_review.csv` | Principles_of_Accounts | 53 | 3 VIDEO_REUSED (loaded) |
+| `it_final_review.csv`  | Information_Technology | 52 | 0 non-OK |
+| `eco_final_review.csv` | Economics | 69 | 0 non-OK |
+| `is_final_review.csv`  | Integrated_Science | 103 | 0 non-OK |
+| `mat_final_review.csv` | Mathematics | 133 | 7 VIDEO_REUSED — **loaded** 2026-06-27 (131 inserted, 4 unresolved, 5 dupes) |
+
+`VIDEO_REUSED_*` flag = same URL matched to multiple objectives; valid content,
+not a quality rejection — load these rows alongside `OK` rows.
+
+### ID resolution
+
+Pipeline CSVs use sequential IDs (`POA-001`, `IT-001`, …).
+Real DB IDs are `POA-1.1`, `IT-1.1`, etc.
+Resolution is via `content_stmt` join, three passes in order:
+
+1. Exact match (lowercase strip)
+2. Strip trailing `; and` suffix then exact match
+3. Prefix match on first 40 characters
+
+Unresolvable rows are logged (not failed) — they do not block the load.
+Mathematics rows are skipped entirely until `syllabus_locked = 1` for that subject.
+
+### Schema (`objective_videos`)
+
+```sql
+CREATE TABLE IF NOT EXISTS objective_videos (
+    video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+    subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    channel      TEXT,
+    duration_str TEXT,
+    source_file  TEXT NOT NULL,
+    added_at     TEXT DEFAULT (datetime('now')),
+    UNIQUE(objective_id, url)
+);
+```
+
+Migration: **m019** in `apply_runtime_migrations`.
+
+### Stages
+
+- [x] **Stage V1** — Schema + load script (build-time) ✓ 2026-06-27
+  - `backend/load_video_links.py` (PHASE: build): reads `*_final_review.csv` from
+    `--video-pipeline-dir` (default `D:\GPT Folder CSEC\Organized_CSEC_2027\_video_pipeline`),
+    3-step resolver (exact → strip trailing "; and" → prefix-40), `INSERT OR IGNORE`
+    on `(objective_id, url)`, `@backup_first('pre_video_load')`, `--subject` / `--dry-run` flags.
+  - `objective_videos` table added to `schema.sql` + m019 in `apply_runtime_migrations`.
+  - Tests: `tests/test_video_links.py` (5/5 pass); suite 501/501.
+
+- [x] **Stage V2** — Runtime API endpoint ✓ 2026-06-27
+  - `GET /api/videos/{objective_id}` → `{videos: [{title, url, channel, duration}]}`
+    (empty list when none; never 404). Ordered by insertion order (video_id ASC).
+  - 2 tests in `test_api.py` (returns list, empty-when-none); suite 503/503.
+
+- [x] **Stage V3** — UI integration ✓ 2026-06-27
+  - `study_plan.html`: `renderVideoSection(objectiveId, host)` async function appended
+    to `renderObjectiveLesson` (awaited after `renderLessonCard`); `.watch-section`
+    cards with title / channel / duration / "▶ Watch on YouTube" → `target="_blank"`.
+    Section not rendered at all when API returns `[]`.
+  - `chat.html`: `appendVideoCards(objectiveId, msgEl)` fire-and-forget after the teach
+    bubble; appends `.watch-section` inside the message element + re-scrolls.
+  - No iframes, no autoplay, no CDN. Both use the existing `escapeHtml`/`escHtml` helper.
+  - 2 structural tests in `test_chat.py`; suite 505/505.
+
+### Run order (after stages are built)
+
+```bash
+# Load all four currently-locked subjects at once
+python backend/load_video_links.py --dry-run
+python backend/load_video_links.py
+
+# When Mathematics is later locked:
+python backend/load_video_links.py --subject Mathematics
+```

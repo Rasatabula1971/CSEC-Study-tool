@@ -79,6 +79,22 @@ COMMAND_VERBS = [
     "Analyse", "Analyze", "Evaluate", "Assess", "Examine", "Investigate",
     "Appraise", "Recommend", "Determine", "Compare",
     "Contrast", "Justify", "Draw", "Sketch", "Construct", "Interpret",
+    # Mathematics-specific command words (verified against CXC skill bands):
+    # Application: solve/simplify/factorise/factorize/prove/show/derive/convert/
+    #              express/write/find/order (quantitative / procedural work)
+    "Solve", "Simplify", "Factorise", "Factorize", "Prove", "Show",
+    "Derive", "Convert", "Express", "Write", "Find", "Order", "Represent",
+    "Divide", "Estimate", "Change", "Translate", "Substitute", "Rewrite",
+    "Measure", "Locate", "Obtain", "Make",
+    # English A-specific command words (verified against CXC 01/G/SYLL 25 skill bands):
+    # Knowledge: extract (locate/retrieve information from text), recognise (British sp.)
+    # Understanding: trace (follow development), deduce (infer), explore (examine ideas)
+    # Application: create (produce written/oral work), communicate (convey meaning),
+    #   collaborate (produce responses with peers), organise (structure content),
+    #   present (deliver an argument), formulate (develop a position)
+    "Extract", "Recognise",
+    "Trace", "Deduce", "Explore",
+    "Create", "Communicate", "Collaborate", "Organise", "Present", "Formulate",
 ]
 
 # skill_type derivation. Precedence highest -> lowest: Application beats
@@ -96,13 +112,26 @@ SKILL_APPLICATION = {
     "use", "apply", "calculate", "compute", "analyse", "analyze",
     "evaluate", "assess", "compare", "contrast", "justify", "draw", "sketch",
     "construct", "examine", "investigate", "appraise", "recommend", "determine",
+    # Mathematics additions (procedural / proof-based work → Application)
+    "solve", "simplify", "factorise", "factorize", "prove", "show",
+    "derive", "convert", "express", "write", "find", "order", "represent",
+    "divide", "estimate", "change", "substitute", "rewrite", "measure",
+    "locate", "obtain",
+    # English A additions (Evaluating and Creating band → Application)
+    "create", "communicate", "collaborate", "organise", "present", "formulate",
 }
 SKILL_UNDERSTANDING = {
     "explain", "describe", "distinguish", "differentiate", "illustrate",
     "summarize", "classify", "discuss", "interpret", "relate",
+    "translate",  # converting between representations — comprehension
+    "make",       # "make inference(s)" — comprehension/interpretation
+    # English A additions (Analysing band → Understanding)
+    "trace", "deduce", "explore",
 }
 SKILL_KNOWLEDGE = {
     "define", "state", "list", "identify", "name", "outline",
+    # English A additions (Understanding band: locating/retrieving info from text)
+    "extract", "recognise",
 }
 
 UNCLASSIFIED = "UNCLASSIFIED"

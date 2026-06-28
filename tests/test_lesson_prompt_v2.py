@@ -138,6 +138,44 @@ def test_validate_accepts_500_word_lesson():
     assert ok is True and why is None
 
 
+def test_validate_accepts_math_command_recall_prompts():
+    """Mathematics rollout: Application-skill recall prompts open with Math command
+    words (Solve/Determine/Compute/Convert/Represent...). These imperative prompts do
+    not end in '?', so the Knowledge/Understanding + POA whitelist rejected 11 valid
+    Math lessons until the Math command band was added to _RECALL_COMMAND_WORDS."""
+    for prompt in [
+        "Solve the equation 2x + 3 = 11 for x.",
+        "Determine the gradient of the line through (1, 2) and (3, 8).",
+        "Compute the H.C.F. of 24 and 36.",
+        "Convert 0.75 to a fraction in its simplest form.",
+        "Represent the set {1, 2, 3} on a Venn diagram.",
+    ]:
+        ok, why = il._validate_lesson_quality(_clean_body(350), [prompt])
+        assert ok is True and why is None, f"rejected valid Math prompt: {prompt!r} ({why})"
+
+
+def test_validate_accepts_english_command_recall_prompts():
+    """English rollout: recall prompts open with CSEC English command words
+    (Extract/Analyse/Present/Formulate/Recognise...). The Math/POA-era whitelist
+    rejected 6 valid English lessons until the English command band was added."""
+    for prompt in [
+        "Extract two pieces of explicit information from the passage above.",
+        "Analyse how the writer creates a tense atmosphere in this extract.",
+        "Present a counter-argument to the writer's main claim.",
+        "Formulate a topic sentence for a paragraph on the dangers of social media.",
+        "Recognise the text structure used in the passage and name it.",
+    ]:
+        ok, why = il._validate_lesson_quality(_clean_body(350), [prompt])
+        assert ok is True and why is None, f"rejected valid English prompt: {prompt!r} ({why})"
+
+
+def test_validate_still_rejects_junk_recall_prompt():
+    """The widened whitelist must not let genuine junk through (no '?' / no command word)."""
+    ok, why = il._validate_lesson_quality(_clean_body(350), ["multiple-choice"])
+    assert ok is False
+    assert "not a question or command prompt" in why
+
+
 # ---------------------------------------------------------------------------
 # Tool-use composition: _compose_lesson passes a schema, so the SDK guarantees
 # valid JSON (the POB-6.6 unescaped-quote failure class is eliminated).

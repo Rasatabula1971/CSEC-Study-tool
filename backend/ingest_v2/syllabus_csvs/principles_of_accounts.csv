@@ -1,0 +1,107 @@
+section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
+POA-S1,1,ACCOUNTING AS A PROFESSION,POA-1.1,1,explain the concept and purposes of Accounting,Understanding,Explain,Both
+POA-S1,1,ACCOUNTING AS A PROFESSION,POA-1.2,2,identify the users of accounting information,Knowledge,Identify,Both
+POA-S1,1,ACCOUNTING AS A PROFESSION,POA-1.3,3,describe traditional and emerging careers in the field of Accounting,Understanding,Describe,Both
+POA-S1,1,ACCOUNTING AS A PROFESSION,POA-1.4,4,discuss ethical issues in the field of Accounting,Understanding,Discuss,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.1,1,outline the concepts and conventions that guide the accounting process,Knowledge,Outline,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.2,2,describe the accounting cycle,Understanding,Describe,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.3,3,appraise the accounting features of various types of business organisations,Application,Appraise,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.4,4,identify the main financial statements prepared by various business organisations,Knowledge,Identify,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.5,5,assess the role and impact of technology on the accounting process,Application,Assess,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.6,6,explain the concept of a Balance Sheet and the balance sheet equation,Understanding,Explain,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.7,7,identify the components of a Balance Sheet,Knowledge,Identify,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.8,8,"give examples of different types of assets and liabilities",Knowledge,Give,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.9,9,construct Balance Sheets,Application,Construct,Both
+POA-S2,2,ACCOUNTING AS A SYSTEM,POA-2.10,10,determine which items in a Balance Sheet will change as a result of various transactions,Application,Determine,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.1,1,explain the uses of books of original entry,Understanding,Explain,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.2,2,distinguish between cash and credit transactions,Understanding,Distinguish,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.3,3,identify source documents related to books of original entry,Knowledge,Identify,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.4,4,prepare source documents for use in transaction descriptions,Application,Prepare,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.5,5,translate source documents into transaction descriptions,Application,Translate,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.6,6,use source documents to make entries into books of original entry,Application,Use,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.7,7,distinguish between trade and cash discounts,Understanding,Distinguish,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.8,8,distinguish between discounts allowed and discounts received,Understanding,Distinguish,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.9,9,balance cash books,Application,Balance,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.10,10,interpret the balances of the cash books,Application,Interpret,Both
+POA-S3,3,BOOKS OF ORIGINAL ENTRY,POA-3.11,11,indicate treatment of totals from books of original entry,Knowledge,Indicate,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.1,1,describe the different classes of accounts,Understanding,Describe,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.2,2,identify the different types of ledgers,Knowledge,Identify,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.3,3,explain the significance of debit and credit in each class of account,Understanding,Explain,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.4,4,"draw up simple account formats, neatly and accurately",Application,Draw,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.5,5,post from books of original entry to the general ledger and the subsidiary ledgers,Application,Post,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.6,6,balance and close accounts,Application,Balance,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.7,7,interpret entries and balances,Application,Interpret,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.8,8,use the balances brought down to construct the trial balance,Application,Use,Both
+POA-S4,4,LEDGERS AND THE TRIAL BALANCE,POA-4.9,9,outline the uses and limitations of the trial balance,Knowledge,Outline,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.1,1,explain the purpose of preparing financial statements,Understanding,Explain,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.2,2,identify the components of the Financial Statements,Knowledge,Identify,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.3,3,draw up the income statement for sole traders to determine gross profit or loss and net profit or loss,Application,Draw,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.4,4,prepare classified balance sheet in vertical style,Application,Prepare,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.5,5,explain the significance of the working capital for the operation of a business,Understanding,Explain,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.6,6,use ratios to determine the performance (profitability) of the business,Application,Use,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.7,7,calculate ratios to demonstrate the financial position of a business,Application,Calculate,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.8,8,show the effect of net profit or loss on capital,Application,Show,Both
+POA-S5,5,THE PREPARATION AND ANALYSIS OF FINANCIAL STATEMENTS OF THE SOLE TRADER,POA-5.9,9,make recommendations about a business based on ratio analysis,Application,Make,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.1,1,explain accounting concepts that underpin the need for adjustments,Understanding,Explain,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.2,2,explain why adjustments are made to financial statements,Understanding,Explain,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.3,3,prepare journal entries and ledger accounts to reflect adjustments and the treatment in the balance sheet,Application,Prepare,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.4,4,explain the reasons for bad debts,Understanding,Explain,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.5,5,prepare journal entries and ledger accounts to write off bad debts and create provision for doubtful debts,Application,Prepare,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.6,6,indicate the treatment of bad and doubtful debts in the Income Statement and Balance Sheet,Knowledge,Indicate,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.7,7,discuss the nature of depreciation,Understanding,Discuss,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.8,8,calculate annual depreciation expenses using straight line method and reducing balance method,Application,Calculate,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.9,9,prepare journal entries and ledger accounts for provision for depreciation,Application,Prepare,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.10,10,distinguish between capital expenditure and revenue expenditures,Understanding,Distinguish,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.11,11,determine the amount of expenses or revenues to be transferred to the Income Statement,Application,Determine,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.12,12,prepare income statements to reflect adjusting entries,Application,Prepare,Both
+POA-S6,6,ACCOUNTING ADJUSTMENTS,POA-6.13,13,prepare Financial Statements after adjustments,Application,Prepare,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.1,1,explain the uses of control systems in the accounting process,Understanding,Explain,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.2,2,outline the three most commonly used control systems in the accounting process,Knowledge,Outline,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.3,3,distinguish between those errors which affect and those which do not affect the trial balance,Understanding,Distinguish,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.4,4,prepare journal entries for the correction of errors,Application,Prepare,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.5,5,explain the need for suspense account,Understanding,Explain,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.6,6,construct a suspense account,Application,Construct,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.7,7,construct a statement of revised profit after the correction of errors,Application,Construct,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.8,8,explain the purposes of control accounts and how they are prepared,Understanding,Explain,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.9,9,identify the sources of information for entries made in control accounts,Knowledge,Identify,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.10,10,construct sales and purchases ledger control accounts,Application,Construct,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.11,11,explain the significance of the balances on control accounts,Understanding,Explain,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.12,12,identify items that will result in differences between cash book and bank statement balances,Knowledge,Identify,Both
+POA-S7,7,CONTROL SYSTEMS,POA-7.13,13,construct a bank reconciliation statement using the adjusted cash book balance,Application,Construct,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.1,1,define a partnership business,Knowledge,Define,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.2,2,state the features of a partnership,Knowledge,State,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.3,3,give reasons for establishing partnerships,Knowledge,Give,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.4,4,outline the essential components of a partnership agreement,Knowledge,Outline,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.5,5,prepare journal entries and ledger accounts to record the capital of partnership,Application,Prepare,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.6,6,use various methods to share profit/loss among partners,Application,Use,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.7,7,prepare appropriation account of partnerships,Application,Prepare,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.8,8,prepare current account of partners,Application,Prepare,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.9,9,explain the significance of the brought down balances on partners' current accounts,Understanding,Explain,Both
+POA-S8,8,ACCOUNTING FOR PARTNERSHIPS,POA-8.10,10,prepare balance sheet of partnerships,Application,Prepare,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.1,1,"identify the essential features of limited liability companies, co-operatives and non-profit organisations",Knowledge,Identify,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.2,2,"identify the types of limited liability companies, co-operatives and non-profit organisations",Knowledge,Identify,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.3,3,outline the advantages and disadvantages of a limited liability company,Knowledge,Outline,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.4,4,"describe the various methods of raising capital available to limited liability companies and co-operatives",Understanding,Describe,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.5,5,identify the various types of shares and the rights of the owners of each type of share,Knowledge,Identify,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.6,6,prepare journal entries to record the issue of shares and debentures,Application,Prepare,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.7,7,calculate dividend payments for various types of shares,Application,Calculate,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.8,8,appropriate profits between dividends and reserves,Application,Appropriate,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.9,9,prepare the final accounts of limited liability companies and co-operatives,Application,Prepare,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.10,10,analyse performance and position using ratios,Application,Analyse,Both
+POA-S9,9,"ACCOUNTING FOR LIMITED LIABILITY COMPANIES, CO-OPERATIVES AND NON-PROFIT ORGANISATIONS",POA-9.11,11,prepare receipts and payment accounts for non-profit organisations,Application,Prepare,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.1,1,distinguish between direct and indirect costs,Understanding,Distinguish,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.2,2,prepare manufacturing accounts,Application,Prepare,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.3,3,calculate unit cost of items produced,Application,Calculate,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.4,4,prepare final accounts for a manufacturing concern,Application,Prepare,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.5,5,apply basic costing principles,Application,Apply,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.6,6,list methods of inventory valuation,Knowledge,List,Both
+POA-S10,10,MANUFACTURING AND INVENTORY CONTROL,POA-10.7,7,"calculate the value of closing inventory using FIFO, LIFO or AVCO",Application,Calculate,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.1,1,list methods of payment,Knowledge,List,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.2,2,identify basic source documents of the payroll,Knowledge,Identify,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.3,3,prepare spreadsheet to arrive at net pay amounts after deductions,Application,Prepare,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.4,4,identify main accounting software used for payroll,Knowledge,Identify,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.5,5,distinguish between voluntary and statutory deductions,Understanding,Distinguish,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.6,6,calculate employees' earnings,Application,Calculate,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.7,7,prepare cash flow projections within a six-month period,Application,Prepare,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.8,8,prepare sales and production budgets for a three-month period,Application,Prepare,Both
+POA-S11,11,ACCOUNTING FOR THE ENTREPRENEUR,POA-11.9,9,use accounting knowledge and skills to prepare a simple business plan,Application,Use,Both

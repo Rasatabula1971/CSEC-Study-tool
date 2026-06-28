@@ -146,3 +146,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS vec_past_papers
 
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_mark_schemes
     USING vec0(embedding float[768]);
+
+CREATE TABLE IF NOT EXISTS objective_videos (
+    video_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+    subject_id   TEXT NOT NULL REFERENCES subjects(subject_id),
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    channel      TEXT,
+    duration_str TEXT,
+    source_file  TEXT NOT NULL,
+    added_at     TEXT DEFAULT (datetime('now')),
+    UNIQUE(objective_id, url)
+);

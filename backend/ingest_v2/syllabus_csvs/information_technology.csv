@@ -1,0 +1,64 @@
+section_id,section_num,section_title,objective_id,objective_num,content_stmt,skill_type,command_words,exam_weight
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.1,1,explain the concept of Information Technology,Understanding,Explain,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.2,2,"distinguish among the major types of computer systems in terms of processing speed, storage and portability",Understanding,Distinguish,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.3,3,explain the functions of the major hardware components of a computer system,Understanding,Explain,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.4,4,explain how the major hardware components of a computer system interrelate,Understanding,Explain,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.5,5,evaluate the relative merits of cloud storage and local storage,Application,Evaluate,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.6,6,select appropriate input/output devices to meet the needs of specified applications,Application,Select,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.7,7,explain the role of the different types of software in computer operation,Understanding,Explain,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.8,8,discuss the relative merits of the various types of user interface,Understanding,Discuss,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.9,9,evaluate the suitability of a given computer system for a specific purpose,Application,Evaluate,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.10,10,troubleshoot basic computer hardware problems,Application,Troubleshoot,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.11,11,distinguish between data and information,Understanding,Distinguish,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.12,12,evaluate the reliability of information obtained from online sources,Application,Evaluate,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.13,13,differentiate between validation and verification of data,Understanding,Differentiate,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.14,14,identify appropriate validation and verification checks given a particular scenario,Knowledge,Identify,Both
+IT-S1,1,COMPUTER FUNDAMENTALS AND INFORMATION PROCESSING,IT-1.15,15,select appropriate file organization for particular application,Application,Select,Both
+IT-S2,2,COMPUTER NETWORKS AND WEB TECHNOLOGIES,IT-2.1,1,distinguish among types of networks,Understanding,Distinguish,Both
+IT-S2,2,COMPUTER NETWORKS AND WEB TECHNOLOGIES,IT-2.2,2,explain the functions of the basic components of a network,Understanding,Explain,Both
+IT-S2,2,COMPUTER NETWORKS AND WEB TECHNOLOGIES,IT-2.3,3,assess the importance of mobile communication technologies as a component of modern communication networks,Application,Assess,Both
+IT-S2,2,COMPUTER NETWORKS AND WEB TECHNOLOGIES,IT-2.4,4,explain the interrelationship among key Web technology concepts,Understanding,Explain,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.1,1,"outline the concepts of computer security, cybersecurity and computer misuse",Knowledge,Outline,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.2,2,assess the potential impact of computer systems misuse based on the main entities impacted,Application,Assess,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.3,3,describe suitable countermeasures to mitigate effects of identified threats,Understanding,Describe,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.4,4,assess the effect of automation on job security,Application,Assess,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.5,5,describe the roles of various personnel in computer-related professions,Understanding,Describe,Both
+IT-S3,3,SOCIAL AND ECONOMIC IMPACT OF INFORMATION AND COMMUNICATIONS TECHNOLOGY (ICT),IT-3.6,6,assess the impact of information and communications technology on select fields,Application,Assess,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.1,1,create a document using content from a range of sources,Application,Create,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.2,2,use appropriate document formatting features,Application,Use,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.3,3,use appropriate editing features to structure and organize a document,Application,Use,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.4,4,use the review feature of a word processor to enhance document readiness,Application,Use,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.5,5,appropriately use features that allow the protection of a document,Application,Use,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.6,6,generate table of contents for a document,Application,Generate,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.7,7,use mail merge feature in the preparation of a document for a variety of situations,Application,Use,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.8,8,create a fillable electronic form for online use,Application,Create,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.9,9,plan a website structure and organization of page,Application,Plan,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.10,10,create simple web pages using a variety of design features,Application,Create,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.11,11,insert hyperlinks within different locations of a typical web page,Application,Insert,Both
+IT-S4,4,WORD-PROCESSING AND WEB PAGE DESIGN,IT-4.12,12,"evaluate a website for accuracy, user friendliness and effective display",Application,Evaluate,Both
+IT-S5,5,SPREADSHEETS,IT-5.1,1,explain the purpose of a spreadsheet,Understanding,Explain,Both
+IT-S5,5,SPREADSHEETS,IT-5.2,2,use appropriate terminologies and notions commonly associated with spreadsheets,Application,Use,Both
+IT-S5,5,SPREADSHEETS,IT-5.3,3,use basic pre-defined systems functions,Application,Use,Both
+IT-S5,5,SPREADSHEETS,IT-5.4,4,create advanced arithmetic formulae,Application,Create,Both
+IT-S5,5,SPREADSHEETS,IT-5.5,5,replicate formulae into other cells,Application,Replicate,Both
+IT-S5,5,SPREADSHEETS,IT-5.6,6,manipulate columns and rows,Application,Manipulate,Both
+IT-S5,5,SPREADSHEETS,IT-5.7,7,manipulate data in a spreadsheet,Application,Manipulate,Both
+IT-S5,5,SPREADSHEETS,IT-5.8,8,perform charting operations,Application,Perform,Both
+IT-S5,5,SPREADSHEETS,IT-5.9,9,manipulate one or more worksheets,Application,Manipulate,Both
+IT-S6,6,DATABASE MANAGEMENT,IT-6.1,1,explain the concept of a database,Understanding,Explain,Both
+IT-S6,6,DATABASE MANAGEMENT,IT-6.2,2,use terminology commonly associated with a database,Application,Use,Both
+IT-S6,6,DATABASE MANAGEMENT,IT-6.3,3,create a database,Application,Create,Both
+IT-S6,6,DATABASE MANAGEMENT,IT-6.4,4,manipulate data in a database,Application,Manipulate,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.1,1,outline the steps in problem-solving,Knowledge,Outline,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.2,2,use the divide-and-conquer approach to decompose large everyday problems into smaller tasks,Application,Use,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.3,3,define a problem by decomposing it into its significant components,Knowledge,Define,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.4,4,distinguish between variables and constants,Understanding,Distinguish,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.5,5,explain the concept of algorithms,Understanding,Explain,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.6,6,represent algorithms in the form of flowchart and pseudocode,Application,Represent,Both
+IT-S7,7,PROBLEM-SOLVING AND PROGRAM DESIGN,IT-7.7,7,test algorithms for correctness,Application,Test,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.1,1,distinguish between low-level and high-level programming languages,Understanding,Distinguish,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.2,2,describe the sequence of steps in implementing a program,Understanding,Describe,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.3,3,perform checks and tests on programs to verify correctness,Application,Perform,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.4,4,declare variables and constants using elementary data types,Application,Declare,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.5,5,translate algorithmic statements into high-level language syntax,Application,Translate,Both
+IT-S8,8,PROGRAM IMPLEMENTATION,IT-8.6,6,effectively document programs,Application,Document,Both

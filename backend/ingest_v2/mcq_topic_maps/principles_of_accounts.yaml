@@ -1,0 +1,176 @@
+# =====================================================================
+# Principles of Accounts MCQ topic map  --  Kerwin Springer bank -> POA objective_ids
+# =====================================================================
+# Resolution order in KerwinMCQAdapter._resolve:
+#   1. subtopic_overrides[question.subtopic]  -> confidence HIGH
+#   2. default_objective for the topic         -> confidence MEDIUM
+#   3. unmapped_objective sentinel 'REVIEW'     -> confidence review
+#
+# Built from all 181 questions across 11 topics in the Kerwin Springer POA bank.
+# Every target is a real objective_id in the locked 106-objective POA syllabus.
+# Subtopics whose best objective equals the topic default are intentionally
+# OMITTED (they fall through to the default at MEDIUM confidence).
+# =====================================================================
+
+topic_map:
+  "Introduction to POA":
+    default_objective: POA-2.1   # outline accounting concepts and conventions
+    subtopic_overrides:
+      "Accounting cycle order": POA-2.2
+      "Accounting equation": POA-2.6
+      "Capital vs revenue expenditure": POA-6.10
+      "Definition of accounting": POA-1.1
+      "Purpose of financial statements": POA-5.1
+      "The accounting cycle": POA-2.2
+      "Types of business": POA-2.3
+      "Users of accounting information": POA-1.2
+
+  "Books of original entry":
+    default_objective: POA-3.6   # use source documents to make entries into books of original entry
+    subtopic_overrides:
+      "Cash discount on credit purchase": POA-3.8
+      "Cash discount terms": POA-3.7
+      "Cash discounts allowed": POA-3.8
+      "Closing bank balance": POA-3.9
+      "Contra entries": POA-3.9
+      "Discount received on settlement": POA-3.8
+      "Identifying a book of prime entry": POA-3.1
+      "Petty cash imprest": POA-3.9
+      "Petty cash reimbursement (imprest)": POA-3.9
+      "Reason for using a petty cash fund": POA-3.1
+      "Returns outwards after trade discount": POA-3.7
+      "Three-column cash book": POA-3.9
+      "Trade and cash discounts": POA-3.7
+      "Trade discount calculation": POA-3.7
+      "Trade discount without cash discount": POA-3.7
+
+  "Ledgers and the trial balance":
+    default_objective: POA-4.3   # explain the significance of debit and credit
+    subtopic_overrides:
+      "Adjusting the provision for doubtful debts": POA-6.5
+      "Adjustments for inventory of supplies used": POA-6.3
+      "Balances posted to trial balance": POA-4.8
+      "Classification of accounts": POA-4.1
+      "Classification of carriage": POA-4.1
+      "Classification of nominal accounts": POA-4.1
+      "Correcting a posting error": POA-7.4
+      "Correcting errors affecting net profit": POA-7.7
+      "Depreciation — straight-line method": POA-6.8
+      "Effect of drawings on capital": POA-4.7
+      "Personal accounts": POA-4.2
+      "Prepaid expense from the ledger": POA-6.11
+      "Recording a trade-in": POA-4.5
+      "Recording purchase of non-current asset": POA-4.5
+      "Reducing-balance depreciation — beginning of year 3": POA-6.8
+      "Trial balance errors": POA-7.3
+      "Trial balance total": POA-4.8
+      "Where office machine depreciation is charged": POA-6.9
+
+  "The classified balance sheet":
+    default_objective: POA-2.9   # construct Balance Sheets
+    subtopic_overrides:
+      "Capital vs revenue expenditure": POA-6.10
+      "Classification of liabilities": POA-2.7
+      "Effect on the accounting equation": POA-2.6
+      "Identifying a long-term liability": POA-2.8
+      "Identifying assets": POA-2.8
+      "Identifying current liabilities": POA-2.7
+      "Order of liquidity": POA-2.7
+      "Permanence of assets": POA-2.7
+      "Working capital relationship": POA-5.5
+
+  "Sole trader financial statements":
+    default_objective: POA-5.3   # draw up the income statement for sole traders
+    subtopic_overrides:
+      "Acid test (quick) ratio": POA-5.7
+      "Adjustment of allowance for doubtful debts": POA-6.5
+      "Allowance for doubtful debts": POA-6.5
+      "Capital vs revenue expenditure": POA-6.10
+      "Closing capital": POA-5.8
+      "Computing net profit from capital movement": POA-5.8
+      "Current ratio": POA-5.7
+      "Current ratio computation": POA-5.7
+      "Effect of bad debts on profit": POA-6.4
+      "Gross profit percentage formula": POA-5.7
+      "Insurance expense with prepayments": POA-6.11
+      "Liquidity ratios": POA-5.7
+      "Net profit percentage": POA-5.7
+      "Partial recovery of bad debt": POA-6.5
+      "Prepaid expense balance": POA-6.11
+      "Prepaid expenses": POA-6.11
+      "Prepayments and rent expense": POA-6.11
+      "Prepayments on balance sheet": POA-6.11
+      "Provision for bad debts": POA-6.5
+      "Provision for bad debts by age": POA-6.5
+      "Purpose of the trading account": POA-5.1
+      "Ratio analysis": POA-5.6
+      "Straight line depreciation": POA-6.8
+      "Straight line depreciation book value": POA-6.8
+      "Which statement shows net earnings": POA-5.2
+
+  "Control systems":
+    default_objective: POA-7.1   # explain the uses of control systems
+    subtopic_overrides:
+      "Bank overdraft": POA-7.12
+      "Bank reconciliation": POA-7.13
+      "Bank reconciliation - cash book adjustments": POA-7.13
+      "Bank reconciliation - unpresented cheques": POA-7.13
+      "Bank reconciliation — standing order treatment": POA-7.13
+      "Bank statement balance": POA-7.12
+      "Purpose of control accounts": POA-7.8
+      "Sales ledger control account": POA-7.10
+
+  "Incomplete records":
+    default_objective: POA-5.8   # show the effect of net profit or loss on capital
+    # All 5 subtopics (closing capital, opening capital, profit from capital comparison)
+    # are direct applications of the balance sheet equation → no subtopic overrides needed.
+
+  "Partnership financial statements":
+    default_objective: POA-8.7   # prepare appropriation account of partnerships
+    subtopic_overrides:
+      "Compulsory partnership transactions": POA-8.4
+      "Features of a partnership": POA-8.2
+      "Journal entry for capital contribution": POA-8.5
+      "Partnership Act default rule": POA-8.4
+      "Profit sharing ratio": POA-8.6
+      "Reasons for forming partnerships": POA-8.3
+      "Recording partners' opening capital deposits": POA-8.5
+      "Share of remaining profit": POA-8.6
+      "Types of partners": POA-8.4
+
+  "Limited liability company / co-operative / NPO statements":
+    default_objective: POA-9.9   # prepare the final accounts of LLCs and co-operatives
+    subtopic_overrides:
+      "Accumulated fund of a club": POA-9.11
+      "Appropriation account items": POA-9.8
+      "Capital from accounting equation": POA-2.6
+      "Capital raised from share issue": POA-9.6
+      "Debenture interest": POA-9.6
+      "Debentures": POA-9.6
+      "Dividend on ordinary shares": POA-9.7
+      "Features of a private limited company": POA-9.1
+      "Preference dividends": POA-9.7
+      "Private limited company features": POA-9.1
+      "Receipts and payments bank balance": POA-9.11
+      "Receipts and payments cash balance": POA-9.11
+      "Returns to shareholders": POA-9.7
+
+  "Manufacturing and inventory control":
+    default_objective: POA-10.2  # prepare manufacturing accounts
+    subtopic_overrides:
+      "AVCO ending inventory": POA-10.7
+      "Closing inventory calculation": POA-10.7
+      "Cost of production formula": POA-10.3
+      "Cost per unit": POA-10.3
+      "Gross profit under AVCO": POA-10.7
+      "Gross profit under FIFO": POA-10.7
+      "LIFO valuation": POA-10.7
+      "Total indirect cost": POA-10.1
+
+  "Payroll accounting":
+    default_objective: POA-11.6  # calculate employees' earnings
+    subtopic_overrides:
+      "Calculating net pay": POA-11.3
+      "Electronic clock cards": POA-11.2
+      "Income tax deduction calculation": POA-11.5
+      "Statutory deductions": POA-11.5

@@ -26,6 +26,9 @@ except ImportError:
 
 USER_AGENT = "CSEC-Study-tool-resource-downloader/1.0 (+educational personal archive)"
 FILE_EXTS = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"}
+MAX_FILE_BYTES = 50 * 1024 * 1024   # 50 MB default; override with --max-mb
+DOWNLOAD_RETRIES = 3
+_RETRY_BACKOFF = (1, 2, 4)          # seconds between attempts
 BLOCKED_DOMAINS = {
     "scribd.com", "www.scribd.com", "pdfcoffee.com", "www.pdfcoffee.com",
     "z-lib.org", "www.z-lib.org", "libgen.is", "libgen.rs", "annas-archive.org"
@@ -132,31 +135,57 @@ def robots_allowed(session: requests.Session, url: str, ua: str, cache: dict[str
     return cache[robots_url].can_fetch(ua, url)
 
 
-def download(session: requests.Session, item: dict, out: Path, dry_run: bool, overwrite: bool) -> dict:
+def download(session: requests.Session, item: dict, out: Path,
+             dry_run: bool, overwrite: bool,
+             max_bytes: int = MAX_FILE_BYTES) -> dict:
     dest_dir = out / item["subject"] / item["category"]
     dest_dir.mkdir(parents=True, exist_ok=True)
     record = dict(item)
     if dry_run:
         record.update({"status": "planned", "path": str(dest_dir / safe_filename(item["url"], item.get("title", "")))})
         return record
-    try:
-        with session.get(item["url"], stream=True, timeout=60) as resp:
-            resp.raise_for_status()
-            dest = dest_dir / safe_filename(item["url"], item.get("title", ""), resp.headers.get("content-type", ""))
-            if dest.exists() and not overwrite:
-                record.update({"status": "exists", "path": str(dest), "sha256": sha256_file(dest)})
+    last_exc: Exception | None = None
+    for attempt in range(DOWNLOAD_RETRIES):
+        try:
+            with session.get(item["url"], stream=True, timeout=60) as resp:
+                if 400 <= resp.status_code < 500:
+                    # 4xx: not transient — surface immediately, no retry
+                    resp.raise_for_status()
+                resp.raise_for_status()
+                cl = resp.headers.get("content-length")
+                if cl and int(cl) > max_bytes:
+                    record.update({"status": "too_large", "content_length": int(cl), "max_bytes": max_bytes})
+                    return record
+                dest = dest_dir / safe_filename(item["url"], item.get("title", ""), resp.headers.get("content-type", ""))
+                if dest.exists() and not overwrite:
+                    record.update({"status": "exists", "path": str(dest), "sha256": sha256_file(dest)})
+                    return record
+                tmp = dest.with_suffix(dest.suffix + ".part")
+                written = 0
+                with tmp.open("wb") as f:
+                    for chunk in resp.iter_content(256 * 1024):
+                        if chunk:
+                            written += len(chunk)
+                            if written > max_bytes:
+                                tmp.unlink(missing_ok=True)
+                                record.update({"status": "too_large", "bytes_seen": written, "max_bytes": max_bytes})
+                                return record
+                            f.write(chunk)
+                tmp.replace(dest)
+                record.update({"status": "downloaded", "path": str(dest),
+                               "bytes": dest.stat().st_size, "sha256": sha256_file(dest)})
                 return record
-            tmp = dest.with_suffix(dest.suffix + ".part")
-            with tmp.open("wb") as f:
-                for chunk in resp.iter_content(256 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            tmp.replace(dest)
-            record.update({"status": "downloaded", "path": str(dest), "bytes": dest.stat().st_size, "sha256": sha256_file(dest)})
-            return record
-    except Exception as exc:
-        record.update({"status": "error", "error": str(exc)})
-        return record
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code < 500:
+                record.update({"status": "error", "error": str(exc)})
+                return record
+            last_exc = exc
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+        if attempt < DOWNLOAD_RETRIES - 1:
+            time.sleep(_RETRY_BACKOFF[attempt])
+    record.update({"status": "error", "error": str(last_exc), "attempts": DOWNLOAD_RETRIES})
+    return record
 
 
 def scan_seed(session: requests.Session, seed: dict, subject: str, manifest: dict, logs: Path) -> list[dict]:
@@ -202,21 +231,54 @@ def main() -> int:
     parser.add_argument("--out", default="resources/raw/2027")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
-    parser.add_argument("--respect-robots", action="store_true")
+    parser.add_argument("--no-respect-robots", action="store_true",
+                        help="Skip robots.txt checks (use only for hosts you control or have permission to crawl)")
+    parser.add_argument("--max-mb", type=float, default=50.0,
+                        help="Reject files larger than this many megabytes (default 50)")
     parser.add_argument("--sleep", type=float, default=1.0)
     args = parser.parse_args()
+    max_bytes = int(args.max_mb * 1024 * 1024)
 
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     out = Path(args.out)
     logs = out / "_logs"
+    logs.mkdir(parents=True, exist_ok=True)
     ua = manifest.get("user_agent", USER_AGENT)
     session = requests.Session()
     session.headers.update({"User-Agent": ua})
     robots_cache: dict[str, RobotFileParser] = {}
     records = []
 
+    # Persist SHA-256 hashes across runs so re-runs skip content already seen,
+    # even when files have been moved out of the download tree into the KB.
+    seen_hashes_path = logs / "_seen_hashes.json"
+    seen_hashes: dict[str, str] = {}  # {sha256: original_path}
+    if seen_hashes_path.exists():
+        try:
+            seen_hashes = json.loads(seen_hashes_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            seen_hashes = {}
+
+    def track(rec: dict) -> dict:
+        """Dedup by content hash; mutates rec if duplicate; persists seen_hashes."""
+        h = rec.get("sha256")
+        if not h:
+            return rec
+        if h in seen_hashes:
+            if rec.get("status") == "downloaded" and rec.get("path"):
+                try:
+                    Path(rec["path"]).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            rec["status"] = "duplicate"
+            rec["original"] = seen_hashes[h]
+        else:
+            seen_hashes[h] = rec.get("path", "")
+            write_json(seen_hashes_path, seen_hashes)
+        return rec
+
     def allowed_by_robots(url: str) -> bool:
-        return True if not args.respect_robots else robots_allowed(session, url, ua, robots_cache)
+        return True if args.no_respect_robots else robots_allowed(session, url, ua, robots_cache)
 
     for subject in manifest.get("subjects", []):
         subject_name = subject["name"]
@@ -232,7 +294,7 @@ def main() -> int:
             if is_blocked(url) or not allowed_by_robots(url):
                 append_jsonl(logs / "review_needed.jsonl", {"reason": "blocked_or_robots", **item})
                 continue
-            rec = download(session, item, out, args.dry_run, args.overwrite)
+            rec = track(download(session, item, out, args.dry_run, args.overwrite, max_bytes))
             append_jsonl(logs / "downloads.jsonl", rec)
             records.append(rec)
             time.sleep(args.sleep)
@@ -247,7 +309,7 @@ def main() -> int:
                     if not allowed_by_robots(item["url"]):
                         append_jsonl(logs / "review_needed.jsonl", {"reason": "robots_file", **item})
                         continue
-                    rec = download(session, item, out, args.dry_run, args.overwrite)
+                    rec = track(download(session, item, out, args.dry_run, args.overwrite, max_bytes))
                     append_jsonl(logs / "downloads.jsonl", rec)
                     records.append(rec)
                     time.sleep(args.sleep)
@@ -261,6 +323,8 @@ def main() -> int:
         "records": len(records),
         "downloaded": sum(r.get("status") == "downloaded" for r in records),
         "existing": sum(r.get("status") == "exists" for r in records),
+        "duplicate": sum(r.get("status") == "duplicate" for r in records),
+        "too_large": sum(r.get("status") == "too_large" for r in records),
         "planned": sum(r.get("status") == "planned" for r in records),
         "errors": sum(r.get("status") == "error" for r in records),
         "logs": str(logs),
