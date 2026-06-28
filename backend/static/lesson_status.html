@@ -202,8 +202,21 @@
 
 <script>
 "use strict";
-const SUBJECT = new URLSearchParams(location.search).get("subject") || "Principles_of_Business";
+// Resolve the subject in priority order: ?subject= URL param -> last subject the
+// chat page recorded -> the server-side sticky subject (always a valid locked
+// subject). The server fallback is what makes the builder's "Lesson Status" link
+// work without first opening /chat (which is the only page that sets last_subject).
+let SUBJECT = new URLSearchParams(location.search).get("subject") || localStorage.getItem('last_subject') || "";
 const REFRESH_MS = 5000;
+
+async function resolveSubject() {
+  if (SUBJECT) return;
+  try {
+    const res = await fetch("/api/state/subject");
+    const data = await res.json();
+    if (data && data.subject_id) SUBJECT = data.subject_id;
+  } catch (e) { /* leave SUBJECT empty -> refresh() shows the guidance message */ }
+}
 
 function esc(s) {
   const d = document.createElement("div");
@@ -218,6 +231,10 @@ function hhmm(ts) {
 const EVENT_LABEL = { lesson_written: "lesson_written", queued: "queued", staled: "staled" };
 
 async function refresh() {
+  if (!SUBJECT) {
+    document.getElementById("metaText").textContent = "No subject selected. Open a lesson first.";
+    return;
+  }
   let data;
   try {
     const res = await fetch("/api/lessons/status/" + encodeURIComponent(SUBJECT));
@@ -265,8 +282,8 @@ async function refresh() {
     : '<li class="empty">No activity yet.</li>';
 }
 
-refresh();
-setInterval(refresh, REFRESH_MS);
+resolveSubject().then(() => { refresh(); setInterval(refresh, REFRESH_MS); });
 </script>
+<div class="footer-note">Done for the day? Close this tab, then wait a few seconds before unplugging the SSD.</div>
 </body>
 </html>
