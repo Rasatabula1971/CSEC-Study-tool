@@ -13,3 +13,7 @@ _pdf_sample.txt
 # Local screenshot artifacts (not real image assets)
 *_screenshot.png
 rd_*.png
+
+# Generated reports — this mirrors the SSD's 04_REPORTS root and must never be
+# committed (Repo vs SSD Layout rule: SSD contents stay out of Git).
+04_REPORTS/
