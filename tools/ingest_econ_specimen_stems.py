@@ -5,7 +5,7 @@ PHASE: build
 
 Stage 4 of the mark scheme pipeline — wire-up for Economics.
 
-Creates one documents row for the Specimen 1 paper (2016) and 21 -stem chunk
+Creates one documents row for the Specimen 1 paper (2016) and 24 -stem chunk
 rows, one per locked question_id in mark_points for blocks 1-6 (Specimen 1,
 pages 90-97 of csec-economics-syllabus-revised-2017.pdf).
 
@@ -50,13 +50,26 @@ SOURCE_FILE  = (
 PAGE_RANGE   = "90-97"  # 1-indexed PDF pages
 
 # ── Stem text per question_id (post-backfill format: ends in -stem) ───────────
-# Reconstructed from pages 90-97 of the Economics syllabus specimen mark scheme.
-# The question prompts themselves are not in the PDF (which contains only the
-# mark scheme); these stems are inferred from the mark scheme answers and the
-# S.O. codes to give Rylee enough context to practice.
+# Q1-Q5 reconstructed from pages 90-97 of the Economics syllabus specimen mark
+# scheme. The question prompts themselves are not on those pages (which
+# contain only the mark scheme); those stems are inferred from the mark
+# scheme answers and the S.O. codes to give Rylee enough context to practice.
+# Q6 (added after the block-realignment below) instead uses the REAL
+# question-paper prompt text extracted from pages 73-84 of the same PDF via
+# tools/ingest_econ_specimen_questions.py -- not a mark-scheme-inferred
+# paraphrase, since the genuine prompt text is directly available for it.
 #
-# Block assignment: qb5 = Q5 first page; qb6 = Q5 cont'd (header on page 96
-# of the PDF counted by the extractor as a new "Question" block).
+# Block assignment (current, post block-realignment -- see
+# MARK_SCHEME_BUILD_PLAN.md and tools/fix_econ_q6_block_realignment.py):
+# qb1-qb4 = Questions 1-4, unchanged. qb5 = ALL of Question 5, including the
+# "Question 5 cont'd" content the extractor originally miscounted as a new
+# block (now correctly merged under question_block_id=5 in the review CSV).
+# qb6 = the REAL Question 6 (S.O: 6.9, 6.11, 6.12, 6.14, 6.15) -- the
+# extractor originally routed this to question_block_id=7 because the bogus
+# "Question 5 cont'd" match had already consumed block_id 6; that has been
+# corrected too, so qb6 ids here now genuinely mean Question 6. Question 6(d)
+# is confirmed absent from the source mark scheme -- no entry for it exists,
+# intentionally.
 
 STEM_TEXTS: dict[str, dict] = {
     # ── Q1  S.O: 1.6, 1.8 — Production Possibility Curve ───────────────────
@@ -236,22 +249,62 @@ STEM_TEXTS: dict[str, dict] = {
             "of how this benefits the broader economy. (4 marks)"
         ),
     },
-    # ── Q5 cont'd — extractor counted 'Question 5 cont'd' as a new block ────
-    "ECON-qb6(c)v1-stem": {
-        "question_num": "5(c)-2",
-        "text": (
-            "Question 5 cont'd — The Financial Sector (S.O: 4.4, 4.6, 4.10)\n\n"
-            "(c) Explain ONE negative impact of the informal financial sector "
-            "on the economy. In your answer, provide a clear analysis of how "
-            "this negatively affects the broader economy. (4 marks)"
-        ),
-    },
-    "ECON-qb6(d)v1-stem": {
+    # ── Q5 cont'd (S.O: 4.4, 4.6, 4.10) — now merged under question_block_id=5;
+    #    the "qb" number in this id is a legacy string from before the block
+    #    realignment and no longer reflects question_block_id directly (see
+    #    the block-assignment note above).
+    "ECON-qb5(d)v1-stem": {
         "question_num": "5(d)",
         "text": (
             "Question 5 cont'd — The Financial Sector (S.O: 4.4, 4.6, 4.10)\n\n"
             "(d) State and explain TWO advantages of online/electronic banking "
             "for consumers. (5 marks)"
+        ),
+    },
+    # ── Q6  S.O: 6.9, 6.11, 6.12, 6.14, 6.15 — The Balance of Payments Account
+    #    Real question-paper text (pages 73-84), not mark-scheme-inferred
+    #    paraphrase -- verified via tools/ingest_econ_specimen_questions.py's
+    #    PDF extraction. "ECON-qb6(c)v1-stem" previously carried question_num
+    #    "5(c)-2" (a stale id from before the block realignment, when this
+    #    content sat under the bogus "Question 5 cont'd" block); it has been
+    #    corrected here to resolve to the real Q6(c) content. Question 6(d)
+    #    is confirmed absent from the source mark scheme -- intentionally no
+    #    entry for it.
+    "ECON-qb6(a)v1-stem": {
+        "question_num": "6(a)",
+        "text": (
+            "Question 6 — The Balance of Payments Account "
+            "(S.O: 6.9, 6.11, 6.12, 6.14, 6.15)\n\n"
+            "(a) List THREE examples of transfers found in the current account "
+            "section of the balance of payments. (3 marks)"
+        ),
+    },
+    "ECON-qb6(b)(i)v1-stem": {
+        "question_num": "6(b)(i)",
+        "text": (
+            "Question 6 — The Balance of Payments Account "
+            "(S.O: 6.9, 6.11, 6.12, 6.14, 6.15)\n\n"
+            "Define the following term as it relates to a country's balance "
+            "of payments account:\n\n(i) Investment income. (2 marks)"
+        ),
+    },
+    "ECON-qb6(b)(ii)v1-stem": {
+        "question_num": "6(b)(ii)",
+        "text": (
+            "Question 6 — The Balance of Payments Account "
+            "(S.O: 6.9, 6.11, 6.12, 6.14, 6.15)\n\n"
+            "Define the following term as it relates to a country's balance "
+            "of payments account:\n\n(ii) Balance of payments disequilibrium. "
+            "(2 marks)"
+        ),
+    },
+    "ECON-qb6(c)v1-stem": {
+        "question_num": "6(c)",
+        "text": (
+            "Question 6 — The Balance of Payments Account "
+            "(S.O: 6.9, 6.11, 6.12, 6.14, 6.15)\n\n"
+            "(c) Explain TWO ways in which increases in the exchange rate of "
+            "a country can affect the balance of payments account. (8 marks)"
         ),
     },
 }

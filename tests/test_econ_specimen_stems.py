@@ -4,16 +4,23 @@ tests/test_econ_specimen_stems.py
 Tests for the Specimen 1 Economics -stem chunk ingestion (Stage 4).
 
 Verifies:
-  1. ingest_specimen_stems() creates 21 chunk rows and 1 document row.
+  1. ingest_specimen_stems() creates 24 chunk rows and 1 document row.
   2. Requesting an Economics quiz question returns a -stem chunk whose
      chunk_id joins to at least one mark_points row.
   3. The /api/questions (filter-based) endpoint returns Economics questions
      after stem ingestion.
   4. The /api/questions/{subject_id} endpoint returns Economics questions
      after stem ingestion (via chunk join, not mp.doc_id).
-  5. Idempotency: running ingest_specimen_stems() twice leaves exactly 21 chunk
+  5. Idempotency: running ingest_specimen_stems() twice leaves exactly 24 chunk
      rows for the specimen document (no duplicates).
   6. Dry-run writes nothing to the DB.
+
+STEM_TEXTS grew from 21 to 24 entries after the Question 6 block realignment
+(see tools/ingest_econ_specimen_stems.py's block-assignment comment): 3 new
+entries for the real Q6(a)/(b)(i)/(b)(ii), plus the existing qb6(c) id
+corrected to resolve to Q6(c) instead of a stale "5(c)-2" duplicate. The
+counts below are hardcoded (not len(STEM_TEXTS)) so a future accidental
+change in STEM_TEXTS's size is still caught as a real regression.
 """
 
 import sqlite3
@@ -71,7 +78,7 @@ def _make_test_db() -> sqlite3.Connection:
         "INSERT INTO subjects (subject_id, display_name, syllabus_locked) VALUES (?, ?, 1)",
         ("Economics", "Economics"),
     )
-    # Seed section + objectives (minimal — one objective covers all 21 q_ids)
+    # Seed section + objectives (minimal — one objective covers all 24 q_ids)
     db.execute(
         "INSERT INTO syllabus_sections (section_id, subject_id, title) VALUES (?, ?, ?)",
         ("ECON-S1", "Economics", "Test Section"),
@@ -117,12 +124,12 @@ def _make_test_db() -> sqlite3.Connection:
 
 # ── tests ──────────────────────────────────────────────────────────────────────
 
-def test_ingest_creates_document_and_21_chunks():
-    """ingest_specimen_stems() writes exactly 1 document and 21 chunks."""
+def test_ingest_creates_document_and_24_chunks():
+    """ingest_specimen_stems() writes exactly 1 document and 24 chunks."""
     db = _make_test_db()
     written = ingest_specimen_stems(db, dry_run=False)
 
-    assert written == 21, f"Expected 21 chunks written, got {written}"
+    assert written == 24, f"Expected 24 chunks written, got {written}"
 
     doc_count = db.execute(
         "SELECT COUNT(*) FROM documents WHERE content_type = 'specimen' "
@@ -135,7 +142,7 @@ def test_ingest_creates_document_and_21_chunks():
         "AND chunk_id IN (SELECT chunk_id FROM chunks WHERE doc_id IN "
         "   (SELECT doc_id FROM documents WHERE content_type='specimen'))"
     ).fetchone()[0]
-    assert chunk_count == 21
+    assert chunk_count == 24
     db.close()
 
 
@@ -149,7 +156,7 @@ def test_each_stem_chunk_joins_to_mark_points():
         "SELECT chunk_id FROM chunks WHERE subject_id = 'Economics' "
         "AND chunk_id LIKE 'ECON-qb%-stem'"
     ).fetchall()
-    assert len(rows) == 21
+    assert len(rows) == 24
 
     for row in rows:
         cid = row["chunk_id"]
@@ -179,7 +186,7 @@ def test_quiz_picker_query_returns_econ_questions():
         """
     ).fetchall()
 
-    assert len(rows) == 21, f"Expected 21 quiz rows, got {len(rows)}"
+    assert len(rows) == 24, f"Expected 24 quiz rows, got {len(rows)}"
     # All question_ids should end in -stem
     for r in rows:
         assert r["question_id"].endswith("-stem"), (
@@ -215,7 +222,7 @@ def test_filter_query_returns_econ_specimen_paper():
 
 
 def test_idempotent_second_run_no_duplicates():
-    """Running ingest_specimen_stems() twice leaves exactly 21 stem chunks."""
+    """Running ingest_specimen_stems() twice leaves exactly 24 stem chunks."""
     db = _make_test_db()
     ingest_specimen_stems(db, dry_run=False)
     written2 = ingest_specimen_stems(db, dry_run=False)
@@ -226,7 +233,7 @@ def test_idempotent_second_run_no_duplicates():
         "SELECT COUNT(*) FROM chunks WHERE subject_id = 'Economics' "
         "AND chunk_id LIKE 'ECON-qb%-stem'"
     ).fetchone()[0]
-    assert count == 21
+    assert count == 24
     db.close()
 
 

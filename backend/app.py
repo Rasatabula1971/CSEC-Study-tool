@@ -1137,7 +1137,12 @@ def questions(subject_id: str, request: Request) -> list[dict]:
 
     Powers the grade-mode question picker: each entry carries the question_id
     grade.fetch_mark_points keys on, the question prose (stem chunk), and a
-    human label. Marks = number of mark points for that question.
+    human label. Marks = number of mark points for that question. Requires
+    c.page IS NOT NULL (Rule 2 -- every row served to the student must cite a
+    real source page), mirroring the /api/questions guard: a chunk_id whose
+    text was reconstructed rather than extracted from a PDF (e.g. Economics'
+    synthesized specimen stems) is untraceable and must not reach the student
+    via this picker either.
     """
     rows = request.app.state.db.execute(
         """
@@ -1152,6 +1157,7 @@ def questions(subject_id: str, request: Request) -> list[dict]:
         JOIN   chunks c ON c.chunk_id = mp.question_id
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  c.subject_id = ?
+          AND  c.page IS NOT NULL
         GROUP  BY mp.question_id
         ORDER  BY d.year DESC, d.paper, mp.question_id
         """,
@@ -1226,10 +1232,15 @@ def filters(request: Request, subject_id: str) -> dict:
 
     Powers the quiz-page Paper and Year dropdowns: only values that the
     /api/questions query can return (past_paper OR mark_scheme chunks with a
-    question_num AND a solution-derived '-stem' chunk_id) appear, so a selected
-    paper/year always yields well-formed questions. `papers` is sorted
-    alphabetically, `years` descending. Returns empty lists when the subject has
-    no questions -- never 404.
+    question_num AND a solution-derived '-stem' chunk_id, AND a real source
+    page -- Rule 2) appear, so a selected paper/year always yields well-formed,
+    gradeable questions. A document whose chunks are all page=NULL (e.g.
+    Economics' synthesized "Specimen Paper - 2016" stems, reconstructed rather
+    than PDF-extracted) must never appear here -- offering it as a filter
+    option would let the student select a paper whose questions the picker
+    then can't actually return. `papers` is sorted alphabetically, `years`
+    descending. Returns empty lists when the subject has no questions -- never
+    404.
     """
     db = request.app.state.db
     papers = db.execute(
@@ -1245,6 +1256,7 @@ def filters(request: Request, subject_id: str) -> dict:
           -- papers are hidden until that chunker is rewritten. Mirrors the
           -- /api/questions filter so a selected paper always yields questions.
           AND  c.chunk_id LIKE '%-stem'
+          AND  c.page IS NOT NULL
           AND  d.paper IS NOT NULL
         ORDER  BY d.paper ASC
         """,
@@ -1260,6 +1272,7 @@ def filters(request: Request, subject_id: str) -> dict:
           AND  c.question_num IS NOT NULL
           -- Only years with solution-derived ('-stem') chunks; see papers query.
           AND  c.chunk_id LIKE '%-stem'
+          AND  c.page IS NOT NULL
           AND  d.year IS NOT NULL
         ORDER  BY d.year DESC
         """,

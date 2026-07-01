@@ -1154,7 +1154,7 @@ stages listed here.
 | MS-1 | Stage 1 — Economics extract + review CSV | ✅ Complete |
 | MS-2 | Stage 2 — Economics manual verify | ✅ Complete |
 | MS-3 | Stage 3 — Economics lock + mark_points insert | ✅ Complete |
-| MS-4 | Stage 4 — quiz picker + grader wire-up (Economics first) | ⚠️ Partial |
+| MS-4 | Stage 4 — quiz picker + grader wire-up (Economics first) | ✅ Complete |
 | MS-5 | Stage 5 — rollout to remaining 6 subjects | ⬜ Not started |
 | MS-6 | Stage 6 — Subject Reports fallback (deferred) | ⬜ Not started |
 
@@ -1168,10 +1168,10 @@ started rather than marked complete on assumption.
 
 **MS-3 note:** 316 rows reviewed, 224 eligible, 529 mark_points locked.
 
-**MS-4 note:** Rule 2 NULL-page guard live in quiz picker and lock script.
-However all 21 live Economics -stem chunks still have page=NULL, so 0 questions
-currently surface in the quiz picker. Stem page backfill still required before
-Economics grading is actually usable.
+**MS-4 note:** 24 real, page-tagged stems (pages 73-84) locked via
+lock_econ_specimen_stems.py, replacing the fabricated page=NULL stems from
+ingest_econ_specimen_stems.py. Joined to 537 locked mark_points. Question
+6(d) has no answer key in the source PDF and is intentionally not stemmed.
 
 ---
 

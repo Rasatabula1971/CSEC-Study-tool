@@ -314,16 +314,18 @@ def test_questions_join_matches_stem_chunk_id():
             "VALUES ('sol-1', 'Principles_of_Business', 'mark_scheme', 'Paper 2 - June 2024', 2024, "
             "'june2024.txt', 'hash-1')"
         )
-        # Two chunks, both with '-stem' chunk_ids (the canonical convention).
+        # Two chunks, both with '-stem' chunk_ids (the canonical convention) and a
+        # real page (POB's actual ingest_solutions.py chunks always carry one --
+        # the /api/questions/{subject_id} Rule 2 guard requires it).
         conn.execute(
-            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) "
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id, page) "
             "VALUES ('sol-1', 'POB-1.1', 'Principles_of_Business', "
-            "'Define the term business and give one example.', '1', 'POB-1.1-June2024-q1-stem')"
+            "'Define the term business and give one example.', '1', 'POB-1.1-June2024-q1-stem', 1)"
         )
         conn.execute(
-            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id) "
+            "INSERT INTO chunks (doc_id, objective_id, subject_id, chunk_text, question_num, chunk_id, page) "
             "VALUES ('sol-1', 'POB-1.1', 'Principles_of_Business', "
-            "'State two functions of an entrepreneur.', '2', 'POB-1.1-June2024-q2-stem')"
+            "'State two functions of an entrepreneur.', '2', 'POB-1.1-June2024-q2-stem', 1)"
         )
         # New-convention mark_point: question_id already ends in '-stem'.
         conn.execute(

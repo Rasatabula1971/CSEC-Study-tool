@@ -165,6 +165,12 @@ None of these internal boundaries were detected automatically. The parser produc
 
 Do not wait until Stage 2 review to discover a structural overrun — by then, the extractor has generated rows bound to incorrect `question_block_id` ranges, and the per-row cleanup (setting `excluded_reason` on ~60 rows per embedded document) is significantly more work than a 5-minute pre-extraction skim.
 
+#### `question_block_id` is a parsing artifact, not a content identifier (confirmed on Economics, 2026-07-01)
+
+Even after the block-boundary contiguity check (Rule 3) passes and a subject's blocks look internally consistent, `question_block_id` is still only a counter over "Question N" headers encountered during structural parsing — it is not, by itself, evidence of which real CXC question (or part) a mark-scheme section actually answers. The Economics stem-locking work (`tools/lock_econ_specimen_stems.py`) surfaced a case the earlier block-realignment fix (`tools/fix_econ_q6_block_realignment.py`) had not fully resolved: a chunk had been inserted under the id `ECON-qb6(d)v1-stem` on the assumption (from block-ordering / page-proximity at extraction time) that it belonged to Question 6(d), when cross-checking against the real question-paper text (extracted separately by `tools/ingest_econ_specimen_questions.py`) showed it was actually Question 5(d) content. The id was corrected by rename, not by re-deriving it from the block structure again.
+
+**Lesson for every subject, not just Economics:** block-id/page-proximity/ordering assumptions made at parse time are a starting hypothesis, not a verified fact. Before locking, cross-check mark-scheme content against the literal question-paper prompt text for the same question/part — the same discipline the Verification protocol's Rule 1 (content-level sampling against the source PDF) already requires, applied specifically to the block→question mapping itself. Whoever runs Stage 1 extraction on the next subject (Principles_of_Accounts, Mathematics, etc.) should expect this failure mode and budget time for it, not treat a passing block-boundary check as confirmation that block-to-question assignment is correct.
+
 ### Step 1.2 — Parse mark scheme structure
 
 Create `tools/extract_mark_scheme.py`:
