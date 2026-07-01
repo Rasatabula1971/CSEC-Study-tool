@@ -1,0 +1,50 @@
+## Curated Video Links Addendum — Multi-Subject
+
+Applies to: Mathematics, Information_Technology, Integrated_Science, Economics,
+Principles_of_Accounts. **Excluded: Principles_of_Business** — definitional/
+case-study content, static HTML already sufficient, 115/116 lessons shipped
+with no visual-gap complaints from Rylee.
+
+**Rationale per subject:**
+
+| Subject | Why video helps |
+|---|---|
+| Mathematics | Step-by-step procedure, hard to convey in static HTML/text alone |
+| Information_Technology | Software procedure (formulas, queries, config) — screen-recording shows click-through steps a diagram can't |
+| Integrated_Science | Processes with motion/time as the content itself (circulatory system, photosynthesis, circuit flow) |
+| Economics | Curve-shift dynamics (supply/demand, PPF, equilibrium) — animated movement static SVG can imply but not show happening |
+| Principles_of_Accounts | Mechanical methods (depreciation, reconciliation, suspense correction) — lower priority than the others; static step-by-step HTML covers most of it, video as supplement only |
+
+**Schema addition (subject-agnostic — objective_id FK already scopes it):**
+```sql
+CREATE TABLE IF NOT EXISTS video_links (
+    link_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    objective_id TEXT NOT NULL REFERENCES objectives(objective_id),
+    url          TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    added_by     TEXT NOT NULL,          -- 'ricky' | 'claude_reviewed'
+    created_at   TEXT DEFAULT (datetime('now'))
+);
+```
+
+**Population rule:** Added per-objective during each subject's lesson-generation
+stage, same sign-off pattern as syllabus lock — Claude proposes (1–2 vetted
+links per objective that needs one, not all objectives), Ricky confirms before
+insert. Never auto-inserted without review. Not every objective in an included
+subject needs a video — only ones where static HTML genuinely falls short.
+
+**Runtime behavior (chat.html / study_plan.html Visualize button, included
+subjects only):**
+1. On click, check `video_links` for the current `objective_id`.
+2. If rows exist: show up to 2 link buttons, `target="_blank"` (new tab),
+   alongside or instead of the Visual Page Builder HTML.
+3. If no rows: fall back to existing Visual Page Builder flow unchanged.
+4. No behavior change for Principles_of_Business or any future subject not
+   listed above.
+
+**Explicitly not built yet:** No subject above is at lesson-generation stage
+with this feature active. IT and Integrated_Science are fully onboarded
+(lessons generated/pending) but video curation for them hasn't started.
+Mathematics, Economics, Principles_of_Accounts haven't reached the stage
+where this applies. Logged for when each subject gets there — not built
+ahead of need (no-speculative-work rule).

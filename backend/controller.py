@@ -394,6 +394,20 @@ def _handle_grade(db, request, grade_fn, local_fn, embed_fn) -> dict:
     grading["subject_id"] = subject_id
     grading["is_retry"] = is_retry
     grading["weakness"] = log_weakness(db, grading, session_id)
+
+    # Multi-objective fanout (point_group_id): log_weakness for every sibling
+    # objective that shared a fanned-out mark point. The primary objective_id was
+    # already logged above; this covers the rest. Each sibling gets 100% (awarded)
+    # or 0% (missed) based on whether its shared point was awarded.
+    for sibling_oid, awarded in grading.pop("fanned_objective_ids", {}).items():
+        sibling_grading = {
+            "objective_id": sibling_oid,
+            "subject_id": subject_id,
+            "score_pct": 100 if awarded else 0,
+            "missed_points": [] if awarded else [sibling_oid],
+        }
+        log_weakness(db, sibling_grading, session_id)
+
     grading["session_id"] = session_id
     return grading
 

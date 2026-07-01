@@ -10,6 +10,8 @@ set "PYTHONPATH=%SSD_ROOT%\01_TOOLS\lib"
 set "PYTHON=%SSD_ROOT%\01_TOOLS\Python\python.exe"
 set "OLLAMA=%SSD_ROOT%\01_TOOLS\Ollama\ollama.exe"
 set "DB_PATH=%SSD_ROOT%\02_DATABASE\csec.sqlite"
+set "KB_ROOT=%SSD_ROOT%\03_KNOWLEDGE_BASE"
+set "REPORTS_ROOT=%SSD_ROOT%\04_REPORTS"
 
 REM Backup today's DB before starting (skip if today's backup already exists)
 for /f "tokens=2 delims==" %%D in ('wmic os get LocalDateTime /value') do set DT=%%D

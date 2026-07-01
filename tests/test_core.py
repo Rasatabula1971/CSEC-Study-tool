@@ -392,6 +392,119 @@ def test_weakness_valid_insert_then_upsert(db):
     assert db.execute("SELECT count(*) FROM weakness_log").fetchone()[0] == 1  # upsert, not new row
 
 
+# ---------------------------------------------------------------------------
+# point_group_id fanout — fetch_mark_points dedup + log_weakness fanout
+# ---------------------------------------------------------------------------
+
+def _seed_fanout_db() -> sqlite3.Connection:
+    """In-memory DB with two POB objectives and a question with fanned-out points.
+
+    Question 'qFAN' has:
+      - mp-fan-A: shared by POB-1.1 AND POB-1.2 (point_group_id='grp-fan-1')
+      - mp-single: only POB-1.1 (point_group_id='grp-single')
+
+    That is ONE gradeable multi-objective point + ONE single-objective point = 2
+    total marks, NOT 3 (one per DB row).
+    """
+    db = open_test_db()
+    seed(db)
+    # Add a second objective
+    db.execute(
+        "INSERT INTO objectives (objective_id, section_id, subject_id, objective_num, content_stmt) "
+        "VALUES ('POB-1.2', 'POB-SEC-1', 'Principles_of_Business', '1.2', 'Explain forms of business')",
+    )
+    db.execute(
+        "INSERT INTO documents (doc_id, subject_id, content_type, source_file, content_hash) "
+        "VALUES ('doc-fan', 'Principles_of_Business', 'mark_scheme', 'ms.pdf', 'hfan')",
+    )
+    # Fanned-out pair: same question_id, same point_group_id, different objective_id
+    db.execute(
+        "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+        "point_text, marks_value, point_order, point_group_id) "
+        "VALUES ('mp-fan-A-1.1', 'POB-1.1', 'qFAN', 'doc-fan', 'Shared point text.', 1, 1, 'grp-fan-1')",
+    )
+    db.execute(
+        "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+        "point_text, marks_value, point_order, point_group_id) "
+        "VALUES ('mp-fan-A-1.2', 'POB-1.2', 'qFAN', 'doc-fan', 'Shared point text.', 1, 1, 'grp-fan-1')",
+    )
+    # Single-objective point
+    db.execute(
+        "INSERT INTO mark_points (mark_point_id, objective_id, question_id, doc_id, "
+        "point_text, marks_value, point_order, point_group_id) "
+        "VALUES ('mp-single', 'POB-1.1', 'qFAN', 'doc-fan', 'Unique point.', 1, 2, 'grp-single')",
+    )
+    db.commit()
+    return db
+
+
+def test_fetch_mark_points_deduplicates_by_point_group_id():
+    """fetch_mark_points must return 2 rows for qFAN (one per group), not 3 (one per DB row)."""
+    db = _seed_fanout_db()
+    rows = grade.fetch_mark_points(db, "qFAN")
+    db.close()
+    assert len(rows) == 2
+    mpids = {r["mark_point_id"] for r in rows}
+    # The representative for grp-fan-1 is the first by point_order (mp-fan-A-1.1)
+    assert "mp-fan-A-1.1" in mpids
+    assert "mp-single" in mpids
+    assert "mp-fan-A-1.2" not in mpids  # sibling, not the representative
+
+
+def test_fetch_mark_points_attaches_sibling_objective_ids():
+    """The representative fanned-out row must carry both sibling objective_ids."""
+    db = _seed_fanout_db()
+    rows = grade.fetch_mark_points(db, "qFAN")
+    db.close()
+    fan_row = next(r for r in rows if r["mark_point_id"] == "mp-fan-A-1.1")
+    assert set(fan_row["sibling_objective_ids"]) == {"POB-1.1", "POB-1.2"}
+    single_row = next(r for r in rows if r["mark_point_id"] == "mp-single")
+    assert single_row["sibling_objective_ids"] == ["POB-1.1"]
+
+
+def test_compute_score_counts_fanned_group_as_one_point():
+    """total_marks must be 2 for qFAN (2 groups), not 3 (3 DB rows)."""
+    db = _seed_fanout_db()
+    mark_points = grade.fetch_mark_points(db, "qFAN")
+    db.close()
+    assert len(mark_points) == 2
+
+    grading = {"points": [
+        {"mark_point_id": "mp-fan-A-1.1", "awarded": True,  "evidence": "evidence long enough here"},
+        {"mark_point_id": "mp-single",     "awarded": False, "evidence": "no evidence found at all"},
+    ]}
+    score = grade.compute_score(grading, mark_points)
+    assert score["total"] == 2    # NOT 3
+    assert score["awarded"] == 1
+    assert score["score_pct"] == 50
+
+
+def test_grade_answer_fans_out_weakness_log_to_siblings():
+    """grade_answer must attach fanned_objective_ids so the controller can log_weakness
+    for every sibling, not just the representative row's objective_id."""
+    db = _seed_fanout_db()
+
+    awarded_json = (
+        '{"objective_id":"POB-1.1","question_id":"qFAN","confidence":90,"points":['
+        '{"mark_point_id":"mp-fan-A-1.1","awarded":true,'
+        '"evidence":"student correctly named the function of a business"},'
+        '{"mark_point_id":"mp-single","awarded":false,'
+        '"evidence":"no unique point was mentioned in the answer given"}]}'
+    )
+
+    result = grade.grade_answer(db, "qFAN", "my answer here",
+                                chat_fn=lambda *a, **k: awarded_json)
+    db.close()
+
+    # mp-fan-A-1.1 is awarded=True; its sibling POB-1.2 should appear in fanout
+    fanout = result.get("fanned_objective_ids", {})
+    assert "POB-1.2" in fanout, "sibling POB-1.2 must appear in fanned_objective_ids"
+    assert fanout["POB-1.2"] is True   # the shared point was awarded
+
+    # The primary objective POB-1.1 must NOT be in fanout (controller logs it separately)
+    assert "POB-1.1" not in fanout
+
+
 def test_weakness_invalid_raises_value_error(db):
     bad = {"objective_id": "POB-1.1", "score_pct": 40}  # missing subject_id
     with pytest.raises(ValueError):

@@ -284,6 +284,19 @@ async function refresh() {
 
 resolveSubject().then(() => { refresh(); setInterval(refresh, REFRESH_MS); });
 </script>
-<div class="footer-note">Done for the day? Close this tab, then wait a few seconds before unplugging the SSD.</div>
+<div class="footer-note">Done for the day?<button class="done-btn" id="doneBtn" onclick="doneStudying()">Done Studying</button></div>
+<script>
+async function doneStudying(){
+  if(!confirm("Stop the study system and close everything?\n\nYou'll need to reopen the shortcut to start again."))return;
+  const btn=document.getElementById('doneBtn');
+  btn.disabled=true;
+  try{
+    const r=await fetch('/api/shutdown',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){btn.parentElement.textContent='All done! You can close this tab now.';}
+    else{btn.parentElement.textContent="Couldn't stop automatically — please run 00_LAUNCH\\shutdown.bat or close this window.";}
+  }catch{btn.parentElement.textContent="Couldn't stop automatically — please run 00_LAUNCH\\shutdown.bat or close this window.";}
+}
+</script>
 </body>
 </html>

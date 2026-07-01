@@ -315,16 +315,55 @@ def source_rank_info(db: sqlite3.Connection, question_id: str,
 
 
 def fetch_mark_points(db: sqlite3.Connection, question_id: str) -> list[dict]:
+    """Fetch mark points for a question, deduplicated by point_group_id.
+
+    Fanned-out rows (one per objective from a multi-objective CSV row) all share
+    one point_group_id.  For scoring purposes only ONE representative row per group
+    is kept — the first by point_order — so compute_score counts the point once
+    and the LLM is asked to judge it once.  The full sibling list (all objective_ids
+    sharing the group) is attached as "sibling_objective_ids" on the representative
+    row so grade_answer can fan the awarded boolean out to log_weakness for every
+    objective simultaneously.
+
+    Rows with point_group_id = NULL are legacy rows (pre-m020); each is treated as
+    its own unique group (no deduplication, behaviour unchanged).
+    """
     rows = db.execute(
         """
-        SELECT mark_point_id, objective_id, point_text, marks_value, point_order
+        SELECT mark_point_id, objective_id, point_text, marks_value, point_order,
+               point_group_id
         FROM   mark_points
         WHERE  question_id = ?
         ORDER  BY point_order
         """,
         (question_id,),
     ).fetchall()
-    return [dict(r) for r in rows]
+    all_rows = [dict(r) for r in rows]
+
+    # Collect sibling objective_ids per group (NULL groups are singletons)
+    group_siblings: dict[str, list[str]] = {}
+    for r in all_rows:
+        pgid = r["point_group_id"]
+        if pgid is None:
+            continue
+        group_siblings.setdefault(pgid, []).append(r["objective_id"])
+
+    # Deduplicate: keep first representative per group
+    seen_groups: set[str] = set()
+    deduplicated: list[dict] = []
+    for r in all_rows:
+        pgid = r["point_group_id"]
+        if pgid is None:
+            # Legacy row — always include as-is
+            r["sibling_objective_ids"] = [r["objective_id"]]
+            deduplicated.append(r)
+        elif pgid not in seen_groups:
+            seen_groups.add(pgid)
+            r["sibling_objective_ids"] = group_siblings[pgid]
+            deduplicated.append(r)
+        # else: fanned-out sibling — skip; representative already queued
+
+    return deduplicated
 
 
 def _load_examiner_prompt() -> str:
@@ -450,6 +489,27 @@ def grade_answer(db: sqlite3.Connection, question_id: str, student_answer: str,
     # Echo the retry flag (UI overhaul session 1). The actual study_sessions write
     # happens in controller._handle_grade; this lets callers/tests see it on the result.
     grading["is_retry"] = bool(is_retry)
+
+    # Multi-objective fanout: build a map of {objective_id: awarded} for every
+    # sibling objective referenced by fanned-out mark points. The controller uses
+    # this to call log_weakness for each sibling objective, not just the primary one.
+    # "awarded" for a sibling mirrors the representative row's awarded boolean
+    # (they share the same point_group_id, so the same judgement applies to all).
+    awarded_by_mpid = {p["mark_point_id"]: p.get("awarded", False)
+                       for p in grading.get("points", [])}
+    fanout: dict[str, bool] = {}  # objective_id -> awarded (True = at least one awarded point)
+    for mp in mark_points:
+        siblings = mp.get("sibling_objective_ids", [mp["objective_id"]])
+        if len(siblings) <= 1:
+            continue  # single-objective row — controller handles this via the primary path
+        awarded = awarded_by_mpid.get(mp["mark_point_id"], False)
+        for oid in siblings:
+            # Use OR: if the sibling already has a True from a prior point, keep it
+            fanout[oid] = fanout.get(oid, False) or awarded
+    # Remove the primary objective_id — controller already logs that one
+    fanout.pop(grading.get("objective_id"), None)
+    if fanout:
+        grading["fanned_objective_ids"] = fanout  # {oid: awarded_bool}
 
     return grading
 

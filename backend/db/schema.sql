@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS mark_points (
     doc_id        TEXT REFERENCES documents(doc_id),
     point_text    TEXT NOT NULL,
     marks_value   INTEGER NOT NULL DEFAULT 1,
-    point_order   INTEGER
+    point_order   INTEGER,
+    point_group_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS study_sessions (

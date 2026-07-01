@@ -3,6 +3,20 @@ setlocal
 cd /d "%~dp0\.."
 set "SSD_ROOT=%CD%"
 
+REM 0. Ask permission before touching anything
+powershell -NoProfile -Command ^
+    "Add-Type -AssemblyName System.Windows.Forms; ^
+     $r = [System.Windows.Forms.MessageBox]::Show( ^
+         'Set up your CSEC Study Partner now?' + [char]10 + [char]10 + 'This adds a shortcut to your Desktop so you can open it anytime.', ^
+         'CSEC Study Partner', ^
+         [System.Windows.Forms.MessageBoxButtons]::YesNo, ^
+         [System.Windows.Forms.MessageBoxIcon]::Question); ^
+     if ($r -eq 'Yes') { exit 0 } else { exit 1 }"
+if errorlevel 1 (
+    echo No problem - run this again whenever you're ready!
+    exit /b 0
+)
+
 REM 1. Show welcome (opens in default browser)
 start "" "%SSD_ROOT%\00_LAUNCH\welcome.html"
 timeout /t 4 /nobreak >nul

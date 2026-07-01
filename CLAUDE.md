@@ -1137,6 +1137,44 @@ individually, not a single yes/no.
 
 ---
 
+## Mark Scheme Layer Tracker
+
+Tracks the mark-scheme extraction pipeline from `MARK_SCHEME_BUILD_PLAN.md`
+(Stages 0–6) — giving real, official-CXC grading on Paper 2 past-paper
+questions, starting with Economics as the pilot subject before rollout to the
+remaining six. Deliberately uses "MS" numbering (MS-0 … MS-6), not "Stage", to
+avoid collision with the Build Stage Tracker above.
+
+**Reference spec:** `MARK_SCHEME_BUILD_PLAN.md` (repo root) defines all six
+stages listed here.
+
+| # | Task | Status |
+|---|---|---|
+| MS-0 | Stage 0 — question_num backfill (all subjects) | ⬜ Not started |
+| MS-1 | Stage 1 — Economics extract + review CSV | ✅ Complete |
+| MS-2 | Stage 2 — Economics manual verify | ✅ Complete |
+| MS-3 | Stage 3 — Economics lock + mark_points insert | ✅ Complete |
+| MS-4 | Stage 4 — quiz picker + grader wire-up (Economics first) | ⚠️ Partial |
+| MS-5 | Stage 5 — rollout to remaining 6 subjects | ⬜ Not started |
+| MS-6 | Stage 6 — Subject Reports fallback (deferred) | ⬜ Not started |
+
+**MS-0 flag:** checked whether the Stage 0 backfill actually ran for Economics —
+`tools/backfill_question_num.py` does not exist anywhere in the repo, and no
+`tests/test_backfill_question_num.py` exists either, so the dedicated Stage 0
+script was never built or run. Some `chunks.question_num` values are populated
+for Economics past-paper chunks regardless (70/191 non-NULL), but that appears
+to come from another ingestion path, not a confirmed Stage 0 pass. Left as Not
+started rather than marked complete on assumption.
+
+**MS-3 note:** 316 rows reviewed, 224 eligible, 529 mark_points locked.
+
+**MS-4 note:** Rule 2 NULL-page guard live in quiz picker and lock script.
+However all 21 live Economics -stem chunks still have page=NULL, so 0 questions
+currently surface in the quiz picker. Stem page backfill still required before
+Economics grading is actually usable.
+
+---
+
 ## Bootstrap Layer Tracker (SSD Packaging)
 
 Tracks tasks from `SSD_BOOTSTRAP_PLAN.md` Section 8 — packaging the study system

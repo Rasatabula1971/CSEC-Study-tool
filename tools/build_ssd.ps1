@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Builds the portable SSD runtime for the CSEC AI Study Partner.
@@ -8,7 +8,7 @@
     launcher files, and backend application to the target SSD.
 
     Does NOT touch 02_DATABASE, 03_KNOWLEDGE_BASE, 04_REPORTS, or 01_MODELS\Ollama.
-    Those are data — handle separately.
+    Those are data - handle separately.
 
 .PARAMETER TargetDrive
     Drive letter ("E:") or full SSD root path ("E:\CSEC_AI_STUDY_PARTNER").
@@ -35,8 +35,8 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # 0. Resolve paths
 # ---------------------------------------------------------------------------
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path   # …/tools/
-$RepoRoot  = Split-Path -Parent $ScriptDir                     # …/CSEC-study-partner/
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path   # .../tools/
+$RepoRoot  = Split-Path -Parent $ScriptDir                     # .../CSEC-study-partner/
 
 # Normalise -TargetDrive: accept "E:" or "E:\CSEC_AI_STUDY_PARTNER" (any trailing slash)
 if ($TargetDrive -match '^[A-Za-z]:$') {
@@ -102,7 +102,7 @@ function Show-Checklist {
 # ---------------------------------------------------------------------------
 Write-Host ""
 Write-Host "============================================================"
-Write-Host "  CSEC AI Study Partner — SSD Build Script"
+Write-Host "  CSEC AI Study Partner - SSD Build Script"
 Write-Host "  Target : $SsdRoot"
 Write-Host "  Repo   : $RepoRoot"
 Write-Host "  Force  : $Force"
@@ -110,7 +110,7 @@ Write-Host "============================================================"
 Write-Host ""
 
 # ---------------------------------------------------------------------------
-# STEP 1 — Validate embeddable Python is in place
+# STEP 1 - Validate embeddable Python is in place
 # ---------------------------------------------------------------------------
 $s = "1. Validate embeddable Python"
 Write-Host "STEP $s ..."
@@ -120,7 +120,7 @@ if (-not (Test-Path $PythonExe)) {
     Write-Host "  [MISSING] python.exe not found at:" -ForegroundColor Yellow
     Write-Host "    $PythonExe" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  To fix — download and place the Python 3.11 embeddable runtime:"
+    Write-Host "  To fix - download and place the Python 3.11 embeddable runtime:"
     Write-Host ""
     Write-Host "    1. Open this URL in a browser:"
     Write-Host "       https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
@@ -129,12 +129,12 @@ if (-not (Test-Path $PythonExe)) {
     Write-Host "       (so that $PythonExe exists)"
     Write-Host "    3. Re-run this script."
     Write-Host ""
-    Write-Host "  Do NOT use the full Python installer — use the embeddable ZIP only."
+    Write-Host "  Do NOT use the full Python installer - use the embeddable ZIP only."
     Write-Host ""
-    Set-Fail $s "python.exe missing — see instructions above"
+    Set-Fail $s "python.exe missing - see instructions above"
 }
 
-# Verify it actually runs (capture stdout only — Python 3 prints version to stdout)
+# Verify it actually runs (capture stdout only - Python 3 prints version to stdout)
 $ver = & $PythonExe --version
 if ($LASTEXITCODE -ne 0) {
     Set-Fail $s "python.exe exists but failed to run: $ver"
@@ -143,12 +143,12 @@ Write-Host "  Found: $ver"
 Set-Pass $s
 
 # ---------------------------------------------------------------------------
-# STEP 2 — Patch python311._pth so the lib\ folder is importable
+# STEP 2 - Patch python311._pth so the lib\ folder is importable
 # ---------------------------------------------------------------------------
 $s = "2. Patch python311._pth"
 Write-Host "STEP $s ..."
 
-$pthFile = Get-ChildItem $PythonDir -Filter '*.pth' | Where-Object { $_.Name -like 'python3*._pth' } | Select-Object -First 1
+$pthFile = Get-ChildItem $PythonDir -Filter 'python3*._pth' | Select-Object -First 1
 if ($null -eq $pthFile) {
     Set-Fail $s "No python3*._pth file found in $PythonDir"
 }
@@ -174,7 +174,7 @@ if ($needsLib -or $needsSite) {
 Set-Pass $s
 
 # ---------------------------------------------------------------------------
-# STEP 3 — Bootstrap pip into lib\
+# STEP 3 - Bootstrap pip into lib\
 # ---------------------------------------------------------------------------
 $s = "3. Bootstrap pip"
 Write-Host "STEP $s ..."
@@ -206,7 +206,7 @@ if ($pipPresent -and -not $Force) {
 }
 
 # ---------------------------------------------------------------------------
-# STEP 4 — Download wheels to SSD for offline recovery
+# STEP 4 - Download wheels to SSD for offline recovery
 # ---------------------------------------------------------------------------
 $s = "4. Download wheels"
 Write-Host "STEP $s ..."
@@ -215,24 +215,24 @@ if (-not (Test-Path $WheelsDir)) {
     New-Item -ItemType Directory -Force -Path $WheelsDir | Out-Null
 }
 
-$wheelCount = (Get-ChildItem $WheelsDir -Filter '*.whl' -ErrorAction SilentlyContinue).Count
+$wheelCount = @(Get-ChildItem $WheelsDir -Filter '*.whl' -ErrorAction SilentlyContinue).Count
 if ($wheelCount -gt 0 -and -not $Force) {
     Write-Host "  $wheelCount wheel(s) already in $WheelsDir (use -Force to re-download)"
     Set-Pass $s
 } else {
     Write-Host "  Downloading wheels to $WheelsDir ..."
     $env:PYTHONPATH = $LibDir
-    & $PythonExe -m pip download -r $ReqFile -d $WheelsDir --no-warn-script-location
+    & $PythonExe -m pip download -r $ReqFile -d $WheelsDir
     if ($LASTEXITCODE -ne 0) {
         Set-Fail $s "pip download exited with code $LASTEXITCODE"
     }
-    $wheelCount = (Get-ChildItem $WheelsDir -Filter '*.whl').Count
+    $wheelCount = @(Get-ChildItem $WheelsDir -Filter '*.whl').Count
     Write-Host "  $wheelCount wheel(s) downloaded"
     Set-Pass $s
 }
 
 # ---------------------------------------------------------------------------
-# STEP 5 — Install dependencies into lib\ using wheels
+# STEP 5 - Install dependencies into lib\ using wheels
 # ---------------------------------------------------------------------------
 $s = "5. Install Python dependencies"
 Write-Host "STEP $s ..."
@@ -257,7 +257,7 @@ if ($fastapiPresent -and -not $Force) {
 }
 
 # ---------------------------------------------------------------------------
-# STEP 6 — Copy Ollama portable binary
+# STEP 6 - Copy Ollama portable binary
 # ---------------------------------------------------------------------------
 $s = "6. Copy Ollama binary"
 Write-Host "STEP $s ..."
@@ -294,14 +294,14 @@ if (Test-Path $ollamaLibSrc) {
         Set-Fail $s "robocopy of Ollama lib\ failed (exit code $LASTEXITCODE)"
     }
 } else {
-    Write-Host "  NOTE: No lib\ folder found at $ollamaLibSrc — skipping (may be fine on newer Ollama versions)"
+    Write-Host "  NOTE: No lib\ folder found at $ollamaLibSrc - skipping (may be fine on newer Ollama versions)"
 }
 
 Write-Host "  Ollama source: $OllamaSrc"
 Set-Pass $s
 
 # ---------------------------------------------------------------------------
-# STEP 7 — Copy launcher files to 00_LAUNCH\ and START_STUDYING.bat to root
+# STEP 7 - Copy launcher files to 00_LAUNCH\ and START_STUDYING.bat to root
 # ---------------------------------------------------------------------------
 $s = "7. Copy launcher files"
 Write-Host "STEP $s ..."
@@ -336,7 +336,7 @@ Write-Host "  -> $SsdRoot\START_STUDYING.bat  [root entry point]"
 Set-Pass $s
 
 # ---------------------------------------------------------------------------
-# STEP 8 — Copy backend app to 06_BACKEND\
+# STEP 8 - Copy backend app to 06_BACKEND\
 # ---------------------------------------------------------------------------
 $s = "8. Copy backend application"
 Write-Host "STEP $s ..."
@@ -347,7 +347,7 @@ Write-Host "STEP $s ..."
 #   Repo: prompts\          ->  SSD: 06_BACKEND\prompts\
 #
 # app.py uses Path(__file__).resolve().parents[1] to find .env, which resolves
-# to 06_BACKEND\ — the .env file is placed there by the user separately.
+# to 06_BACKEND\ - the .env file is placed there by the user separately.
 # launch.bat runs:  uvicorn backend.app:app --app-dir {SSD_ROOT}\06_BACKEND
 # app.py adds its own parent dir to sys.path so bare module imports resolve.
 
@@ -393,7 +393,7 @@ Write-Host "        Use .env.example from the repo as the template."
 Set-Pass $s
 
 # ---------------------------------------------------------------------------
-# STEP 9 — Unblock all files so SmartScreen doesn't flag them on Rylee's machine
+# STEP 9 - Unblock all files so SmartScreen doesn't flag them on Rylee's machine
 # ---------------------------------------------------------------------------
 $s = "9. Unblock-File (SmartScreen)"
 Write-Host "STEP $s ..."
@@ -417,7 +417,7 @@ Write-Host "    [2] Confirm $SsdRoot\01_MODELS\Ollama\ contains"
 Write-Host "          llama3.2:3b and nomic-embed-text blobs"
 Write-Host "    [3] Place .env at $BackendDst\.env"
 Write-Host "          (copy .env.example from the repo, set SSD_ROOT to the"
-Write-Host "          drive letter the SSD will use on Rylee's machine — or"
+Write-Host "          drive letter the SSD will use on Rylee's machine - or"
 Write-Host "          use a relative approach; see CLAUDE.md SSD Safety Rules)"
 Write-Host "    [4] Test: run $SsdRoot\START_STUDYING.bat on a clean machine"
 Write-Host "          with no Python or Ollama installed."

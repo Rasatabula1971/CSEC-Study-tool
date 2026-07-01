@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from contextlib import asynccontextmanager
@@ -698,6 +699,14 @@ def apply_runtime_migrations(db: sqlite3.Connection) -> None:
         """,
     )
 
+    # m020: point_group_id on mark_points — shared key that ties fanned-out rows
+    # (one per objective from a multi-objective CSV row) back to one gradeable point.
+    # Single-objective rows carry point_group_id = their own positional key; NULL on
+    # legacy rows (grade.py treats NULL as a unique group, i.e. no dedup needed).
+    _run_migration(db, "m020_mark_points_point_group_id",
+                   "mark_points.point_group_id",
+                   "ALTER TABLE mark_points ADD COLUMN point_group_id TEXT")
+
     # m019: objective_videos table — pre-qualified YouTube links keyed to objectives,
     # loaded by backend/load_video_links.py (PHASE: build). Runtime path reads only.
     _run_migration(
@@ -1140,9 +1149,9 @@ def questions(subject_id: str, request: Request) -> list[dict]:
                d.year                    AS year,
                COUNT(mp.mark_point_id)   AS marks
         FROM   mark_points mp
-        JOIN   documents d ON d.doc_id = mp.doc_id
-        LEFT   JOIN chunks c ON c.chunk_id = mp.question_id
-        WHERE  d.subject_id = ?
+        JOIN   chunks c ON c.chunk_id = mp.question_id
+        JOIN   documents d ON d.doc_id = c.doc_id
+        WHERE  c.subject_id = ?
         GROUP  BY mp.question_id
         ORDER  BY d.year DESC, d.paper, mp.question_id
         """,
@@ -1188,14 +1197,16 @@ def questions_by_filter(
         "FROM   chunks c",
         "JOIN   documents d ON d.doc_id = c.doc_id",
         "WHERE  c.subject_id = ?",
-        "  AND  d.content_type IN ('past_paper', 'mark_scheme')",
+        "  AND  d.content_type IN ('past_paper', 'mark_scheme', 'specimen')",
         "  AND  c.question_num IS NOT NULL",
         # Only show solution-derived questions (chunk_id like 'POB-...-stem',
-        # the ingest_solutions.py convention). ingest.py's MCQ chunker still
+        # the ingest_solutions.py convention) or specimen stems ingested by
+        # ingest_econ_specimen_stems.py. ingest.py's MCQ chunker still
         # produces garbled chunks for older Paper 2 PDFs -- missing stems,
         # options split across chunks, OCR artifacts ("U nski lied") -- so its
         # auto-generated chunk_ids are excluded until the chunker is rewritten.
         "  AND  c.chunk_id LIKE '%-stem'",
+        "  AND  c.page IS NOT NULL",
     ]
     params: list = [subject_id]
     if paper:
@@ -1227,7 +1238,7 @@ def filters(request: Request, subject_id: str) -> dict:
         FROM   chunks c
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  c.subject_id = ?
-          AND  d.content_type IN ('past_paper', 'mark_scheme')
+          AND  d.content_type IN ('past_paper', 'mark_scheme', 'specimen')
           AND  c.question_num IS NOT NULL
           -- Only papers with solution-derived ('-stem') chunks; ingest.py's
           -- MCQ chunker yields garbled chunks for older Paper 2 PDFs, so its
@@ -1245,7 +1256,7 @@ def filters(request: Request, subject_id: str) -> dict:
         FROM   chunks c
         JOIN   documents d ON d.doc_id = c.doc_id
         WHERE  c.subject_id = ?
-          AND  d.content_type IN ('past_paper', 'mark_scheme')
+          AND  d.content_type IN ('past_paper', 'mark_scheme', 'specimen')
           AND  c.question_num IS NOT NULL
           -- Only years with solution-derived ('-stem') chunks; see papers query.
           AND  c.chunk_id LIKE '%-stem'
@@ -2960,3 +2971,50 @@ def take_backup(body: BackupRequest, response: Response) -> dict:
     except Exception as exc:  # noqa: BLE001 -- surfaced so the UI can halt
         response.status_code = 500
         return {"ok": False, "error": str(exc)}
+
+
+# Windows process-creation flags so the spawned .bat survives after uvicorn exits
+_DETACHED_PROCESS = 0x00000008
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+
+def _run_shutdown_bat(bat_path: str) -> None:
+    """Background task: wait 1 s so the HTTP response flushes, then spawn shutdown.bat."""
+    import time
+    time.sleep(1)
+    subprocess.Popen(
+        bat_path,
+        shell=True,
+        creationflags=_DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP,
+        close_fds=True,
+    )
+
+
+@app.post("/api/shutdown")
+def shutdown_system(background_tasks: BackgroundTasks) -> dict:
+    """Cleanly stop the study system from the browser.
+
+    Closes the DB, then spawns 00_LAUNCH/shutdown.bat detached so it outlives
+    this process.  Returns immediately so the browser receives the response
+    before taskkill terminates uvicorn.  Dev-machine fallback: if SSD_ROOT is
+    unset or shutdown.bat is absent, returns ok=false with a friendly message.
+    """
+    # Close the DB first so SQLite WAL is checkpointed before kill.
+    try:
+        db = app.state.db
+        if db is not None:
+            db.close()
+            app.state.db = None
+    except Exception:
+        pass
+
+    ssd_root = os.getenv("SSD_ROOT")
+    if not ssd_root:
+        return {"ok": False, "error": "shutdown script not found - close this window manually"}
+
+    bat_path = str(Path(ssd_root) / "00_LAUNCH" / "shutdown.bat")
+    if not os.path.exists(bat_path):
+        return {"ok": False, "error": "shutdown script not found - close this window manually"}
+
+    background_tasks.add_task(_run_shutdown_bat, bat_path)
+    return {"ok": True, "message": "Stopping the study system..."}

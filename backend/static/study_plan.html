@@ -58,10 +58,38 @@
     .plan-jump { display: flex; flex-direction: column; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 12px 14px; }
     .plan-jump-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
     .plan-jump-row { display: flex; gap: 8px; align-items: center; }
-    .plan-jump-input { flex: 1; min-width: 0; padding: 8px 12px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-body); font-family: var(--font-mono); font-size: 14px; outline: none; }
-    .plan-jump-input:focus { border-color: var(--accent-blue); }
-    .plan-jump-input::placeholder { color: var(--text-muted, #999); opacity: 0.6; }
+    /* combobox trigger */
+    .jc-wrap { position: relative; flex: 1; min-width: 0; }
+    .jc-trigger { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-body); font-size: 14px; cursor: pointer; text-align: left; transition: border-color 120ms ease; }
+    .jc-trigger:hover { border-color: var(--accent-blue-soft-border); }
+    .jc-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; border-color: var(--accent-blue); }
+    .jc-wrap[data-open] .jc-trigger { border-color: var(--accent-blue); }
+    .jc-trigger-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .jc-trigger-text.jc-placeholder { color: var(--text-faint); }
+    .jc-chev { flex: none; color: var(--text-muted); transition: transform 160ms ease; }
+    .jc-wrap[data-open] .jc-chev { transform: rotate(180deg); }
+    @media (prefers-reduced-motion: reduce) { .jc-chev { transition: none; } }
+    /* combobox panel */
+    .jc-panel { position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: var(--bg-page); border: 1px solid var(--border-card); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); z-index: 100; overflow: hidden; animation: jc-open 130ms ease both; }
+    .jc-panel[hidden] { display: none !important; animation: none; }
+    @keyframes jc-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { .jc-panel { animation: none; } }
+    .jc-search { display: block; width: 100%; padding: 9px 12px; background: var(--bg-card); border: none; border-bottom: 1px solid var(--border-subtle); color: var(--text-body); font-size: 14px; outline: none; }
+    .jc-search::placeholder { color: var(--text-faint); }
+    .jc-search:focus { background: var(--bg-page); border-bottom-color: var(--accent-blue); }
+    .jc-list { list-style: none; max-height: 260px; overflow-y: auto; padding: 4px 0; }
+    .jc-list::-webkit-scrollbar { width: 4px; }
+    .jc-list::-webkit-scrollbar-thumb { background: var(--border-card); border-radius: 99px; }
+    .jc-section-hdr { padding: 8px 12px 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); pointer-events: none; user-select: none; }
+    .jc-option { display: flex; align-items: baseline; gap: 8px; padding: 7px 12px; cursor: pointer; color: var(--text-body); }
+    .jc-option:hover, .jc-option.jc-highlighted { background: var(--accent-blue-soft-bg); }
+    .jc-option.jc-highlighted .jc-opt-num { color: var(--accent-blue); }
+    .jc-option:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+    .jc-opt-num { flex: none; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); min-width: 38px; }
+    .jc-opt-stmt { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .jc-empty { padding: 16px 12px; font-size: 13px; color: var(--text-faint); text-align: center; }
     .plan-jump-btn { flex-shrink: 0; padding: 8px 16px; background: var(--accent-blue); color: var(--accent-blue-text); font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; }
+    .plan-jump-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
     .plan-jump-error { font-size: 12px; color: var(--accent-red); }
     .plan-jump-error:empty { display: none; }
 
@@ -367,7 +395,17 @@
       <div class="plan-jump" id="planJump">
         <label class="plan-jump-label" for="jumpInput">Jump to objective</label>
         <div class="plan-jump-row">
-          <input type="text" id="jumpInput" class="plan-jump-input" placeholder="POB-3.1" autocomplete="off" spellcheck="false" aria-label="Objective id to jump to" />
+          <div class="jc-wrap" id="jumpComboWrap">
+            <button type="button" class="jc-trigger" id="jumpTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Jump to an objective">
+              <span class="jc-trigger-text jc-placeholder" id="jumpTriggerText">Jump to an objective…</span>
+              <svg class="jc-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="jc-panel" id="jumpPanel" hidden>
+              <input type="text" class="jc-search" id="jumpSearch" placeholder="Search objectives…" autocomplete="off" spellcheck="false" aria-label="Search objectives" />
+              <ul class="jc-list" id="jumpList" role="listbox" aria-label="Objectives"></ul>
+            </div>
+          </div>
+          <input type="hidden" id="jumpInput" />
           <button type="button" id="jumpBtn" class="plan-jump-btn">Go</button>
         </div>
         <div class="plan-jump-error" id="jumpError" role="alert"></div>
@@ -461,6 +499,8 @@
   const planStage=$('planStage'),planProgressLabel=$('planProgressLabel'),planProgressFill=$('planProgressFill');
   const planDueLabel=$('planDueLabel'),planActions=$('planActions'),planFooter=$('planFooter');
   const planJump=$('planJump'),jumpInput=$('jumpInput'),jumpBtn=$('jumpBtn'),jumpError=$('jumpError');
+  const jcWrap=$('jumpComboWrap'),jcTrigger=$('jumpTrigger'),jcTriggerText=$('jumpTriggerText');
+  const jcPanel=$('jumpPanel'),jcSearch=$('jumpSearch'),jcList=$('jumpList');
   const questionSection=$('questionSection'),answerSection=$('answerSection'),gradeSection=$('gradeSection');
   const feedbackHost=$('feedbackHost'),subjectSelect=$('subjectSelect');
   const questionCard=$('questionCard'),answerTextarea=$('answerTextarea'),wordCount=$('wordCount');
@@ -555,6 +595,7 @@
       state.map=await res.json();
       setProgressFromMap(state.map);
       renderObjectiveMap(state.map);
+      populateJumpSelect(state.map);
       if(mapAnchorPending){
         mapAnchorPending=false;   // one-time: don't re-scroll on later refreshes
         requestAnimationFrame(()=>objectiveMap.scrollIntoView({behavior:'smooth',block:'start'}));
@@ -940,16 +981,110 @@
   // ===== Jump / map single-objective ======================================
   function showJumpError(msg){jumpError.textContent=msg;}
   function hideJumpError(){jumpError.textContent='';}
-  function normalizeObjectiveId(raw){
-    if(!raw)return '';let s=raw.trim().toUpperCase().replace(/\s+/g,'-').replace(/-+/g,'-');if(!s)return '';
-    if(/^\d/.test(s)){const prefix=state.objectivePrefix;if(!prefix)return '';s=`${prefix}-${s}`;}
-    return s;
+
+  // ===== Custom searchable combobox (replaces native <select>) ===============
+  // Reads state.map for objective data. Writes to the hidden #jumpInput and
+  // calls jumpToObjective() directly so all downstream logic is unchanged.
+
+  let jcOpen=false, jcHighlightIdx=-1, jcItems=[];
+
+  // Bug fix 1: numeric sort — parse "2.10" as [2,10] so it sorts after "2.9"
+  function jcNumParts(s){return(s||'').split('.').map(p=>parseInt(p,10)||0);}
+  function jcCmpNum(a,b){
+    const pa=jcNumParts(a),pb=jcNumParts(b);
+    for(let i=0;i<Math.max(pa.length,pb.length);i++){const d=(pa[i]||0)-(pb[i]||0);if(d!==0)return d;}
+    return 0;
   }
+
+  function jcSetOpen(open){
+    jcOpen=open;
+    jcWrap.toggleAttribute('data-open',open);
+    jcTrigger.setAttribute('aria-expanded',String(open));
+    if(open){jcPanel.hidden=false;jcSearch.value='';jcRenderList('');jcSearch.focus();}
+    else{jcPanel.hidden=true;}
+  }
+
+  function jcRenderList(q){
+    const query=q.trim().toLowerCase();
+    jcList.innerHTML='';jcItems=[];
+    const sections=(state.map&&state.map.sections)||[];
+    sections.forEach(s=>{
+      // Bug fix 2: the map endpoint returns "title", not "section_title"
+      const secLabel=`${s.section_num||''}. ${s.title||''}`.replace(/^\.\s*/,'');
+      // Bug fix 1: sort objectives numerically within each section
+      const objs=[...(s.objectives||[])].sort((a,b)=>jcCmpNum(a.objective_num,b.objective_num));
+      const matched=objs.filter(o=>{
+        if(!query)return true;
+        return(o.objective_num||'').toLowerCase().includes(query)||(o.content_stmt||'').toLowerCase().includes(query);
+      });
+      if(!matched.length)return;
+      const hdr=document.createElement('li');
+      hdr.className='jc-section-hdr';
+      hdr.textContent=secLabel;
+      hdr.setAttribute('aria-hidden','true');
+      jcList.appendChild(hdr);
+      matched.forEach(o=>{
+        const label=`${o.objective_num||''}. ${o.content_stmt||o.objective_id}`;
+        const li=document.createElement('li');
+        li.className='jc-option';
+        li.setAttribute('role','option');
+        li.dataset.id=o.objective_id;
+        li.dataset.label=label;
+        const numSp=document.createElement('span');numSp.className='jc-opt-num';numSp.textContent=o.objective_num||'';
+        const stmtSp=document.createElement('span');stmtSp.className='jc-opt-stmt';stmtSp.textContent=o.content_stmt||o.objective_id;
+        li.appendChild(numSp);li.appendChild(stmtSp);
+        li.addEventListener('mousedown',e=>{e.preventDefault();jcCommit(li.dataset.id,li.dataset.label);});
+        li.addEventListener('mousemove',()=>jcSetHighlight(jcItems.indexOf(li)));
+        jcList.appendChild(li);jcItems.push(li);
+      });
+    });
+    if(!jcItems.length){
+      const empty=document.createElement('li');empty.className='jc-empty';
+      empty.textContent=query?'No matching objectives':'No objectives loaded yet';
+      jcList.appendChild(empty);
+    }
+    jcHighlightIdx=-1;
+  }
+
+  function jcSetHighlight(idx){
+    jcItems.forEach((li,i)=>li.classList.toggle('jc-highlighted',i===idx));
+    jcHighlightIdx=idx;
+    if(idx>=0&&jcItems[idx])jcItems[idx].scrollIntoView({block:'nearest'});
+  }
+
+  function jcCommit(id,label){
+    jumpInput.value=id;
+    jcTriggerText.textContent=label||'Jump to an objective…';
+    jcTriggerText.classList.toggle('jc-placeholder',!id);
+    jcSetOpen(false);
+    jcTrigger.focus();
+    if(id)jumpToObjective();
+  }
+
+  jcTrigger.addEventListener('click',()=>jcSetOpen(!jcOpen));
+  jcTrigger.addEventListener('keydown',e=>{if(e.key==='Escape'&&jcOpen){e.preventDefault();jcSetOpen(false);}});
+  jcSearch.addEventListener('input',()=>jcRenderList(jcSearch.value));
+  jcSearch.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();jcSetHighlight(Math.min(jcHighlightIdx+1,jcItems.length-1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();jcSetHighlight(Math.max(jcHighlightIdx-1,0));}
+    else if(e.key==='Enter'){e.preventDefault();if(jcHighlightIdx>=0&&jcItems[jcHighlightIdx]){const li=jcItems[jcHighlightIdx];jcCommit(li.dataset.id,li.dataset.label);}}
+    else if(e.key==='Escape'){e.preventDefault();jcSetOpen(false);jcTrigger.focus();}
+  });
+  document.addEventListener('click',e=>{if(jcOpen&&!jcWrap.contains(e.target))jcSetOpen(false);});
+
+  function populateJumpSelect(/*map — kept for call-site compatibility*/){
+    // Reset combobox to blank state when the subject changes or map reloads.
+    jumpInput.value='';
+    jcTriggerText.textContent='Jump to an objective…';
+    jcTriggerText.classList.add('jc-placeholder');
+    if(jcOpen)jcSetOpen(false);
+  }
+
   async function jumpToObjective(){
     hideJumpError();
     if(!state.subjectId){showJumpError('Select a subject first.');return;}
-    const oid=normalizeObjectiveId(jumpInput.value);
-    if(!oid){showJumpError('Objective not found');return;}
+    const oid=(jumpInput.value||'').trim();
+    if(!oid){showJumpError('Select an objective first.');return;}
     await openSingleObjective(oid,'jump');
   }
 
@@ -1023,7 +1158,7 @@
     else{if(f==='back')openObjectiveMapFocus();}
   });
   jumpBtn.addEventListener('click',jumpToObjective);
-  jumpInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();jumpToObjective();}});
+  // jcCommit() calls jumpToObjective() directly — 'change' listener not needed
   answerTextarea.addEventListener('input',()=>{updateWordCount();updateSubmitBtn();});
   submitBtn.addEventListener('click',submitBatchAnswer);
   answerTextarea.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(!submitBtn.disabled)submitBatchAnswer();}});
@@ -1056,6 +1191,19 @@
   async function init(){await fetchSubjects();enterPlanMode();updateSubmitBtn();updateWordCount();}
   init();
 </script>
-<div class="footer-note">Done for the day? Close this tab, then wait a few seconds before unplugging the SSD.</div>
+<div class="footer-note">Done for the day?<button class="done-btn" id="doneBtn" onclick="doneStudying()">Done Studying</button></div>
+<script>
+async function doneStudying(){
+  if(!confirm("Stop the study system and close everything?\n\nYou'll need to reopen the shortcut to start again."))return;
+  const btn=document.getElementById('doneBtn');
+  btn.disabled=true;
+  try{
+    const r=await fetch('/api/shutdown',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){btn.parentElement.textContent='All done! You can close this tab now.';}
+    else{btn.parentElement.textContent="Couldn't stop automatically — please run 00_LAUNCH\\shutdown.bat or close this window.";}
+  }catch{btn.parentElement.textContent="Couldn't stop automatically — please run 00_LAUNCH\\shutdown.bat or close this window.";}
+}
+</script>
 </body>
 </html>

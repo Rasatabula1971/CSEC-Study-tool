@@ -1003,3 +1003,87 @@ def test_videos_endpoint_empty_when_none(real_client):
     res = real_client.get("/api/videos/POB-1.2")
     assert res.status_code == 200
     assert res.json() == {"videos": []}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shutdown
+# ---------------------------------------------------------------------------
+
+def test_shutdown_returns_ok_and_calls_popen(monkeypatch, tmp_path):
+    """When SSD_ROOT is set and shutdown.bat exists, Popen is called and ok=true."""
+    import backend.app as app_module
+
+    # Create a fake shutdown.bat so os.path.exists passes.
+    bat = tmp_path / "00_LAUNCH" / "shutdown.bat"
+    bat.parent.mkdir(parents=True)
+    bat.write_text("@echo off\n")
+
+    monkeypatch.setenv("SSD_ROOT", str(tmp_path))
+
+    popen_calls = []
+    monkeypatch.setattr(app_module.subprocess, "Popen", lambda *a, **kw: popen_calls.append((a, kw)))
+
+    # Also mock time.sleep inside the background task so the test is instant.
+    import time as _time
+    monkeypatch.setattr(_time, "sleep", lambda _: None)
+
+    mock_db = MagicMock()
+    app_module.app.state.db = mock_db
+
+    client = TestClient(app_module.app, raise_server_exceptions=True)
+    res = client.post("/api/shutdown")
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "message" in data
+    mock_db.close.assert_called_once()
+    # Popen may be called in a background thread; give it a moment.
+    import time; time.sleep(0.1)
+    assert len(popen_calls) == 1
+    assert str(bat) in popen_calls[0][0][0]
+
+
+def test_shutdown_returns_ok_false_when_ssd_root_unset(monkeypatch):
+    """With SSD_ROOT unset, returns ok=false + friendly message, HTTP 200."""
+    import backend.app as app_module
+
+    monkeypatch.delenv("SSD_ROOT", raising=False)
+    app_module.app.state.db = None
+
+    client = TestClient(app_module.app, raise_server_exceptions=True)
+    res = client.post("/api/shutdown")
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert "error" in data
+    assert "shutdown script not found" in data["error"]
+
+
+def test_shutdown_returns_ok_false_when_bat_missing(monkeypatch, tmp_path):
+    """SSD_ROOT set but shutdown.bat absent — ok=false, no exception."""
+    import backend.app as app_module
+
+    monkeypatch.setenv("SSD_ROOT", str(tmp_path))
+    app_module.app.state.db = None
+
+    client = TestClient(app_module.app, raise_server_exceptions=True)
+    res = client.post("/api/shutdown")
+
+    assert res.status_code == 200
+    assert res.json()["ok"] is False
+
+
+def test_shutdown_closes_db(monkeypatch, tmp_path):
+    """db.close() is called even when the bat file is missing."""
+    import backend.app as app_module
+
+    monkeypatch.setenv("SSD_ROOT", str(tmp_path))
+    mock_db = MagicMock()
+    app_module.app.state.db = mock_db
+
+    client = TestClient(app_module.app, raise_server_exceptions=True)
+    client.post("/api/shutdown")
+
+    mock_db.close.assert_called_once()
