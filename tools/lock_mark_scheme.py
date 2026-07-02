@@ -26,9 +26,14 @@ from dotenv import load_dotenv
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
+_TOOLS_DIR = Path(__file__).resolve().parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
 from backend.ingest_v2.subject_prefix import prefix_for
 from backend.db.backup import backup_first
 from backend.app import open_db, apply_runtime_migrations
+from extract_mark_scheme import resolve_paper_pages
 
 load_dotenv(_REPO_ROOT / ".env")
 
@@ -60,6 +65,25 @@ def build_point_group_id(prefix: str, block_id: str,
 
 def build_question_id(prefix: str, block_id: str, part: str, occ: str) -> str:
     return f"{prefix}-qb{block_id}{part}v{occ}"
+
+
+def build_mark_group_id(prefix: str, raw_mark_group_id: str) -> str | None:
+    """Prefix the CSV's raw mark_group_id (e.g. '4(c)(i)-g1') for DB storage.
+
+    extract_mark_scheme.py builds mark_group_id as
+    f"{q_block_id}{part_label}-g{group_index}" -- q_block_id is the same
+    globally-incrementing, document-order counter that build_mark_point_id /
+    build_point_group_id / build_question_id already rely on for their own
+    run-to-run stability, and group_index is a deterministic within-part
+    position. So the raw value is already stable/reproducible across
+    re-extraction runs of an unchanged source PDF -- no separate
+    build-from-components formula is needed here, only the same subject-prefix
+    convention every other CSV-derived id already gets. Returns None (NULL)
+    when the CSV has no value, e.g. rows from before the m021 grouping work --
+    Economics' 552 already-locked rows are exactly this case.
+    """
+    raw = raw_mark_group_id.strip()
+    return f"{prefix}-{raw}" if raw else None
 
 
 def _first_obj(mapped: str) -> str:
@@ -122,6 +146,29 @@ def check_null_source_pages(rows: list, prefix: str) -> list:
                 or _fld(r, "needs_manual_entry") == "1"):
             continue
         if not _fld(r, "source_page"):
+            bad.append(r)
+    return bad
+
+
+def check_unmapped_eligible_rows(rows: list) -> list:
+    """Return rows destined for mark_points that have no mapped_objective_id.
+
+    Only checks rows that would survive into the eligible set (not artifacts,
+    not excluded, not manual-entry flagged) -- mirrors check_null_source_pages().
+    Rule 1 requires every mark point to resolve to a real objective_id; a row
+    with an empty mapped_objective_id and none of the three skip flags would
+    otherwise be silently counted "eligible" by partition_rows() while
+    _all_objs("") returns [] -- so lock_subject()'s per-objective insert loop
+    for that row runs zero times, with no error, no warning, and no adjustment
+    to the reported row count. Must be refused before any write.
+    """
+    bad = []
+    for r in rows:
+        if (_fld(r, "parser_artifact") == "1"
+                or _fld(r, "excluded_reason")
+                or _fld(r, "needs_manual_entry") == "1"):
+            continue
+        if not _fld(r, "mapped_objective_id"):
             bad.append(r)
     return bad
 
@@ -247,13 +294,28 @@ def lock_subject(db: sqlite3.Connection, eligible: list,
         )
     """)
 
-    # Atomic delete-then-reinsert: wipe all existing mark_points for this subject's
-    # objectives before writing the new batch.  A formula change between lock runs
-    # would otherwise leave stale rows with the old mark_point_id format alongside
+    # Atomic delete-then-reinsert: wipe this subject's PREVIOUSLY LOCKED rows
+    # before writing the new batch.  A formula change between lock runs would
+    # otherwise leave stale rows with the old mark_point_id format alongside
     # the new ones (INSERT OR REPLACE only replaces on exact PK match).
+    #
+    # Scoped to doc_id IS NULL: every row this function inserts is written
+    # with doc_id=NULL explicitly (see the INSERT below), which is a reliable,
+    # code-guaranteed signal for "this row came from the mark-scheme-lock
+    # pipeline." Some subjects (confirmed: Principles_of_Business, 2447 rows)
+    # also carry a SEPARATE, unrelated mark_points population from
+    # ingest_solutions.py's worked-solutions answer bank -- those rows always
+    # carry a real doc_id (e.g. 'sol-fa67a890f043') tying them to an ingested
+    # PDF. The original unscoped DELETE matched on objective ownership alone,
+    # which does not distinguish the two pipelines: a lock run against a
+    # subject with both populations silently deleted the entire worked-
+    # solutions answer bank on its very first run. The doc_id IS NULL guard
+    # makes this DELETE reach only rows this function itself could have
+    # written, never another pipeline's data, regardless of which subject.
     db.execute("""
         DELETE FROM mark_points
-        WHERE objective_id IN (
+        WHERE doc_id IS NULL
+          AND objective_id IN (
             SELECT objective_id FROM objectives WHERE subject_id = ?
         )
     """, (subject,))
@@ -271,6 +333,9 @@ def lock_subject(db: sqlite3.Connection, eligible: list,
         mv   = int(mv_s) if (mv_s := _fld(r, "marks_value")).isdigit() else 1
         po   = int(order_s) if order_s.isdigit() else 0
         text = _fld(r, "point_text")
+        mgid = build_mark_group_id(prefix, _fld(r, "mark_group_id"))
+        gmm_s = _fld(r, "group_max_marks")
+        gmm  = int(gmm_s) if gmm_s.isdigit() else None
 
         for obj_id in obj_ids:
             obj_num = _obj_num_from_id(obj_id, prefix)
@@ -284,9 +349,10 @@ def lock_subject(db: sqlite3.Connection, eligible: list,
             db.execute("""
                 INSERT OR REPLACE INTO mark_points
                     (mark_point_id, objective_id, question_id, doc_id,
-                     point_text, marks_value, point_order, point_group_id)
-                VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
-            """, (mpid, obj_id, qid, text, mv, po, pgid))
+                     point_text, marks_value, point_order, point_group_id,
+                     mark_group_id, group_max_marks)
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+            """, (mpid, obj_id, qid, text, mv, po, pgid, mgid, gmm))
             written += 1
 
     db.execute("""
@@ -307,6 +373,11 @@ def main() -> None:
         description="Lock verified mark-scheme rows into mark_points."
     )
     ap.add_argument("--subject", required=True, help="Subject ID, e.g. Economics")
+    ap.add_argument("--paper", default=None,
+                    help="Paper key (e.g. paper_02) — required only for subjects "
+                         "with multiple mark-scheme papers configured in "
+                         "mark_scheme_page_ranges.json; ignored for single-paper "
+                         "subjects like Economics")
     ap.add_argument("--dry-run", action="store_true",
                     help="Validate only — do not write to the DB")
     args = ap.parse_args()
@@ -320,7 +391,17 @@ def main() -> None:
     if not db_path:
         sys.exit("ERROR: DB_PATH not set in .env")
 
-    csv_path = Path(reports_root) / f"{subject}_mark_scheme_review.csv"
+    # Load page-range metadata up front — resolve_paper_pages() tells us both
+    # the paper_key (needed to build the CSV filename below) and the pages
+    # (needed later, before locking, for the mark_scheme_locks page_range).
+    page_meta = {}
+    if _PAGE_RANGES_JSON.exists():
+        page_meta = json.loads(_PAGE_RANGES_JSON.read_text(encoding="utf-8")).get(subject, {})
+    pages, paper_key = resolve_paper_pages(page_meta, subject, args.paper)
+
+    csv_name = (f"{subject}_{paper_key}_mark_scheme_review.csv" if paper_key
+                else f"{subject}_mark_scheme_review.csv")
+    csv_path = Path(reports_root) / csv_name
     if not csv_path.exists():
         sys.exit(f"ERROR: CSV not found: {csv_path}\nRun extract_mark_scheme.py first.")
 
@@ -358,6 +439,21 @@ def main() -> None:
                   f"obj={obj!r}  | {_fld(r,'point_text')[:60]}")
         sys.exit("Populate source_page for all affected rows before locking.")
 
+    # Gate: Rule 1 — every eligible row must resolve to a real objective_id
+    unmapped_rows = check_unmapped_eligible_rows(rows)
+    if unmapped_rows:
+        print(f"\nERROR: {len(unmapped_rows)} row(s) with empty mapped_objective_id "
+              f"violate Rule 1 (every mark point must resolve to a real objective_id):")
+        for r in unmapped_rows:
+            block = _fld(r, "question_block_id")
+            part  = _fld(r, "question_part")
+            occ   = _fld(r, "part_occurrence")
+            order = _fld(r, "point_order")
+            pseudo_mpid = f"qb{block}{part}v{occ}-mp{order}"
+            print(f"  {pseudo_mpid}  block={block} part={part} occ={occ} ord={order} "
+                  f"| {_fld(r,'point_text')[:60]}")
+        sys.exit("Populate mapped_objective_id for all affected rows before locking.")
+
     try:
         eligible, skip_counts = partition_rows(rows)
     except ValueError as exc:
@@ -379,13 +475,10 @@ def main() -> None:
         print(f"\n[dry-run] Validation passed — would lock {len(eligible)} rows. No DB changes.")
         return
 
-    # Load page-range metadata
-    page_meta  = {}
-    if _PAGE_RANGES_JSON.exists():
-        page_meta = json.loads(_PAGE_RANGES_JSON.read_text(encoding="utf-8")).get(subject, {})
+    # page_meta / pages were already resolved above (via resolve_paper_pages,
+    # paper-aware) — reuse them rather than reloading the JSON a second time.
     source_pdf = page_meta.get("pdf") or ""
-    pages      = page_meta.get("pages") or [None, None]
-    page_range = f"{pages[0]}-{pages[1]}" if pages[0] is not None else ""
+    page_range = f"{pages[0]}-{pages[1]}" if pages and pages[0] is not None else ""
 
     db = open_db(db_path)
     apply_runtime_migrations(db)
