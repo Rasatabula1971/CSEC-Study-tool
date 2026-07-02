@@ -20,6 +20,7 @@ _SCHEMA_PATH = _REPO_ROOT / "backend" / "db" / "schema.sql"
 from lock_mark_scheme import (
     _all_objs,
     _obj_num_from_id,
+    build_mark_group_id,
     build_mark_point_id,
     build_point_group_id,
     build_question_id,
@@ -27,8 +28,10 @@ from lock_mark_scheme import (
     check_collisions,
     check_null_source_pages,
     check_overlapping_classification,
+    check_unmapped_eligible_rows,
     lock_subject,
     partition_rows,
+    resolve_paper_pages,
 )
 
 
@@ -68,7 +71,9 @@ def _make_db() -> sqlite3.Connection:
             point_text    TEXT NOT NULL,
             marks_value   INTEGER NOT NULL DEFAULT 1,
             point_order   INTEGER,
-            point_group_id TEXT
+            point_group_id TEXT,
+            mark_group_id TEXT,
+            group_max_marks INTEGER
         );
     """)
     # Seed subject + section + objectives used in tests
@@ -88,8 +93,14 @@ def _row(block_id, part, occ, order, obj_id,
          point_text="Test point.", marks_value="1",
          verified="1", parser_artifact="0",
          excluded_reason="", needs_manual_entry="0",
-         source_page="90") -> dict:
-    """Build a minimal CSV-row dict."""
+         source_page="90", mark_group_id="", group_max_marks="") -> dict:
+    """Build a minimal CSV-row dict.
+
+    mark_group_id/group_max_marks default to "" — equivalent to _fld()'s
+    behaviour for a column that is entirely ABSENT from the CSV (Economics'
+    already-locked review CSVs predate the m021 grouping work and have
+    neither column), not just present-but-empty.
+    """
     return {
         "question_block_id":  str(block_id),
         "question_part":      part,
@@ -103,6 +114,8 @@ def _row(block_id, part, occ, order, obj_id,
         "excluded_reason":    excluded_reason,
         "needs_manual_entry": needs_manual_entry,
         "source_page":        source_page,
+        "mark_group_id":      mark_group_id,
+        "group_max_marks":    group_max_marks,
     }
 
 
@@ -450,6 +463,48 @@ def test_second_lock_with_different_content_leaves_no_stale_orphans():
     )
 
 
+def test_worked_solution_rows_with_doc_id_survive_a_relock():
+    """Regression guard: lock_subject's DELETE must never touch a row from a
+    DIFFERENT pipeline that happens to share an objective_id with this subject.
+
+    Confirmed real case: Principles_of_Business carries 2447 pre-existing
+    mark_points rows from ingest_solutions.py's worked-solutions answer bank,
+    each with a real doc_id (e.g. 'sol-fa67a890f043'). The original DELETE
+    scoped only by objective ownership matched those rows too, so the very
+    first mark-scheme-CSV lock for POB would have silently deleted the entire
+    answer bank. This row is inserted directly (bypassing lock_subject, since
+    that function only ever writes doc_id=NULL) to simulate that population,
+    then a real lock_subject call for the SAME subject/objective must leave it
+    untouched -- doc_id IS NULL is the guard that makes this safe regardless
+    of which subject is being locked.
+    """
+    db = _make_db()
+    db.execute("""
+        INSERT INTO mark_points
+            (mark_point_id, objective_id, question_id, doc_id, point_text, marks_value, point_order)
+        VALUES ('ECON-2010Jan-P2-q2b-mp1', 'ECON-1.6', 'ECON-2010Jan-P2-q2b-stem',
+                'sol-fa67a890f043', 'Worked-solution answer', 1, 1)
+    """)
+    db.commit()
+
+    rows = [_row(1, "(a)", 1, 1, "ECON-1.6", "New specimen point")]
+    eligible, _ = partition_rows(rows)
+    lock_subject(db, eligible, "Economics", "test.pdf", "90-128")
+
+    survivor = db.execute(
+        "SELECT * FROM mark_points WHERE mark_point_id = 'ECON-2010Jan-P2-q2b-mp1'"
+    ).fetchone()
+    assert survivor is not None, "worked-solution row was wrongly deleted by the lock"
+
+    new_row = db.execute(
+        "SELECT * FROM mark_points WHERE mark_point_id = 'ECON-1.6-qb1(a)v1-mp1'"
+    ).fetchone()
+    assert new_row is not None, "the new specimen row should still be inserted normally"
+
+    total = db.execute("SELECT COUNT(*) FROM mark_points").fetchone()[0]
+    assert total == 2, f"expected worked-solution row + new specimen row = 2, got {total}"
+
+
 # ── stem-suffix regression guard ──────────────────────────────────────────────
 
 def test_question_ids_normalised_to_stem_after_lock_and_migration():
@@ -579,3 +634,165 @@ def test_partition_rows_raises_on_overlapping_classification():
     ]
     with pytest.raises(ValueError, match="parser_artifact=1 AND excluded_reason"):
         partition_rows(rows)
+
+
+# ── Gap 1: --paper / resolve_paper_pages() CSV-filename resolution ────────────
+
+def test_resolve_paper_pages_economics_single_paper_regression():
+    """Economics has a single top-level 'pages' key -- paper_key must be None
+    regardless of --paper, so main()'s csv_name stays the unsuffixed
+    '{subject}_mark_scheme_review.csv' convention it has always used."""
+    econ_entry = {
+        "pdf": "econ.pdf",
+        "pages": [90, 128],
+    }
+    pages, paper_key = resolve_paper_pages(econ_entry, "Economics", None)
+    assert pages == [90, 128]
+    assert paper_key is None
+
+
+def test_resolve_paper_pages_pob_multi_paper_selects_named_paper():
+    """POB has paper_02/paper_032 sub-keys -- passing --paper paper_02 must
+    resolve to that paper's own pages and return the paper key (used by
+    main() to build 'Principles_of_Business_paper_02_mark_scheme_review.csv')."""
+    pob_entry = {
+        "pdf": "pob.pdf",
+        "paper_02":  {"pages": [108, 120], "format": "question_lettered_parts"},
+        "paper_032": {"pages": [130, 137], "format": "flat_numbered_items"},
+    }
+    pages, paper_key = resolve_paper_pages(pob_entry, "Principles_of_Business", "paper_02")
+    assert pages == [108, 120]
+    assert paper_key == "paper_02"
+
+
+def test_resolve_paper_pages_pob_missing_paper_arg_exits():
+    """A multi-paper subject invoked without --paper must exit, not silently
+    pick one of the available papers."""
+    pob_entry = {
+        "pdf": "pob.pdf",
+        "paper_02":  {"pages": [108, 120], "format": "question_lettered_parts"},
+        "paper_032": {"pages": [130, 137], "format": "flat_numbered_items"},
+    }
+    with pytest.raises(SystemExit):
+        resolve_paper_pages(pob_entry, "Principles_of_Business", None)
+
+
+def test_resolve_paper_pages_no_config_entry_regression():
+    """A subject entirely absent from mark_scheme_page_ranges.json (empty
+    dict) must not require --paper -- matches subjects that have not yet
+    been page-ranged, same as the pre-Gap-1 unconditional csv_path."""
+    pages, paper_key = resolve_paper_pages({}, "SomeSubject", None)
+    assert pages == [None, None]
+    assert paper_key is None
+
+
+# ── Gap 2: check_unmapped_eligible_rows ────────────────────────────────────────
+
+def test_check_unmapped_eligible_rows_flags_empty_mapping():
+    rows = [
+        _row(1, "(a)", 1, 1, "ECON-1.6"),   # fine -- mapped
+        _row(2, "(b)", 1, 1, ""),           # BLOCKS -- empty mapping, no skip flag
+    ]
+    bad = check_unmapped_eligible_rows(rows)
+    assert len(bad) == 1
+    assert bad[0]["question_block_id"] == "2"
+
+
+def test_check_unmapped_eligible_rows_skips_artifact_excluded_manual():
+    """Rows that are artifacts/excluded/manual are allowed an empty mapping --
+    they're already routed to a skip bucket by partition_rows, never written."""
+    rows = [
+        _row(1, "(a)", 1, 1, "", parser_artifact="1"),
+        _row(2, "(b)", 1, 1, "", excluded_reason="out_of_scope"),
+        _row(3, "(c)", 1, 1, "", needs_manual_entry="1"),
+    ]
+    assert check_unmapped_eligible_rows(rows) == []
+
+
+def test_check_unmapped_eligible_rows_all_mapped_is_clean():
+    rows = [
+        _row(1, "(a)", 1, 1, "ECON-1.6"),
+        _row(2, "(b)", 1, 1, "ECON-1.8"),
+    ]
+    assert check_unmapped_eligible_rows(rows) == []
+
+
+def test_partition_rows_would_silently_lose_unmapped_eligible_row():
+    """Confirms the exact bug check_unmapped_eligible_rows guards against: an
+    empty mapped_objective_id with no skip flag reaches 'eligible' from
+    partition_rows, but _all_objs('') is [] so lock_subject's per-objective
+    insert loop for that row runs zero times -- this is why the new gate must
+    run BEFORE lock_subject is ever called."""
+    rows = [_row(1, "(a)", 1, 1, "")]
+    eligible, skip_counts = partition_rows(rows)
+    assert len(eligible) == 1  # silently counted eligible
+    assert _all_objs(eligible[0]["mapped_objective_id"]) == []  # writes nothing
+
+
+# ── Gap 3: mark_group_id / group_max_marks written to mark_points ─────────────
+
+def test_build_mark_group_id_prefixes_raw_value():
+    assert build_mark_group_id("ECON", "4(c)(i)-g1") == "ECON-4(c)(i)-g1"
+
+
+def test_build_mark_group_id_empty_is_none():
+    assert build_mark_group_id("ECON", "") is None
+
+
+def test_mark_group_id_and_group_max_marks_written_on_locked_row():
+    """A row carrying real group fields must write them through to mark_points."""
+    db = _make_db()
+    rows = [_row(4, "(c)(i)", 1, 1, "ECON-1.6", "Grouped point",
+                 marks_value="1", mark_group_id="4(c)(i)-g1", group_max_marks="4")]
+    eligible, _ = partition_rows(rows)
+    lock_subject(db, eligible, "Economics", "test.pdf", "90-128")
+
+    row = db.execute(
+        "SELECT mark_group_id, group_max_marks FROM mark_points"
+    ).fetchone()
+    assert row[0] == "ECON-4(c)(i)-g1"
+    assert row[1] == 4
+
+
+def test_mark_group_id_shared_across_fanned_out_rows():
+    """A grouped row that fans out to multiple objectives must carry the SAME
+    mark_group_id/group_max_marks on every fanned sibling row."""
+    db = _make_db()
+    rows = [_row(7, "(b)", 1, 1, "ECON-6.9,ECON-6.11", "Grouped fanout point",
+                 mark_group_id="7(b)-g1", group_max_marks="3")]
+    eligible, _ = partition_rows(rows)
+    lock_subject(db, eligible, "Economics", "test.pdf", "90-128")
+
+    rows_out = db.execute(
+        "SELECT mark_group_id, group_max_marks FROM mark_points"
+    ).fetchall()
+    assert len(rows_out) == 2
+    assert all(r[0] == "ECON-7(b)-g1" for r in rows_out)
+    assert all(r[1] == 3 for r in rows_out)
+
+
+def test_economics_shaped_rows_with_no_group_columns_lock_unchanged():
+    """Regression guard: a CSV row with NO mark_group_id/group_max_marks
+    columns at all (the shape of every one of Economics' 552 already-locked
+    rows, extracted before the m021 grouping work existed) must still lock
+    cleanly, writing NULL for both new columns and leaving every other
+    column exactly as it was before this task."""
+    db = _make_db()
+    row = _row(2, "(c)", 1, 1, "ECON-2.2", "GDP definition", marks_value="2")
+    del row["mark_group_id"]
+    del row["group_max_marks"]
+    eligible, _ = partition_rows([row])
+    written = lock_subject(db, eligible, "Economics", "test.pdf", "90-128")
+    assert written == 1
+
+    result = db.execute(
+        "SELECT objective_id, question_id, point_text, marks_value, "
+        "point_order, mark_group_id, group_max_marks FROM mark_points"
+    ).fetchone()
+    assert result[0] == "ECON-2.2"
+    assert result[1] == "ECON-qb2(c)v1"
+    assert result[2] == "GDP definition"
+    assert result[3] == 2
+    assert result[4] == 1
+    assert result[5] is None
+    assert result[6] is None
